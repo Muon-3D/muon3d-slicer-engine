@@ -50,10 +50,54 @@ Also noticed while compiling (wasm32 has a 32-bit `size_t`, native builds a 64-b
 `Arachne/WallToolPaths.cpp:525` clamps `max_bead_count` to `numeric_limits<coord_t>::max()`, which
 becomes `SIZE_MAX` (4294967295) on wasm32. It only differs for absurd wall counts.
 
-Found while comparing the single- and multi-threaded builds (identical G-code otherwise), not
-patched because it is Orca's behaviour natively too: `PrintObject::m_id` (`Print.hpp:607`) is never
-initialised and is only assigned in `GCode.cpp:10149`, inside the EXCLUDE_OBJECT_DEFINE block. With
-`gcode_label_objects` on and that block not run (e.g. `gcode_flavor = marlin`, `exclude_object = 0`),
-the comment `; printing object <name> id:<n> copy 0` prints whatever was in memory (0 in one build,
-19656648 in the other). Parity diffs must ignore that number; the M1 profile (Klipper, exclude_object)
-takes the path that assigns it.
+## Handled in the bridge, not in Orca
+
+Orca defects that make a long-lived engine's G-code differ between jobs. The bridge (not the Orca
+source) sets the values, so nothing here is a patch:
+
+- `PrintObject::m_id` (`Print.hpp:607`) is never initialised and is only assigned by
+  `GCode::set_object_info` (`GCode.cpp:10125`), which returns early for Bambu Lab printers and for
+  flavours other than Klipper/Marlin/RRF. With `gcode_label_objects` on,
+  `; printing object <name> id:<n> copy 0` then printed whatever was in memory (0, 6778473,
+  151587082 …; the native CLI has the same defect). `slice_job.cpp` now calls `set_id(i)` on every
+  print object after `Print::apply`, the value `set_object_info` would give, so Klipper output (the M1)
+  is unchanged.
+- Bambu Lab label ids (`; model label id:`, `; start printing object, unique label id:`,
+  `; object ids of layer …`, the M624 skip-object ids) come from `ModelInstance::get_labeled_id()`.
+  The CLI's plate code sets `use_loaded_id_for_label` (OS:6348), but an STL has no `loaded_id`, so
+  the label was the process-wide `ObjectID`, which a worker keeps counting across jobs (28,38 →
+  102,112 → …; the fresh CLI process prints 45,56). `slice_job.cpp` now numbers the instances
+  1..n in plate order, as a 3MF's `loaded_id` would. Checked by the engine test "Bambu Lab G-code is
+  the same in every job".
+
+## Upstream behaviour that differs from the server's CLI (not patched)
+
+The server runs the release CLI built from `7c5b1764ba`; the engine is built from the newer fork
+branch, so upstream changes merged since then show up as browser-vs-server differences (print time
+estimates, new config keys, …). One of them is large enough to record:
+
+**Arc fitting is lost on walls while the overhang fan is enabled.** Upstream 68ce4da19f "Fix overhang
+fan speed bugs (#14788)" and e8115658e0 "Fix overhang fan control when overhang slowdown is enabled
+(#15158)" make `GCode::_extrude` (`GCode.cpp:8441-8446`) set
+`variable_speed = new_points.size() > 1` for every wall and bridge path whenever the filament's
+`enable_overhang_bridge_fan` is on, so the path is written point by point to place the overhang fan
+markers, and its arc-fitting result is never used. `ArcFitter.cpp` and `Circle.cpp` are unchanged; this
+is not a wasm defect (with `enable_overhang_bridge_fan = 0` the engine fits the same arcs as the CLI).
+Measured with M1 presets plus `enable_arc_fitting = 1` on a 96-facet cylinder: 6 of 14226 wall moves
+are arcs (21711 lines) against 300 of 567 with the fan off (8043 lines); the old CLI gives 307 arcs in
+732 wall moves. Bambu Lab's process profiles turn arc fitting on and the overhang fan is on by default,
+so browser slices of those have about half the G2/G3 moves and ~20% more lines than server slices (X1C
+Benchy: 3418 vs 6797 arcs, 137517 vs 113588 lines). The M1 profiles have arc fitting off and are not
+affected.
+
+Decision: not patched. The engine's acceptance bar is equivalence with a native CLI built from the
+same commit (`docs/WASM_ENGINE_SPEC.md` §8), and the patches above are limited to wasm32 defects whose
+fix changes nothing on 64-bit builds; changing how Orca writes walls would make the engine the only
+build that behaves this way. The server's G-code will match once its CLI is rebuilt from the current
+fork. Worth reporting upstream with this proposal: force the per-point output only when the fan state
+actually changes inside the path, i.e. when for some `i` `check_overhang_fan(p[i-1]) && check_overhang_fan(p[i])`
+differs from the marker the plain branch writes (`(overhang_fan_threshold == none && external
+perimeter) || bridge infill || overhang perimeter`). That keeps #14788/#15158's fan output
+exactly and gives the arcs back everywhere else. The engine test "arc fitting turns walls into G2/G3 …"
+checks that arc fitting works with the fan off and reports the fan-on count, so an upstream fix shows
+up there.

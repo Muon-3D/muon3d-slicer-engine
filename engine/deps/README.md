@@ -21,10 +21,11 @@ smoke/             a wasm program that links the whole prefix, run under node by
 
 ## Reproducing
 
-Git Bash on Windows, with Emscripten 6.0.10 in `$ORCA_WASM_ROOT/emsdk`, CMake 3.31 in
-`C:/Program Files/CMake/bin` and Ninja on PATH. The script sets up the emsdk environment itself (it
-puts the emsdk and the Program Files CMake ahead of Strawberry Perl's tools), so nothing needs sourcing
-first.
+Git Bash on Windows, with Emscripten 6.0.10 in `$ORCA_WASM_ROOT/emsdk` (or `ORCA_EMSDK`), CMake 3.31
+and Ninja. How to install those, and the whole sequence from an empty machine to a published engine,
+is in [../scripts/README.md](../scripts/README.md). The script sets up the emsdk environment itself
+(`../scripts/toolchain.sh`: it puts the emsdk, and the Program Files CMake when there is one, ahead of
+Strawberry Perl's tools), so nothing needs sourcing first.
 
 ```bash
 bash engine/deps/fetch-deps.sh                                    # idempotent; about 170 MB of downloads
@@ -37,9 +38,15 @@ VARIANT=mt bash "$PWD/engine/deps/build-deps.sh" tbb verify      # run selected 
 - **Stamps:** each step is stamped with a hash of the emcc version, the common flags and that step's
   own recipe (the text of its `step_*` function), so a re-run rebuilds only what changed. Delete
   `prefix-<v>/.stamps` to force a rebuild.
-- **Overridable paths:** `ORCA_WASM_ROOT`, `ORCA_SRC` (read only; used only by the optional GMP
-  step), `JOBS` and `EM_CACHE`. `EM_CACHE` defaults to the emsdk's own cache, which must stay on the
-  same drive as the build trees.
+- **Overridable paths:** `ORCA_WASM_ROOT` (no spaces), `ORCA_SRC` (read only; used only by the
+  optional GMP step), `ORCA_EMSDK`, `JOBS` and `EM_CACHE`. `EM_CACHE` defaults to the emsdk's own
+  cache, which must stay on the same drive as the build trees.
+- **GMP/MPFR** are fetched only with `WITH_GMP=1` (or when named: `fetch-deps.sh gmp mpfr`).
+- **Paths in the output:** every library is compiled with `-ffile-prefix-map`, which records
+  `ORCA_WASM_ROOT` as `/orcawasm` and the Emscripten cache as `/emcache` wherever the compiler writes
+  a path (Boost's `__FILE__` in throw sites reaches the engine's wasm). Before that, the root was the
+  only difference between prefixes built in two roots (8 of 29 archives). The flags reach the engine
+  through the initial cache.
 - **Run the script by an absolute path:** one concurrent launch that used a relative path failed with
   "No such file". The cause was not established; a file-sync lock is possible.
 
@@ -282,9 +289,9 @@ concurrently with `JOBS=12` each on the 24-core machine, while other builds were
 
 - **GMP/MPFR (`WITH_GMP=1`):** the autotools path on Windows has never been run. It is not needed by
   default.
-- **Browsers:** everything ran under node (emsdk's node 24.19). Neither browser (Chrome, Safari,
-  Firefox) nor iPadOS has been tried with these libraries.
+- **Browsers:** the smoke test runs under node (emsdk's node 24.19). The engine built on these
+  prefixes (`../README.md`) has since run under Node 24 (`engine/test`, both variants) and in
+  headless Chrome (st and mt, 2026-09-25). Safari, Firefox and iPadOS have not been tried.
 - **Other hardware:** TBB behaviour on machines with fewer cores, or with a pool smaller than
-  `hardwareConcurrency+4`, has not been tried.
-- **The engine link itself:** `-flto`, `-O3` and embind together with all of libslic3r have not
-  been linked against these prefixes; that is the engine build's job.
+  `hardwareConcurrency+4`, has not been tried. (The engine has been run with 2 to 24 threads, but
+  only on the 24-core machine.)

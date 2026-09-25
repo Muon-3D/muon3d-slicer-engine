@@ -15,8 +15,9 @@
 // fresh ArrayBuffer (not a view of the wasm heap), so the worker can transfer it without copying.
 //
 // Errors never escape as exceptions: they come back as { error: { code, message, objects? } }
-// with the codes of protocol.ts EngineError. A wasm trap or abort() does escape; the worker
-// reports that as code 1 (or 2 for out of memory) and the engine instance is gone.
+// with the codes of protocol.ts EngineError; running out of memory is { code: 2 }, on every
+// thread (see ensure_initialised). A wasm trap or abort() does escape; the worker reports that as
+// code 1 (or 2 for out of memory) and the engine instance is gone.
 #include "job.hpp"
 #include "model_input.hpp"
 #include "placement.hpp"
@@ -86,6 +87,15 @@ void ensure_initialised()
     if (initialised)
         return;
     initialised = true;
+
+    // A failed operator new must throw std::bad_alloc, which the API functions below report as
+    // code 2. Emscripten's mimalloc (the mt build's malloc) is compiled as C: with no new-handler
+    // installed its operator new calls abort() ("cannot throw in plain C", alloc.c
+    // mi_try_new_handler), which kills the instance with a bare "unreachable" (or "unwind" on a TBB
+    // thread). With one, mi_new calls it, and TBB hands the exception to the thread that started
+    // the parallel loop. libc++'s operator new (st, dlmalloc) calls it too; throwing bad_alloc from
+    // it is what that one does without a handler.
+    std::set_new_handler([] { throw std::bad_alloc(); });
 
     Slic3r::set_resources_dir(ORCA_ENGINE_RESOURCES_DIR);
     Slic3r::set_temporary_dir("/tmp");

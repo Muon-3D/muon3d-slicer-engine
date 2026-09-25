@@ -40,7 +40,8 @@ void write_binary_stl(const std::string &path, const std::vector<float> &positio
 
 // Loads one plate object into `model` exactly like the CLI loads an STL argument (OS:1718-1990):
 // Format/STL load_stl (admesh repair, normals recomputed), a default instance, ensure_on_bed.
-// Throws JobFailure(CLI_DATA_FILE_ERROR) when the mesh cannot be read.
+// Throws JobFailure(CLI_DATA_FILE_ERROR) when the mesh cannot be read, and std::bad_alloc when
+// memory ran out, also where Orca itself swallowed that (the convex hull).
 Slic3r::ModelObject *load_object(Slic3r::Model &model, const MeshInput &object, const std::string &stl_path);
 
 // The plate's build volume as the CLI builds it for plate 1 (OS:4277 set_shapes, OS:6331).

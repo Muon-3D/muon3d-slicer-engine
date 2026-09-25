@@ -16,7 +16,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { GcodeStats } from '../../shared/types.ts';
 import { runSlice } from '../../web/src/engine/worker.ts';
-import { M1, benchy, cube, engineBuilt, engineModulePath, m1Presets, ms, outDir, sliceJob, startEngine, type Presets } from './fixtures.ts';
+import { M1, benchy, benchyAvailable, cube, engineBuilt, engineModulePath, m1Presets, ms, outDir, sliceJob, startEngine, type Presets } from './fixtures.ts';
 
 interface Plate {
   name: string;
@@ -74,10 +74,10 @@ function withinTolerance(tolerance: Tolerance, engine: number | null, cli: numbe
 }
 
 async function plates(): Promise<Plate[]> {
-  return [
-    { name: 'cube', objects: [{ name: 'Cube.stl', positions: cube([100, 90]) }] },
-    { name: 'benchy', objects: [{ name: 'Benchy.stl', positions: await benchy([100, 90]) }] },
-  ];
+  const list: Plate[] = [{ name: 'cube', objects: [{ name: 'Cube.stl', positions: cube([100, 90]) }] }];
+  if (benchyAvailable) list.push({ name: 'benchy', objects: [{ name: 'Benchy.stl', positions: await benchy([100, 90]) }] });
+  else console.log('# data/samples/benchy-raw.stl not found: comparing the cube only.');
+  return list;
 }
 
 /** Runs only the CLI side, to check the reference setup without an engine build. */

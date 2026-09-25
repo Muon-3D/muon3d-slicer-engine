@@ -35,6 +35,11 @@ export interface SliceJob {
   objects: EngineObject[];
   /** Return the toolpaths (for the preview) along with the G-code. Default true. */
   toolpaths?: boolean;
+  /**
+   * Return `toolpathExtras` along with the toolpaths. Default true. A caller that has no use for
+   * them turns them off: about 15 bytes per extrusion segment it need not carry.
+   */
+  toolpathExtras?: boolean;
 }
 
 /** A placement check: Orca's own pre-slice object checks, without slicing. */
@@ -62,6 +67,8 @@ export interface EngineError {
   message: string;
   /** Objects the error concerns, when Orca names them. */
   objects?: string[];
+  /** The browser's own error text, when `message` explains an engine-level failure in words. */
+  detail?: string;
 }
 
 export interface EngineWarning {
@@ -118,26 +125,63 @@ export interface CheckOutput {
 export type EngineVariant = 'st' | 'mt';
 
 export type EngineRequest =
-  | { type: 'init'; /** URL of the folder holding engine-*.mjs/.wasm, ending in '/'. */ baseUrl: string; variant: EngineVariant; threads?: number }
+  | {
+      type: 'init';
+      /** URL of the folder holding engine-*.mjs/.wasm, ending in '/'. */
+      baseUrl: string;
+      variant: EngineVariant;
+      threads?: number;
+      /** Size of the uncompressed .wasm (the manifest's wasmBytes), for download progress. */
+      wasmBytes?: number;
+    }
   | { type: 'slice'; id: string; job: SliceJob }
   | { type: 'check'; id: string; job: CheckJob };
 
+// `heapBytes` on job results: the size of the engine's wasm memory after the job. Wasm memory
+// never shrinks, so the client replaces a worker whose heap has grown large. Absent when unknown.
 export type EngineResponse =
   | { type: 'ready'; variant: EngineVariant; orcaVersion: string; orcaCommit: string; initMs: number }
+  /** Download progress of the .wasm while the engine starts: bytes of the uncompressed file, total 0 when unknown. */
+  | { type: 'loading'; loadedBytes: number; totalBytes: number }
   | { type: 'progress'; id: string; percent: number; message: string }
   | { type: 'warning'; id: string; warning: EngineWarning }
-  | { type: 'sliced'; id: string; output: SliceOutput }
-  | { type: 'checked'; id: string; output: CheckOutput }
-  | { type: 'failed'; id: string; error: EngineError }
-  /** The engine could not start (download, compile or out of memory); the worker is unusable. */
-  | { type: 'fatal'; message: string };
+  | { type: 'sliced'; id: string; output: SliceOutput; heapBytes?: number }
+  | { type: 'checked'; id: string; output: CheckOutput; heapBytes?: number }
+  | { type: 'failed'; id: string; error: EngineError; heapBytes?: number }
+  /**
+   * The engine could not start (download, compile or out of memory); the worker is unusable.
+   * `message` says why in a sentence; `code` is 2 when memory ran out (default 1); `detail` is
+   * the browser's own error text.
+   */
+  | { type: 'fatal'; message: string; code?: number; detail?: string };
 
 /** What the build publishes next to the engine files (web/public/engine/manifest.json). */
 export interface EngineManifest {
   orcaVersion: string;
   orcaCommit: string;
   builtAt: string;
-  variants: Partial<Record<EngineVariant, { mjs: string; wasm: string; wasmBytes: number }>>;
+  /**
+   * `mjs` and `wasm` are relative to manifest.json and may sit in a folder of their own (e.g. one
+   * named after a content hash, cached for good). The engine loads engine-<variant>.mjs and
+   * engine-<variant>.wasm from the folder of `mjs`: those names are built into the .mjs, which
+   * also starts its pthread workers from its own URL. `wasmBytes` is the uncompressed size;
+   * `wasmTransferBytes`, when present, what the server actually sends (compressed).
+   */
+  variants: Partial<Record<EngineVariant, EngineManifestVariant>>;
+}
+
+export interface EngineManifestVariant {
+  mjs: string;
+  wasm: string;
+  wasmBytes: number;
+  wasmTransferBytes?: number;
+  /** sha256 (hex) of the two files as published, to check a rebuild or a deployed copy against them. */
+  sha256?: { mjs: string; wasm: string };
+  /**
+   * The commit of this repository the build ran from (the bridge and build recipe in engine/), with
+   * "-dirty" when engine/ had uncommitted changes. The Orca source is `orcaCommit`.
+   */
+  engineCommit?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,10 +190,16 @@ export interface EngineManifest {
 
 export type EngineStatus =
   | { state: 'unavailable'; reason: string }
-  | { state: 'idle' }
-  | { state: 'loading'; variant: EngineVariant }
+  /**
+   * Not running. `loadedBefore`: it ran in this page and was stopped (unused for a while, a
+   * cancelled slice, a crash), so starting it again needs no download.
+   */
+  | { state: 'idle'; loadedBefore?: boolean }
+  /** Starting; `loadedBytes`/`totalBytes` is the download so far (total 0 when unknown), once it has begun. */
+  | { state: 'loading'; variant: EngineVariant; loadedBytes?: number; totalBytes?: number }
   | { state: 'ready'; variant: EngineVariant; orcaVersion: string }
-  | { state: 'failed'; message: string };
+  /** It could not start: `message` says why in a sentence, `detail` is the browser's own error text. */
+  | { state: 'failed'; message: string; detail?: string };
 
 export interface SliceHandle {
   /** Resolves with the output; rejects with an EngineError (code 3 when cancelled). */

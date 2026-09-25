@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # =====================================================================================================
 # build-deps.sh: Emscripten dependency prefixes for the OrcaSlicer libslic3r wasm engine.
-# Windows 11, native Git Bash (no WSL, no Docker), Emscripten 6.0.10 (clang 24).
+# Emscripten 6.0.10 (clang 24). Written for Git Bash on Windows 11 (native, no WSL); the paths it hands to
+# tools are portable (scripts/toolchain.sh), so it also runs in a Linux shell with the Linux emsdk.
 #
 #   VARIANT=st bash engine/deps/build-deps.sh              # every step, single-threaded prefix
 #   VARIANT=mt bash engine/deps/build-deps.sh              # every step, pthreads prefix
@@ -14,8 +15,9 @@
 # Environment:
 #   ORCA_WASM_ROOT  default ~/OrcaWasm. Sources in $ORCA_WASM_ROOT/deps-src, build trees in
 #                   $ORCA_WASM_ROOT/build-deps/$VARIANT (short on purpose: MAX_PATH), output in
-#                   $ORCA_WASM_ROOT/prefix-$VARIANT.
+#                   $ORCA_WASM_ROOT/prefix-$VARIANT. No spaces (it is part of the compile flags).
 #   ORCA_SRC        default $ORCA_WASM_ROOT/orca (read-only; only the GMP patch is taken from it).
+#   ORCA_EMSDK      default $ORCA_WASM_ROOT/emsdk (scripts/toolchain.sh).
 #   JOBS            parallel compile jobs, default nproc.
 #   EM_CACHE        default: the emsdk's own cache. Must be on the same drive as the build trees
 #                   (Emscripten's tools/system_libs.py computes relative paths between them).
@@ -34,29 +36,23 @@ VARIANT=${VARIANT:-st}
 WITH_GMP=${WITH_GMP:-0}   # 0 (default): CGAL uses Boost.Multiprecision, no GMP/MPFR. 1: also build them.
 JOBS=${JOBS:-$(nproc)}
 
-HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W)    # X:/... form: passed to native tools
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=../scripts/toolchain.sh
+source "$SCRIPT_DIR/../scripts/toolchain.sh"
+HERE=$(dir_path "$SCRIPT_DIR")    # X:/... form on Windows: passed to native tools
 # Mixed-style paths (X:/...) everywhere, so no MSYS path conversion is involved when calling cmake/emcc.
-ORCA_WASM_ROOT=$(cygpath -m "${ORCA_WASM_ROOT:-$HOME/OrcaWasm}")
-ORCA_SRC=$(cygpath -m "${ORCA_SRC:-$ORCA_WASM_ROOT/orca}")
+ORCA_WASM_ROOT=$(mixed_path "${ORCA_WASM_ROOT:-$ORCAWASM_DEFAULT_ROOT}")
+ORCA_SRC=$(mixed_path "${ORCA_SRC:-$ORCA_WASM_ROOT/orca}")
 SRC=$ORCA_WASM_ROOT/deps-src
 PREFIX=$ORCA_WASM_ROOT/prefix-$VARIANT
 BLD=$ORCA_WASM_ROOT/build-deps/$VARIANT
 
 # ---- 0. Toolchain environment ---------------------------------------------------------------------
-# Deterministic replacement for `source emsdk_env.sh`: emsdk 6 on Windows ships .exe launchers that Git
-# Bash runs directly. The Program Files CMake (3.31) must come before Strawberry Perl's 3.29.
-export EMSDK=$ORCA_WASM_ROOT/emsdk
-export EM_CONFIG=$EMSDK/.emscripten
-export EM_CACHE=$(cygpath -m "${EM_CACHE:-$EMSDK/upstream/emscripten/cache}")
-EMSDK_NODE_DIR=$(ls -d "$EMSDK"/node/*_64bit 2>/dev/null | sort -V | tail -1)
-EMSDK_PY_DIR=$(ls -d "$EMSDK"/python/*_64bit 2>/dev/null | sort -V | tail -1)
-export EMSDK_NODE=$EMSDK_NODE_DIR/node.exe
-export EMSDK_PYTHON=$EMSDK_PY_DIR/python.exe
-export PATH="$(cygpath -u "$EMSDK/upstream/emscripten"):$(cygpath -u "$EMSDK_NODE_DIR"):/c/Program Files/CMake/bin:$PATH"
-
+# The emsdk's own tools first on PATH (and, on Windows, the Program Files CMake 3.31 before Strawberry
+# Perl's 3.29): scripts/toolchain.sh.
+setup_emsdk
+check_emcc 6.0.10
 EMCC_VERSION=$(emcc --version | head -1)
-[[ $EMCC_VERSION == *" 6.0.10 "* ]] || { echo "Expected Emscripten 6.0.10, got: $EMCC_VERSION" >&2; exit 1; }
-command -v ninja >/dev/null || { echo "ninja not on PATH" >&2; exit 1; }
 [[ $(cmake --version | head -1) == *" 3.31."* ]] || echo "warning: expected CMake 3.31, got $(cmake --version | head -1)" >&2
 
 # ---- 1. Flags: identical for every library AND for the engine ---------------------------------------
@@ -75,11 +71,20 @@ command -v ninja >/dev/null || { echo "ninja not on PATH" >&2; exit 1; }
 #   includes boost/log/sinks/async_frontend.hpp, which #errors under it.
 # * No -flto (deps stay plain wasm objects; the engine link may still use LTO) and no -msimd128 (keeps
 #   Eigen/CGAL arithmetic scalar, like the reference x86-64 build without AVX).
+# * Reproducible output: -ffile-prefix-map writes this machine's folders as fixed names wherever the
+#   compiler records a path (__FILE__ in Boost.Log's and Boost.Multiprecision's throw sites ends up in the
+#   engine's wasm): ORCA_WASM_ROOT (sources, prefix, build trees) as /orcawasm and the Emscripten cache
+#   (sysroot) as /emcache. The longest matching prefix wins, whatever the order. The flags reach the engine
+#   through the initial cache; engine/CMakeLists.txt maps the engine's own folders.
 SJLJ="-sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1"
 EH="-fwasm-exceptions $SJLJ"
 THR=""; [[ $VARIANT == mt ]] && THR="-pthread"
-CFLAGS_V="$SJLJ $THR"
-CXXFLAGS_V="$EH $THR"
+for dir in "$ORCA_WASM_ROOT" "$EM_CACHE"; do
+  [[ $dir != *" "* ]] || { echo "No spaces allowed in '$dir': it is written into the compile flags." >&2; exit 2; }
+done
+PFX_MAP="-ffile-prefix-map=$ORCA_WASM_ROOT=/orcawasm -ffile-prefix-map=$EM_CACHE=/emcache"
+CFLAGS_V="$SJLJ $THR $PFX_MAP"
+CXXFLAGS_V="$EH $THR $PFX_MAP"
 [[ $VARIANT == st ]] && CXXFLAGS_V="$CXXFLAGS_V -DBOOST_HAS_PTHREADS"
 LDFLAGS_V="$EH $THR"
 CFLAGS_V=$(echo $CFLAGS_V); CXXFLAGS_V=$(echo $CXXFLAGS_V); LDFLAGS_V=$(echo $LDFLAGS_V)   # squeeze spaces

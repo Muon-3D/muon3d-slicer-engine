@@ -1,0 +1,2 @@
+# The patches are applied byte for byte (scripts/get-orca.sh): never convert them.
+*.patch -text

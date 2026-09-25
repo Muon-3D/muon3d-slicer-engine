@@ -250,6 +250,22 @@ int validation_exit_code(StringExceptionType type)
     }
 }
 
+// The first setting Orca cannot write back as text. A preset value such as "1e400" loads as
+// infinity, and ConfigOptionFloats::serialize throws "Serializing invalid number", naming nothing,
+// only when the G-code's config block is written at the end of the export (-100, as in the CLI).
+std::string unserializable_setting(const DynamicPrintConfig &config)
+{
+    for (const std::string &key : config.keys()) {
+        try {
+            if (const ConfigOption *option = config.option(key))
+                option->serialize();
+        } catch (const std::exception &) {
+            return key;
+        }
+    }
+    return {};
+}
+
 std::vector<std::string> names_of(const ObjectBase *object)
 {
     std::string name = object_name(object);
@@ -351,9 +367,16 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
     reporter.progress(2, "Loading objects");
     Model model;
     boost::filesystem::create_directories(job_dir.path() + "/in");
+    size_t label_id = 0;
     for (size_t i = 0; i < request.objects.size(); ++i) {
-        load_object(model, request.objects[i], job_dir.path() + "/in/" + std::to_string(i + 1) + ".stl");
+        ModelObject *object = load_object(model, request.objects[i], job_dir.path() + "/in/" + std::to_string(i + 1) + ".stl");
         std::vector<float>().swap(request.objects[i].positions); // the Model has its own copy now
+        // Bambu Lab G-code names objects by ModelInstance::get_labeled_id() ("; model label id:",
+        // M624 skip-object ids). pre_check sets use_loaded_id_for_label as the CLI does (OS:6348),
+        // but an STL has no loaded_id, so the label would be the process-wide ObjectID: new values
+        // for every job in a long-lived engine. Number the instances 1..n, as a 3MF would.
+        for (ModelInstance *instance : object->instances)
+            instance->loaded_id = ++label_id;
     }
 
     // ---- The plate (PartPlateList::init / PartPlate::set_print / set_index / init, PP:195,3115,3328).
@@ -432,6 +455,11 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
 
     // ---- OS:6750-6816: apply and validate.
     print.apply(model, new_print_config);
+    // PrintObject::m_id (Print.hpp) has no initialiser and only GCode::set_object_info assigns it,
+    // for Klipper/Marlin/RRF with exclude_object; "; printing object <name> id:<n>" prints it for
+    // every printer (heap garbage in a long-lived engine). Assign what set_object_info would.
+    for (size_t i = 0; i < print.objects().size(); ++i)
+        print.get_object(i)->set_id(i);
     print.set_no_check_flag(false);
     print.is_BBL_printer() = is_bbl_printer(new_print_config, prepared.printer_name);
 
@@ -539,7 +567,11 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
             objects.push_back(std::move(name));
         fail(CLI_SLICING_ERROR, ex.what(), objects);
     } catch (const std::exception &ex) {
-        fail(CLI_SLICING_ERROR, ex.what());
+        std::string message = ex.what();
+        if (message.rfind("Serializing ", 0) == 0) // "Serializing invalid number", "Serializing NaN"
+            if (const std::string key = unserializable_setting(print.full_print_config()); !key.empty())
+                message = "The setting \"" + key + "\" has a value that is not a valid number (" + message + ").";
+        fail(CLI_SLICING_ERROR, message);
     }
 
     out.warnings        = sink.warnings();

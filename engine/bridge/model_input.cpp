@@ -8,11 +8,18 @@
 #include <boost/filesystem.hpp>
 #include <boost/nowide/cstdio.hpp>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/heap.h>
+#endif
+
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <new>
+#include <stdexcept>
 
 using namespace Slic3r;
 
@@ -55,6 +62,35 @@ void put_f32(unsigned char *out, float v)
     uint32_t bits;
     std::memcpy(&bits, &v, sizeof bits);
     put_u32(out, bits);
+}
+
+// Triangles admesh can keep: finite coordinates and a non-zero area. When there are none, load_stl
+// fails with an unhelpful std::length_error ("vector") or Orca later finds nothing to slice.
+size_t count_usable_triangles(const std::vector<float> &positions)
+{
+    size_t usable = 0;
+    for (size_t t = 0; t + 9 <= positions.size(); t += 9) {
+        const float *p = positions.data() + t;
+        if (!std::all_of(p, p + 9, [](float v) { return std::isfinite(v); }))
+            continue;
+        const double ux = double(p[3]) - p[0], uy = double(p[4]) - p[1], uz = double(p[5]) - p[2];
+        const double vx = double(p[6]) - p[0], vy = double(p[7]) - p[1], vz = double(p[8]) - p[2];
+        if (uy * vz - uz * vy != 0 || uz * vx - ux * vz != 0 || ux * vy - uy * vx != 0)
+            ++usable;
+    }
+    return usable;
+}
+
+// True when the wasm heap has grown to within an eighth of its maximum, i.e. an allocation Orca
+// swallowed most likely failed for lack of memory. Natively always false.
+bool heap_nearly_full()
+{
+#ifdef __EMSCRIPTEN__
+    const size_t max = emscripten_get_heap_max();
+    return emscripten_get_heap_size() >= max - max / 8;
+#else
+    return false;
+#endif
 }
 
 } // namespace
@@ -113,6 +149,11 @@ ModelObject *load_object(Model &model, const MeshInput &object, const std::strin
     const std::string label = "The object \"" + object.name + "\"";
     if (object.positions.size() % 9 != 0)
         throw JobFailure(CLI_DATA_FILE_ERROR, label + " is not a triangle list (9 values per triangle).", {object.name});
+    if (const size_t triangles = object.positions.size() / 9; triangles > 0 && count_usable_triangles(object.positions) == 0)
+        throw JobFailure(CLI_DATA_FILE_ERROR,
+                         label + " has no usable triangles: all " + std::to_string(triangles) +
+                             " have a zero area or coordinates that are not finite numbers.",
+                         {object.name});
     write_binary_stl(stl_path, object.positions);
 
     const size_t count_before = model.objects.size();
@@ -120,6 +161,11 @@ ModelObject *load_object(Model &model, const MeshInput &object, const std::strin
     try {
         // Named explicitly: load_stl would otherwise name the object after the MEMFS file.
         loaded = load_stl(stl_path.c_str(), &model, object.name.c_str());
+    } catch (const std::bad_alloc &) {
+        throw; // code 2, not a bad model
+    } catch (const std::length_error &) {
+        // admesh was left with no facets (std::vector's "vector").
+        throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});
     } catch (const std::exception &ex) {
         throw JobFailure(CLI_DATA_FILE_ERROR, label + " could not be read: " + ex.what(), {object.name});
     }
@@ -127,6 +173,13 @@ ModelObject *load_object(Model &model, const MeshInput &object, const std::strin
         throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});
 
     ModelObject *model_object = model.objects.back();
+    // Orca computes each volume's convex hull while loading and turns any qhull failure into an
+    // empty hull (its_convex_hull in TriangleMesh.cpp catches everything); the object then counts
+    // as outside the bed and the plate fails with -50 "nothing to slice". Flat meshes end that way
+    // in the CLI too, and still do; on a nearly full heap it is qhull running out of memory.
+    for (const ModelVolume *volume : model_object->volumes)
+        if (!volume->mesh().empty() && volume->get_convex_hull().empty() && heap_nearly_full())
+            throw std::bad_alloc();
     // What Model::read_from_file records: the path given on the CLI's command line, which on the
     // server is the bare STL file name, i.e. the object name.
     model_object->input_file = object.name;

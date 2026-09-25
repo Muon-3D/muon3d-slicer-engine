@@ -20,7 +20,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
+#include <new>
 #include <set>
 
 using namespace Slic3r;
@@ -229,19 +231,73 @@ struct LoadedPreset {
     std::string        filament_id;
 };
 
+// An array ConfigBase::load_from_json can read (Config.cpp, parse_str_arr): elements all of one
+// JSON type, each a string or itself such an array.
+bool is_orca_json_array(const nlohmann::json &array)
+{
+    const char *type = nullptr;
+    for (const nlohmann::json &element : array) {
+        if (type == nullptr)
+            type = element.type_name();
+        else if (std::strcmp(type, element.type_name()) != 0)
+            return false;
+        if (element.is_array() ? !is_orca_json_array(element) : !element.is_string())
+            return false;
+    }
+    return true;
+}
+
+// Presets are Orca's JSON encoding, every value a string or a list of strings (protocol.ts
+// ConfigValue). load_from_json skips any other value with only a log line (a number slices with
+// the default instead), and at an array it cannot read it stops reading the file: every later
+// key, name/from/type included, is lost, and the preset then fails for a missing key. Each such
+// value is reported here instead, by key.
+void check_value_types(const std::string &json_text, const std::string &what)
+{
+    const nlohmann::json root = nlohmann::json::parse(json_text, nullptr, /* allow_exceptions */ false);
+    if (!root.is_object())
+        return; // not a JSON object: Orca's own parse error says so
+    const auto        name_it = root.find(BBL_JSON_KEY_NAME);
+    const std::string label   = name_it != root.end() && name_it->is_string() ? what + " \"" + name_it->get<std::string>() + "\"" : what;
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        const nlohmann::json &value = it.value();
+        if (value.is_string() || (value.is_array() && is_orca_json_array(value)))
+            continue;
+        std::string shown = value.dump();
+        if (shown.size() > 60) {
+            size_t cut = 57;
+            while (cut > 0 && (static_cast<unsigned char>(shown[cut]) & 0xC0) == 0x80) // not inside a UTF-8 sequence
+                --cut;
+            shown = shown.substr(0, cut) + "...";
+        }
+        fail(CLI_CONFIG_FILE_ERROR,
+             label + " has an invalid value for \"" + it.key() + "\": " + shown + " (expected a string or a list of strings).");
+    }
+}
+
 LoadedPreset load_config_file(const std::string &json_text, const std::string &file, const std::string &expected_type)
 {
+    const std::string what = "The " + expected_type + " preset";
+    check_value_types(json_text, what);
     write_text_file(file, json_text);
 
     LoadedPreset preset;
-    const std::string what = "The " + expected_type + " preset";
     std::map<std::string, std::string> key_values;
     std::string                        reason;
     try {
         preset.config.load_from_json(file, ForwardCompatibilitySubstitutionRule::Enable, key_values, reason);
+    } catch (const std::bad_alloc &) {
+        throw;
     } catch (const std::exception &ex) {
         fail(CLI_CONFIG_FILE_ERROR, what + " could not be loaded: " + ex.what());
     }
+    // load_from_json prefixes the text of any exception it caught (e.g. ConfigurationError
+    // "Invalid value provided for parameter …") with the exception type.
+    static const std::string exception_prefix = "std::exception: ";
+    if (reason.compare(0, exception_prefix.size(), exception_prefix) == 0)
+        reason.erase(0, exception_prefix.size());
+    if (reason == "std::bad_alloc")
+        throw std::bad_alloc();
     if (!reason.empty())
         fail(CLI_CONFIG_FILE_ERROR, what + " could not be parsed: " + reason);
 

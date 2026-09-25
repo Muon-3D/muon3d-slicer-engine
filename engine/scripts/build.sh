@@ -2,63 +2,64 @@
 # =====================================================================================================
 # build.sh: configure and build the browser engine for one variant, then publish it into the web app.
 #
-#   VARIANT=st bash engine/scripts/build.sh            # single-threaded engine
-#   VARIANT=mt bash engine/scripts/build.sh            # pthreads + oneTBB engine
-#   VARIANT=st bash engine/scripts/build.sh libslic3r  # build other targets only; nothing is published
-#   NINJA_ARGS="-k 0" VARIANT=st bash engine/scripts/build.sh libslic3r   # keep going after errors
+#   bash engine/scripts/build.sh st                    # single-threaded engine (or VARIANT=st, the default)
+#   bash engine/scripts/build.sh mt                    # pthreads + oneTBB engine
+#   bash engine/scripts/build.sh st libslic3r          # build other targets only; nothing is published
+#   NINJA_ARGS="-k 0" bash engine/scripts/build.sh st libslic3r   # keep going after errors
+#   npm run build:engine [-- st|mt]                    # the same from npm, on any shell (both variants by default)
 #
-# Needs the dependency prefix from engine/deps/build-deps.sh for the same variant.
+# Needs the dependency prefix from engine/deps/build-deps.sh for the same variant; the whole sequence from
+# an empty machine is in engine/scripts/README.md.
 #
 # Output:
-#   $ORCA_WASM_ROOT/build-$VARIANT/out/engine-$VARIANT.{mjs,wasm}   (+ .mjs.symbols)
-#   web/public/engine/engine-$VARIANT.{mjs,wasm} and web/public/engine/manifest.json (EngineManifest in
-#   web/src/engine/protocol.ts; the other variant's entry is kept if it was built from the same commit).
+#   $ENGINE_BUILD/out/engine-$VARIANT.{mjs,wasm}   (+ .mjs.symbols)
+#   web/public/engine/engine-$VARIANT.{mjs,wasm}, their precompressed .br/.gz (scripts/compress.mjs), and
+#   web/public/engine/manifest.json (EngineManifest in web/src/engine/protocol.ts; the other variant's entry
+#   is kept if it was built from the same Orca commit).
 #
 # Environment:
-#   VARIANT         st (default) or mt
-#   ORCA_WASM_ROOT  default ~/OrcaWasm: prefixes in prefix-$VARIANT, build tree in build-$VARIANT
+#   VARIANT         st (default) or mt; a first argument st|mt takes precedence
+#   ORCA_WASM_ROOT  default ~/OrcaWasm: prefixes in prefix-$VARIANT
 #   ORCA_SRC        default $ORCA_WASM_ROOT/orca (read only)
+#   ORCA_EMSDK      default $ORCA_WASM_ROOT/emsdk (scripts/toolchain.sh)
+#   ENGINE_BUILD    build tree, default $ORCA_WASM_ROOT/build-$VARIANT
 #   JOBS            parallel jobs (default: all cores)
 #   NINJA_ARGS      extra arguments for ninja, e.g. "-k 0"
 #   EM_CACHE        default: the emsdk's own cache (must be on the same drive as the build tree)
 # =====================================================================================================
 set -euo pipefail
 
+if [[ ${1:-} == st || ${1:-} == mt ]]; then VARIANT=$1; shift; fi
 VARIANT=${VARIANT:-st}
 [[ $VARIANT == st || $VARIANT == mt ]] || { echo "VARIANT must be st or mt" >&2; exit 2; }
 JOBS=${JOBS:-$(nproc)}
 TARGETS=("$@")
 read -r -a NINJA_EXTRA <<< "${NINJA_ARGS:-}"
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=toolchain.sh
+source "$SCRIPT_DIR/toolchain.sh"
 # Mixed-style paths (X:/...) throughout: native Windows tools (cmake, emcc, ninja) get them unconverted.
-ENGINE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -W)
-REPO_DIR=$(cd "$ENGINE_DIR/.." && pwd -W)
-ORCA_WASM_ROOT=$(cygpath -m "${ORCA_WASM_ROOT:-$HOME/OrcaWasm}")
-ORCA_SRC=$(cygpath -m "${ORCA_SRC:-$ORCA_WASM_ROOT/orca}")
+ENGINE_DIR=$(dir_path "$SCRIPT_DIR/..")
+REPO_DIR=$(dir_path "$ENGINE_DIR/..")
+ORCA_WASM_ROOT=$(mixed_path "${ORCA_WASM_ROOT:-$ORCAWASM_DEFAULT_ROOT}")
+ORCA_SRC=$(mixed_path "${ORCA_SRC:-$ORCA_WASM_ROOT/orca}")
 PREFIX=$ORCA_WASM_ROOT/prefix-$VARIANT
-BUILD=$ORCA_WASM_ROOT/build-$VARIANT
+BUILD=$(mixed_path "${ENGINE_BUILD:-$ORCA_WASM_ROOT/build-$VARIANT}")
 PUBLISH=$REPO_DIR/web/public/engine
 INITIAL_CACHE=$PREFIX/share/orcawasm/initial-cache.cmake
 
 # ---- Toolchain environment (same as engine/deps/build-deps.sh) ------------------------------------------
-# emsdk 6 on Windows ships .exe launchers that Git Bash runs directly; no need to source emsdk_env.sh.
-# The Program Files CMake (3.31) must come before Strawberry Perl's older one.
-export EMSDK=$ORCA_WASM_ROOT/emsdk
-export EM_CONFIG=$EMSDK/.emscripten
-export EM_CACHE=$(cygpath -m "${EM_CACHE:-$EMSDK/upstream/emscripten/cache}")
-EMSDK_NODE_DIR=$(ls -d "$EMSDK"/node/*_64bit 2>/dev/null | sort -V | tail -1)
-EMSDK_PY_DIR=$(ls -d "$EMSDK"/python/*_64bit 2>/dev/null | sort -V | tail -1)
-export EMSDK_NODE=$EMSDK_NODE_DIR/node.exe
-export EMSDK_PYTHON=$EMSDK_PY_DIR/python.exe
-export PATH="$(cygpath -u "$EMSDK/upstream/emscripten"):$(cygpath -u "$EMSDK_NODE_DIR"):/c/Program Files/CMake/bin:$PATH"
-
-command -v emcc >/dev/null || { echo "emcc not found under $EMSDK" >&2; exit 1; }
-command -v ninja >/dev/null || { echo "ninja not on PATH" >&2; exit 1; }
+setup_emsdk
+check_emcc 6.0.10
 [[ -f $INITIAL_CACHE ]] || {
   echo "Missing $INITIAL_CACHE: build the dependencies first (VARIANT=$VARIANT bash engine/deps/build-deps.sh)." >&2
   exit 1
 }
-[[ -f $ORCA_SRC/src/libslic3r/CMakeLists.txt ]] || { echo "ORCA_SRC=$ORCA_SRC is not an Orca source tree" >&2; exit 1; }
+[[ -f $ORCA_SRC/src/libslic3r/CMakeLists.txt ]] || {
+  echo "ORCA_SRC=$ORCA_SRC is not an Orca source tree (get it with engine/scripts/get-orca.sh)" >&2
+  exit 1
+}
 
 # ---- Orca commit ------------------------------------------------------------------------------------------
 # Compiled into the engine (version() -> the worker's `ready` message) and written to the manifest, from
@@ -68,13 +69,30 @@ if [[ -n $(git -C "$ORCA_SRC" status --porcelain --untracked-files=no -- src dep
   ORCA_COMMIT="$ORCA_COMMIT-dirty"
   echo "warning: $ORCA_SRC has uncommitted changes; the engine reports $ORCA_COMMIT" >&2
 fi
+# shellcheck source=orca/pin.sh
+source "$SCRIPT_DIR/orca/pin.sh"
+if [[ ${ORCA_COMMIT%-dirty} != "$ORCA_PINNED_COMMIT" ]]; then
+  echo "warning: $ORCA_SRC is at ${ORCA_COMMIT%-dirty}, not at $ORCA_PINNED_COMMIT (scripts/orca/pin.sh), so" \
+       "scripts/get-orca.sh cannot give anyone else this source: publish it and update the pin." >&2
+fi
 
 # ---- Configure + build ------------------------------------------------------------------------------------
 echo "==== engine $VARIANT: $ORCA_SRC ($ORCA_COMMIT) -> $BUILD"
 # -G Ninja is required: emcmake would otherwise pick "MinGW Makefiles" (Strawberry's make is on PATH).
 # Configuring on every run keeps ORCA_COMMIT and the source list parsed from Orca's CMakeLists current.
-emcmake cmake -C "$INITIAL_CACHE" -G Ninja -S "$ENGINE_DIR" -B "$BUILD" \
+# The prefix's flags are cache entries, which -C does not overwrite in a build tree configured before: when
+# the initial cache has changed since (the prefix was rebuilt with other flags), configure afresh. The
+# objects stay; ninja recompiles whatever the new flags change.
+CACHE_STAMP=$BUILD/orcawasm-initial-cache.sha256
+CACHE_HASH=$(sha256sum "$INITIAL_CACHE" | cut -d' ' -f1)
+FRESH=()
+if [[ -f $BUILD/CMakeCache.txt && $(cat "$CACHE_STAMP" 2>/dev/null) != "$CACHE_HASH" ]]; then
+  echo "$INITIAL_CACHE changed since $BUILD was configured: configuring afresh."
+  FRESH=(--fresh)
+fi
+emcmake cmake "${FRESH[@]}" -C "$INITIAL_CACHE" -G Ninja -S "$ENGINE_DIR" -B "$BUILD" \
   -DORCA_SRC="$ORCA_SRC" -DENGINE_VARIANT="$VARIANT" -DORCA_COMMIT="$ORCA_COMMIT"
+echo "$CACHE_HASH" > "$CACHE_STAMP"
 
 if (( ${#TARGETS[@]} )); then
   cmake --build "$BUILD" -j "$JOBS" --target "${TARGETS[@]}" -- "${NINJA_EXTRA[@]}"
@@ -90,15 +108,30 @@ WASM=engine-$VARIANT.wasm
 for f in "$MJS" "$WASM"; do [[ -f $OUT/$f ]] || { echo "Build did not produce $OUT/$f" >&2; exit 1; }; done
 mkdir -p "$PUBLISH"
 cp "$OUT/$MJS" "$OUT/$WASM" "$PUBLISH/"
+# <file>.br / <file>.gz, which the server sends instead of compressing on every request. Written after the
+# files they compress: the server ignores a sibling older than its file.
+node "$ENGINE_DIR/scripts/compress.mjs" "$PUBLISH/$MJS" "$PUBLISH/$WASM"
 
 # orcaVersion: SoftFever_VERSION from the generated libslic3r_version.h, i.e. what the G-code header says.
 ORCA_VERSION=$(sed -n 's/^#define SoftFever_VERSION "\(.*\)"/\1/p' "$BUILD/libslic3r/libslic3r_version.h")
 WASM_BYTES=$(stat -c %s "$OUT/$WASM")
+WASM_BR_BYTES=$(stat -c %s "$PUBLISH/$WASM.br")
+SHA_MJS=$(sha256sum "$PUBLISH/$MJS" | cut -d' ' -f1)
+SHA_WASM=$(sha256sum "$PUBLISH/$WASM" | cut -d' ' -f1)
+# This repository's commit, for the bridge and the build recipe compiled into the engine; "-dirty" when
+# engine/ has changes that are not committed (docs and tests do not count).
+ENGINE_COMMIT=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+if [[ $ENGINE_COMMIT != unknown && -n $(git -C "$REPO_DIR" status --porcelain -- engine \
+      ':(exclude)engine/test' ':(exclude)engine/research' ':(exclude,glob)engine/**/*.md') ]]; then
+  ENGINE_COMMIT="$ENGINE_COMMIT-dirty"
+fi
 
 # Merge into manifest.json. An entry for the other variant survives only if it was built from the same
 # Orca commit; otherwise it would be described by the wrong orcaVersion/orcaCommit.
 MANIFEST=$PUBLISH/manifest.json MANIFEST_VARIANT=$VARIANT MANIFEST_MJS=$MJS MANIFEST_WASM=$WASM \
-MANIFEST_WASM_BYTES=$WASM_BYTES MANIFEST_ORCA_VERSION=$ORCA_VERSION MANIFEST_ORCA_COMMIT=$ORCA_COMMIT \
+MANIFEST_WASM_BYTES=$WASM_BYTES MANIFEST_WASM_BR_BYTES=$WASM_BR_BYTES MANIFEST_SHA_MJS=$SHA_MJS \
+MANIFEST_SHA_WASM=$SHA_WASM MANIFEST_ENGINE_COMMIT=$ENGINE_COMMIT \
+MANIFEST_ORCA_VERSION=$ORCA_VERSION MANIFEST_ORCA_COMMIT=$ORCA_COMMIT \
 node - <<'EOF'
 const fs = require('fs');
 const e = process.env;
@@ -113,10 +146,20 @@ const manifest = {
   builtAt: new Date().toISOString(),
   variants: {
     ...(sameBuild ? previous.variants : {}),
-    [e.MANIFEST_VARIANT]: { mjs: e.MANIFEST_MJS, wasm: e.MANIFEST_WASM, wasmBytes: Number(e.MANIFEST_WASM_BYTES) },
+    [e.MANIFEST_VARIANT]: {
+      mjs: e.MANIFEST_MJS,
+      wasm: e.MANIFEST_WASM,
+      wasmBytes: Number(e.MANIFEST_WASM_BYTES),
+      // What the server sends a browser that accepts brotli (the precompressed .br).
+      wasmTransferBytes: Number(e.MANIFEST_WASM_BR_BYTES),
+      // To check a rebuild, or a deployed copy, against this build.
+      sha256: { mjs: e.MANIFEST_SHA_MJS, wasm: e.MANIFEST_SHA_WASM },
+      engineCommit: e.MANIFEST_ENGINE_COMMIT,
+    },
   },
 };
 fs.writeFileSync(e.MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
 EOF
 
-echo "OK: published $MJS + $WASM ($WASM_BYTES bytes) to $PUBLISH (Orca $ORCA_VERSION @ $ORCA_COMMIT)"
+echo "OK: published $MJS + $WASM ($WASM_BYTES bytes, sha256 $SHA_WASM) to $PUBLISH"
+echo "    Orca $ORCA_VERSION @ $ORCA_COMMIT, engine @ $ENGINE_COMMIT"

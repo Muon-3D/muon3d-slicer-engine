@@ -5,10 +5,13 @@
 // Environment:
 //   ENGINE_DIR      folder with engine-<variant>.mjs/.wasm   (default web/public/engine)
 //   ENGINE_VARIANT  st | mt                                  (default st)
-//   ORCA_RESOURCES  Orca resources the presets come from     (default ~/OrcaWasm/orca/resources,
-//                   the muon3d-wasm branch: M1 collision volumes are in bed_exclude_volumes)
-//   ENGINE_TEST_OUT where G-code and CLI runs are written     (default ~/OrcaWasm/test-out)
+//   ORCA_WASM_ROOT  the engine workspace, as in engine/scripts (default ~/OrcaWasm)
+//   ORCA_SRC        the Orca checkout                        (default $ORCA_WASM_ROOT/orca)
+//   ORCA_RESOURCES  Orca resources the presets come from     (default $ORCA_SRC/resources, the
+//                   muon3d-wasm branch: M1 collision volumes are in bed_exclude_volumes)
+//   ENGINE_TEST_OUT where G-code and CLI runs are written     (default $ORCA_WASM_ROOT/test-out)
 import { existsSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { FlatConfig } from '../../shared/types.ts';
@@ -18,9 +21,13 @@ import { loadEngine, type OrcaEngineModule } from '../../web/src/engine/worker.t
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repoRoot, 'web/public/engine'));
 export const variant = (process.env.ENGINE_VARIANT ?? 'st') as EngineVariant;
-export const outDir = path.resolve(process.env.ENGINE_TEST_OUT ?? '~/OrcaWasm/test-out');
+const orcaWasmRoot = process.env.ORCA_WASM_ROOT ?? (path.join(os.homedir(), 'OrcaWasm'));
+export const outDir = path.resolve(process.env.ENGINE_TEST_OUT ?? path.join(orcaWasmRoot, 'test-out'));
 // Must be set before server/config.ts is first imported (it reads the environment once).
-process.env.ORCA_RESOURCES ??= '~/OrcaWasm/orca/resources';
+const orcaResources = (process.env.ORCA_RESOURCES ??= path.join(process.env.ORCA_SRC ?? path.join(orcaWasmRoot, 'orca'), 'resources'));
+
+/** The M1 profiles the tests slice with (only the muon3d-wasm branch of Orca has them). */
+export const m1ResourcesAvailable = existsSync(path.join(orcaResources, 'profiles/Muon3D.json'));
 
 export const engineModulePath = path.join(engineDir, `engine-${variant}.mjs`);
 export const engineBuilt = existsSync(engineModulePath);
@@ -47,16 +54,27 @@ export interface Presets {
   filaments: FlatConfig[];
 }
 
-/** The M1 presets flattened exactly as the server flattens them for the CLI (server/profiles.ts). */
-export async function m1Presets(): Promise<Presets> {
+/** A Bambu Lab printer: Orca writes a different G-code dialect for those (object label ids, M624). */
+export const X1C = {
+  vendor: 'BBL',
+  machine: 'Bambu Lab X1 Carbon 0.4 nozzle',
+  process: '0.20mm Standard @BBL X1C',
+  filament: 'Bambu PLA Basic @BBL X1C',
+};
+
+/** Presets flattened exactly as the server flattens them for the CLI (server/profiles.ts). */
+export async function flatPresets(names: typeof M1): Promise<Presets> {
   const { resolvePreset } = await import('../../server/profiles.ts');
   const [machine, processPreset, filament] = await Promise.all([
-    resolvePreset('machine', { vendor: M1.vendor, name: M1.machine }),
-    resolvePreset('process', { vendor: M1.vendor, name: M1.process }),
-    resolvePreset('filament', { vendor: M1.vendor, name: M1.filament }),
+    resolvePreset('machine', { vendor: names.vendor, name: names.machine }),
+    resolvePreset('process', { vendor: names.vendor, name: names.process }),
+    resolvePreset('filament', { vendor: names.vendor, name: names.filament }),
   ]);
   return { machine, process: processPreset, filaments: [filament] };
 }
+
+/** The M1 presets flattened exactly as the server flattens them for the CLI (server/profiles.ts). */
+export const m1Presets = (): Promise<Presets> => flatPresets(M1);
 
 // ---------------------------------------------------------------------------
 // Meshes (bed coordinates, resting on z = 0)
@@ -84,13 +102,32 @@ export function box(size: [number, number, number], center: [number, number]): F
 
 export const cube = (center: [number, number], size = 20): Float32Array => box([size, size, size], center);
 
+/** A closed cylinder on the bed, its side made of `segments` flat facets. */
+export function cylinder(center: [number, number], radius: number, height: number, segments = 96): Float32Array {
+  const [cx, cy] = center;
+  const out: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const a0 = (2 * Math.PI * i) / segments, a1 = (2 * Math.PI * (i + 1)) / segments;
+    const x0 = cx + radius * Math.cos(a0), y0 = cy + radius * Math.sin(a0);
+    const x1 = cx + radius * Math.cos(a1), y1 = cy + radius * Math.sin(a1);
+    out.push(cx, cy, 0, x1, y1, 0, x0, y0, 0); // bottom (-z)
+    out.push(cx, cy, height, x0, y0, height, x1, y1, height); // top (+z)
+    out.push(x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, 0, x1, y1, height, x0, y0, height); // side
+  }
+  return new Float32Array(out);
+}
+
 let benchyCache: Float32Array | null = null;
+
+/** 3DBenchy (data/ is git-ignored, so a fresh clone has no Benchy and its tests are skipped). */
+export const benchyPath = path.join(repoRoot, 'data/samples/benchy-raw.stl');
+export const benchyAvailable = existsSync(benchyPath);
 
 /** 3DBenchy from data/samples, normalised like an upload (centred, on the bed) and moved to `center`. */
 export async function benchy(center: [number, number]): Promise<Float32Array> {
   if (!benchyCache) {
     const { parseStl, normalizeInPlace } = await import('../../server/meshio.ts');
-    benchyCache = parseStl(readFileSync(path.join(repoRoot, 'data/samples/benchy-raw.stl')));
+    benchyCache = parseStl(readFileSync(benchyPath));
     normalizeInPlace(benchyCache);
   }
   const placed = new Float32Array(benchyCache);

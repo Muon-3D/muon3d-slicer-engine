@@ -105,6 +105,15 @@ add_compile_options(
 # exists in Orca; libigl comes from deps_src.
 include_directories(SYSTEM "${ORCA_SRC}/src")
 
+# Reproducible output: wherever the compiler records a path (__FILE__ in throw sites and logging), this
+# machine's folders appear under fixed names, so the engine's bytes do not depend on where this repository,
+# the Orca checkout or the build tree sit. The dependency prefix's flags (initial cache) map ORCA_WASM_ROOT
+# and the Emscripten cache the same way; the longest matching prefix wins.
+add_compile_options(
+    "-ffile-prefix-map=${ENGINE_DIR}=/engine"
+    "-ffile-prefix-map=${ORCA_SRC}=/orca"
+    "-ffile-prefix-map=${CMAKE_BINARY_DIR}=/build")
+
 # --- Targets ---------------------------------------------------------------------------------------------------
 include(Dependencies)
 include(Libslic3r)

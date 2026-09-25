@@ -20,11 +20,16 @@ import type { CheckOutput, EngineWarning, SliceOutput } from '../../web/src/engi
 import { EngineJobError, runCheck, runSlice, type OrcaEngineModule } from '../../web/src/engine/worker.ts';
 import {
   benchy,
+  benchyAvailable,
+  benchyPath,
   bounds,
   checkJob,
   cube,
+  cylinder,
   engineBuilt,
   engineModulePath,
+  flatPresets,
+  m1ResourcesAvailable,
   m1Presets,
   ms,
   outDir,
@@ -32,11 +37,15 @@ import {
   startEngine,
   translate,
   variant,
+  X1C,
   type Presets,
 } from './fixtures.ts';
 
-const suite = engineBuilt ? describe : describe.skip;
+const suite = engineBuilt && m1ResourcesAvailable ? describe : describe.skip;
 if (!engineBuilt) console.log(`# ${engineModulePath} not found: build the engine first (engine/scripts/build.sh).`);
+else if (!m1ResourcesAvailable) console.log(`# No Muon3D M1 profiles in ${process.env.ORCA_RESOURCES}: set ORCA_WASM_ROOT, ORCA_SRC or ORCA_RESOURCES.`);
+// A fresh clone has no data/ folder: the Benchy tests are skipped rather than failed.
+const needsBenchy = benchyAvailable ? {} : { skip: `${benchyPath} not found` };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -210,7 +219,7 @@ suite(`engine-${variant}`, () => {
     assert.equal(stableText(second.gcode), stableText(first.gcode));
   });
 
-  test('slices Benchy at [100, 90]', async (t) => {
+  test('slices Benchy at [100, 90]', needsBenchy, async (t) => {
     const positions = await benchy([100, 90]);
     const size = bounds(positions);
     const sliced = slice(engine, presets, [{ name: 'Benchy.stl', positions }]);
@@ -281,6 +290,96 @@ suite(`engine-${variant}`, () => {
     slice(engine, presets, [{ name: 'Cube.stl', positions: cube([100, 90]) }]);
   });
 
+  test('a mesh without one usable triangle fails with -6 and says so', () => {
+    for (const [name, positions] of [
+      ['Point.stl', new Float32Array(90).fill(5)], // every vertex the same point: zero area
+      ['NaN.stl', new Float32Array(108).fill(NaN)],
+    ] as Array<[string, Float32Array]>) {
+      const error = failure(() => slice(engine, presets, [{ name, positions }]));
+      assert.equal(error.code, -6, error.message);
+      assert.match(error.message, /has no usable triangles/);
+      assert.deepEqual(error.objects, [name]);
+    }
+  });
+
+  test('a preset value Orca cannot read fails with -5 naming the key, not a key it then lost', () => {
+    // Orca's load_from_json stops reading the file at an array it cannot parse, and skips numbers.
+    const cases: Array<[string, (p: Presets) => void, string]> = [
+      ['process', (p) => (p.process.top_surface_acceleration = [null] as unknown as string[]), 'top_surface_acceleration'],
+      ['machine', (p) => (p.machine.nozzle_diameter = ['0.4', 3] as unknown as string[]), 'nozzle_diameter'],
+      ['filament', (p) => (p.filaments[0].during_print_exhaust_fan_speed = [null] as unknown as string[]), 'during_print_exhaust_fan_speed'],
+      ['process', (p) => (p.process.layer_height = 0.2 as unknown as string), 'layer_height'],
+    ];
+    for (const [type, mutate, key] of cases) {
+      const broken = structuredClone(presets);
+      mutate(broken);
+      const error = failure(() => slice(engine, broken, [{ name: 'Cube.stl', positions: cube([100, 90]) }]));
+      assert.equal(error.code, -5, error.message);
+      assert.ok(error.message.startsWith(`The ${type} preset "`) && error.message.includes(`"${key}"`), error.message);
+    }
+    // A value Orca itself rejects: its text, without the exception type load_from_json puts first.
+    const notANumber = structuredClone(presets);
+    notANumber.process.layer_height = 'abc';
+    const error = failure(() => slice(engine, notANumber, [{ name: 'Cube.stl', positions: cube([100, 90]) }]));
+    assert.equal(error.code, -5, error.message);
+    assert.equal(error.message, 'The process preset could not be parsed: Invalid value provided for parameter layer_height: abc');
+  });
+
+  test('a setting that is not a finite number fails with -100 and names the setting', () => {
+    // "1e400" loads as infinity; Orca only fails when it writes the G-code's config block, like the CLI.
+    const broken = structuredClone(presets);
+    broken.filaments[0].filament_retraction_length = ['1e400'];
+    const error = failure(() => slice(engine, broken, [{ name: 'Cube.stl', positions: cube([100, 90]) }]));
+    assert.equal(error.code, -100, error.message);
+    assert.match(error.message, /"filament_retraction_length"/);
+  });
+
+  test('Bambu Lab G-code is the same in every job: label ids 1..n, object ids from 0', async () => {
+    const x1c = await flatPresets(X1C);
+    const plate = [
+      { name: 'Cube.stl', positions: cube([100, 90], 15) },
+      { name: 'Cube_2.stl', positions: cube([140, 90], 15) },
+    ];
+    const first = slice(engine, x1c, plate).output;
+    // Any job in between moves Orca's process-wide object ids on.
+    slice(engine, presets, [{ name: 'Cube.stl', positions: cube([100, 90]) }]);
+    const second = slice(engine, x1c, plate).output;
+
+    const text = new TextDecoder().decode(first.gcode);
+    assert.match(text, /^; model label id: 1,2$/m);
+    assert.match(text, /^; start printing object, unique label id: 2$/m);
+    assert.match(text, /^; printing object Cube\.stl id:0 copy 0$/m);
+    assert.match(text, /^; printing object Cube_2\.stl id:1 copy 0$/m);
+    assert.equal(stableText(second.gcode), stableText(first.gcode));
+  });
+
+  test('arc fitting turns walls into G2/G3 when the overhang fan does not need them point by point', (t) => {
+    const walls = (overhangFan: '0' | '1') => {
+      const arcs = structuredClone(presets);
+      arcs.process.enable_arc_fitting = '1';
+      arcs.filaments[0].enable_overhang_bridge_fan = [overhangFan];
+      const { output } = slice(engine, arcs, [{ name: 'Cylinder.stl', positions: cylinder([100, 90], 15, 10) }]);
+      assertStatsMatchText(output);
+      let role = '';
+      let moves = 0;
+      let arcMoves = 0;
+      for (const line of new TextDecoder().decode(output.gcode).split('\n')) {
+        if (line.startsWith(';TYPE:')) role = line.slice(6);
+        else if (/wall/i.test(role) && /^G[123] .*E/.test(line)) {
+          moves++;
+          if (line[1] !== '1') arcMoves++;
+        }
+      }
+      return { moves, arcMoves };
+    };
+    const plain = walls('0');
+    assert.ok(plain.arcMoves > plain.moves / 4, `${plain.arcMoves} of ${plain.moves} wall moves are arcs`);
+    // Orca since 68ce4da19f / e8115658e0 writes every wall point by point while the overhang fan is
+    // on, so arc fitting then stops at the walls (engine/PATCHES.md); reported, not asserted.
+    const fan = walls('1');
+    t.diagnostic(`wall arcs: ${plain.arcMoves}/${plain.moves} moves with the overhang fan off, ${fan.arcMoves}/${fan.moves} with it on`);
+  });
+
   test('placement check: inside, over the edge, and in the notch', (t) => {
     const objects = [
       { name: 'Centre.stl', positions: cube([100, 90]) },
@@ -328,7 +427,7 @@ suite(`engine-${variant}`, () => {
     t.diagnostic(`check: first ${ms(firstMs)}, after a move ${ms(movedMs)}`);
   });
 
-  test('placement check of a Benchy stays fast while it moves', async (t) => {
+  test('placement check of a Benchy stays fast while it moves', needsBenchy, async (t) => {
     const positions = await benchy([100, 90]);
     let started = performance.now();
     runCheck(engine, checkJob(presets, [{ name: 'Benchy.stl', positions }]));

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Fetch, hash-check and extract the third-party sources the wasm engine's dependencies are built from.
-# Windows-native (Git Bash); idempotent, so re-running only does what is missing.
+# Git Bash on Windows, or a Linux shell (needs curl and bsdtar); idempotent, so re-running only does what is
+# missing.
 #
-#   bash engine/deps/fetch-deps.sh                    # everything
+#   bash engine/deps/fetch-deps.sh                    # everything the default build needs
 #   bash engine/deps/fetch-deps.sh boost libjpeg-turbo # selected packages
+#   WITH_GMP=1 bash engine/deps/fetch-deps.sh         # also GMP + MPFR (only build-deps.sh's optional steps use them)
 #
 # Layout (ORCA_WASM_ROOT defaults to ~/OrcaWasm; big files stay out of the repo and any synced folder):
 #   $ORCA_WASM_ROOT/deps-src/_archives/<file>        downloaded archive
@@ -15,14 +17,18 @@
 set -euo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ORCA_WASM_ROOT=$(cygpath -m "${ORCA_WASM_ROOT:-$HOME/OrcaWasm}")   # accepts /x/... or X:/... forms
+# shellcheck source=../scripts/toolchain.sh
+source "$HERE/../scripts/toolchain.sh"
+ORCA_WASM_ROOT=$(mixed_path "${ORCA_WASM_ROOT:-$ORCAWASM_DEFAULT_ROOT}")   # accepts /x/... or X:/... forms
 SRC=$ORCA_WASM_ROOT/deps-src
 ARC=$SRC/_archives
 SUMS=$HERE/SHA256SUMS
 RECORD_NEW=${RECORD_NEW:-0}
-# Windows' own bsdtar (libarchive): handles .zip/.tar.gz/.tar.bz2 and --strip-components. Git's GNU tar
-# cannot read .zip.
-BSDTAR=${BSDTAR:-/c/Windows/System32/tar.exe}
+WITH_GMP=${WITH_GMP:-0}
+# bsdtar (libarchive): handles .zip/.tar.gz/.tar.bz2 and --strip-components; GNU tar cannot read .zip.
+# Windows ships one as System32/tar.exe; on Linux it is the libarchive-tools package.
+if [[ $ORCAWASM_WINDOWS == 1 ]]; then BSDTAR=${BSDTAR:-/c/Windows/System32/tar.exe}; else BSDTAR=${BSDTAR:-bsdtar}; fi
+command -v "$BSDTAR" >/dev/null || { echo "bsdtar not found ($BSDTAR); set BSDTAR" >&2; exit 1; }
 
 # name | version | url | where the pin comes from
 DEPS=(
@@ -35,7 +41,8 @@ DEPS=(
   "libnoise|1.0|https://github.com/SoftFever/Orca-deps-libnoise/archive/refs/tags/1.0.zip|orca deps/libnoise/libnoise.cmake"
   "qhull|8.0.2|https://github.com/qhull/qhull/archive/v8.0.2.zip|orca deps/Qhull/Qhull.cmake"
   "libjpeg-turbo|3.0.1|https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.1.zip|orca deps/JPEG/JPEG.cmake"
-  # Optional (WITH_GMP=1 in build-deps.sh only); same file as Orca's SoftFever mirror.
+  # Optional (WITH_GMP=1 in build-deps.sh only), so fetched only with WITH_GMP=1 or when named; same file as
+  # Orca's SoftFever mirror.
   "gmp|6.2.1|https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.bz2|orca deps/GMP/GMP.cmake"
   "mpfr|4.2.2|https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.bz2|orca deps/MPFR/MPFR.cmake"
 )
@@ -46,6 +53,9 @@ want=("$@")
 for entry in "${DEPS[@]}"; do
   IFS='|' read -r name ver url pin <<<"$entry"
   if [[ ${#want[@]} -gt 0 && " ${want[*]} " != *" $name "* ]]; then continue; fi
+  if [[ ${#want[@]} -eq 0 && $WITH_GMP != 1 && ( $name == gmp || $name == mpfr ) ]]; then
+    echo "[skip]  $name $ver (optional: WITH_GMP=1)"; continue
+  fi
 
   base=$(basename "$url")
   # GitHub tag archives are called v1.3.0.zip / 1.0.zip: prefix the package name to keep them unique.
@@ -82,7 +92,7 @@ for entry in "${DEPS[@]}"; do
     # Windows bsdtar cannot create symlinks; the only one in these archives is a doc image in nlopt.
     excl=()
     [[ $name == nlopt ]] && excl=(--exclude '*/doc/nlopt-mkdocs-theme/img/favicon.png')
-    "$BSDTAR" -xf "$(cygpath -w "$file")" -C "$(cygpath -w "$dest")" --strip-components=1 "${excl[@]}"
+    "$BSDTAR" -xf "$(native_path "$file")" -C "$(native_path "$dest")" --strip-components=1 "${excl[@]}"
     echo "$url sha256=$got" > "$dest/.extracted"
     echo "[x]     extracted -> $dest"
   fi
