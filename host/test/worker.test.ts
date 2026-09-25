@@ -48,6 +48,7 @@ function output(): SliceOutput {
         count: 1,
         roleIndex: new Uint8Array(1),
         width: new Uint8Array([42]),
+        height: new Uint8Array([20]),
       },
       travels: { positions: new Float32Array(0), layerStart: new Uint32Array([0, 0]), count: 0 },
       roles: ['Outer wall'],
@@ -180,8 +181,8 @@ test('slice results transfer every buffer once and never a shared one', () => {
   assert.equal(new Set(transfer).size, transfer.length);
   assert.ok(transfer.includes(result.gcode.buffer as ArrayBuffer));
   assert.ok(!transfer.includes(shared.buffer as unknown as ArrayBuffer));
-  // gcode, layerZ, extrusion positions/layerStart/roleIndex/width, travel layerStart, 4 extras.
-  assert.equal(transfer.length, 11);
+  // gcode, layerZ, extrusion positions/layerStart/roleIndex/width/height, travel layerStart, 4 extras.
+  assert.equal(transfer.length, 12);
 });
 
 test('runSlice drops the toolpath extras when the job does not want them', () => {
@@ -189,8 +190,8 @@ test('runSlice drops the toolpath extras when the job does not want them', () =>
   const result = runSlice(fakeEngine(), { ...job, toolpathExtras: false });
   assert.equal(result.toolpathExtras, null);
   assert.notEqual(result.toolpaths, null);
-  // gcode, layerZ, extrusion positions/layerStart/roleIndex/width, travel positions/layerStart.
-  assert.equal(sliceTransferables(result).length, 8);
+  // gcode, layerZ, extrusion positions/layerStart/roleIndex/width/height, travel positions/layerStart.
+  assert.equal(sliceTransferables(result).length, 9);
 });
 
 test("Emscripten's -sASSERTIONS hint is dropped from engine errors", () => {

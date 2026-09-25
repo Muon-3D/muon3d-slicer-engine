@@ -85,7 +85,8 @@ struct ToolpathData {
     std::vector<float>    extrusion_positions;    // 6 floats per segment
     std::vector<uint32_t> extrusion_layer_start;  // layer count + 1
     std::vector<uint8_t>  extrusion_role;         // index into `roles`
-    std::vector<uint8_t>  extrusion_width;        // 0.01 mm steps, 0 = unknown
+    std::vector<uint8_t>  extrusion_width;        // size codes (parse.ts sizeCode), 0 = unknown
+    std::vector<uint8_t>  extrusion_height;       // size codes, 0 = unknown
 
     std::vector<float>    travel_positions;
     std::vector<uint32_t> travel_layer_start;

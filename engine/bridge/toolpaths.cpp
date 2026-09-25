@@ -14,6 +14,8 @@
 //    Arcs are also tessellated into internal_only pieces, but those turn, so they stay separate
 //    (the parser flattens arcs into chords too).
 //  * Travels include wipes (the parser draws any move that does not extrude as a travel).
+//  * Each extrusion keeps the processor's own width and height (MoveVertex::width/height, what
+//    Orca's preview draws the bead with), as the parser's size codes.
 //  * The processor starts at (0,0,0) and treats G28 as a move to 0; the parser does not draw
 //    moves until the head position is known. Dropping the travels before the first extrusion
 //    removes those made-up lines from the start G-code (it may also drop one real travel there).
@@ -44,19 +46,32 @@ namespace {
 using MoveVertex = GCodeProcessorResult::MoveVertex;
 
 constexpr size_t NORMAL_MODE = size_t(PrintEstimatedStatistics::ETimeMode::Normal);
-// parse.ts WIDTH_STEP_MM and the largest width code a Uint8Array holds.
-constexpr double WIDTH_STEP_MM  = 0.01;
-constexpr int    MAX_WIDTH_CODE = 255;
+// parse.ts size codes: a width or height in one byte, 0.01 mm steps up to 2 mm (codes 1-200), then
+// 0.05 mm steps up to 4.75 mm (201-255); 0 = none.
+constexpr double SIZE_STEP_MM        = 0.01;
+constexpr int    SIZE_FINE_CODES     = 200;
+constexpr double SIZE_COARSE_STEP_MM = 0.05;
+constexpr int    MAX_SIZE_CODE       = 255;
 // Pieces of one move lie on one line up to float rounding (well under this); the chords of a
 // tessellated arc bend away from each other by far more.
 constexpr double COLLINEAR_OFFSET = 1e-4; // mm
 
-uint8_t width_code(float width)
+// parse.ts sizeCode
+uint8_t size_code(float mm)
 {
-    if (!(width > 0.f))
+    if (!(mm > 0.f))
         return 0;
-    const long code = std::lround(double(width) / WIDTH_STEP_MM);
-    return uint8_t(std::clamp<long>(code, 1, MAX_WIDTH_CODE));
+    const long fine = std::lround(double(mm) / SIZE_STEP_MM);
+    if (fine <= SIZE_FINE_CODES)
+        return uint8_t(std::max(fine, 1L));
+    const long coarse = SIZE_FINE_CODES + std::lround((double(mm) - SIZE_FINE_CODES * SIZE_STEP_MM) / SIZE_COARSE_STEP_MM);
+    return uint8_t(std::min<long>(coarse, MAX_SIZE_CODE));
+}
+
+// parse.ts sizeMm
+double size_mm(int code)
+{
+    return code <= SIZE_FINE_CODES ? code * SIZE_STEP_MM : SIZE_FINE_CODES * SIZE_STEP_MM + (code - SIZE_FINE_CODES) * SIZE_COARSE_STEP_MM;
 }
 
 // True when the path a -> b -> c goes straight on at b, i.e. dropping b (drawing a -> c) moves
@@ -167,7 +182,7 @@ ToolpathData build_toolpaths(const GCodeProcessorResult &result, bool with_extra
     std::vector<float> layer_z_any(layer_count, no_z);     // last extrusion of any kind
 
     std::array<int, size_t(erCount)>             role_slot;
-    std::array<double, size_t(MAX_WIDTH_CODE) + 1> width_length{};
+    std::array<double, size_t(MAX_SIZE_CODE) + 1>  width_length{};
     role_slot.fill(-1);
 
     float bmin[3] = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
@@ -209,7 +224,8 @@ ToolpathData build_toolpaths(const GCodeProcessorResult &result, bool with_extra
                 out.role_length.push_back(0.);
             }
             const uint8_t slot   = uint8_t(role_slot[role]);
-            const uint8_t width  = width_code(cur.width);
+            const uint8_t width  = size_code(cur.width);
+            const uint8_t height = size_code(cur.height);
             const double  length = double((cur.position - prev.position).norm());
 
             const bool merge = last_extrusion_move == i - 1 && continues_same_move(prev, cur) && out.extrusion_role.back() == slot &&
@@ -219,12 +235,14 @@ ToolpathData build_toolpaths(const GCodeProcessorResult &result, bool with_extra
                 // The segment's length so far was counted at its first piece's (interpolated) width.
                 width_length[out.extrusion_width.back()] -= open_segment_length;
                 width_length[width] += open_segment_length;
-                out.extrusion_width.back() = width;
+                out.extrusion_width.back()  = width;
+                out.extrusion_height.back() = height;
                 open_segment_length += length;
             } else {
                 push_segment(out.extrusion_positions, prev.position, cur.position);
                 out.extrusion_role.push_back(slot);
                 out.extrusion_width.push_back(width);
+                out.extrusion_height.push_back(height);
                 open_segment_length = length;
             }
             if (with_extras) {
@@ -300,11 +318,11 @@ ToolpathData build_toolpaths(const GCodeProcessorResult &result, bool with_extra
 
     // The width most of the toolpath length is printed at; ties keep the narrower (parse.ts).
     int dominant = 0;
-    for (int w = 1; w <= MAX_WIDTH_CODE; ++w)
+    for (int w = 1; w <= MAX_SIZE_CODE; ++w)
         if (width_length[w] > (dominant > 0 ? width_length[dominant] : 0.))
             dominant = w;
     if (dominant > 0)
-        out.line_width = dominant * WIDTH_STEP_MM;
+        out.line_width = size_mm(dominant);
 
     return out;
 }

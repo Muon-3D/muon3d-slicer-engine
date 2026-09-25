@@ -15,7 +15,7 @@ import path from 'node:path';
 import { before, describe, test, type TestContext } from 'node:test';
 import { parseStatsText } from '../../server/gcodeStats.ts';
 import type { GcodeStats } from '../../shared/types.ts';
-import { parseGcode } from '../../web/src/gcode/parse.ts';
+import { parseGcode, sizeCode, type ParsedGcode } from '../../web/src/gcode/parse.ts';
 import type { CheckOutput, EngineWarning, SliceOutput } from '../../web/src/engine/protocol.ts';
 import { EngineJobError, runCheck, runSlice, type OrcaEngineModule } from '../../web/src/engine/worker.ts';
 import {
@@ -144,6 +144,7 @@ function assertToolpathsMatchParser(t: TestContext, output: SliceOutput): void {
   assert.equal(engine.extrusions.positions.length, engine.extrusions.count * 6);
   assert.equal(engine.extrusions.roleIndex.length, engine.extrusions.count);
   assert.equal(engine.extrusions.width.length, engine.extrusions.count);
+  assert.equal(engine.extrusions.height.length, engine.extrusions.count);
   for (let l = 1; l <= engine.layerCount; l++) assert.ok(engine.extrusions.layerStart[l] >= engine.extrusions.layerStart[l - 1]);
   for (const array of Object.values(output.toolpathExtras!)) assert.equal((array as ArrayLike<number>).length, engine.extrusions.count);
 
@@ -167,11 +168,46 @@ function assertToolpathsMatchParser(t: TestContext, output: SliceOutput): void {
   // Orca and the parser tessellate them differently).
   assert.ok(Math.abs(ratio - 1) < 0.005, `extrusion segments: engine ${engine.extrusions.count}, parser ${parsed.extrusions.count}`);
   assert.equal(engine.lineWidth, parsed.lineWidth, 'dominant line width');
+  assertBeadsMatchParser(t, engine, parsed);
+  // The engine's height codes are the processor's own heights (toolpathExtras.height, in mm).
+  const heights = output.toolpathExtras!.height;
+  for (let s = 0; s < engine.extrusions.count; s++) {
+    if (engine.extrusions.height[s] !== sizeCode(heights[s])) assert.fail(`segment ${s}: height code ${engine.extrusions.height[s]} for ${heights[s]} mm`);
+  }
   assert.ok(engine.bounds && parsed.bounds);
   for (let a = 0; a < 2; a++) {
     assert.ok(Math.abs(engine.bounds.min[a] - parsed.bounds.min[a]) < 0.05, `bounds.min[${a}]`);
     assert.ok(Math.abs(engine.bounds.max[a] - parsed.bounds.max[a]) < 0.05, `bounds.max[${a}]`);
   }
+}
+
+/**
+ * Every bead as wide and as tall as Orca draws it: the width and height GCodeProcessor gave each
+ * move (the engine's toolpaths) against what the parser works out from the text, segment by
+ * segment, within one size code (0.01 mm; float against double rounding).
+ */
+function assertBeadsMatchParser(t: TestContext, engine: ParsedGcode, parsed: ParsedGcode): void {
+  const ours = engine.extrusions, theirs = parsed.extrusions;
+  let compared = 0;
+  const off: string[] = [];
+  for (let l = 0; l < engine.layerCount; l++) {
+    const first = ours.layerStart[l], firstParsed = theirs.layerStart[l];
+    const count = ours.layerStart[l + 1] - first;
+    // Where a layer has as many segments on both sides, they are the same moves in the same order.
+    if (count !== theirs.layerStart[l + 1] - firstParsed) continue;
+    for (let k = 0; k < count; k++) {
+      const s = first + k, p = firstParsed + k;
+      const sameEnd = Math.abs(ours.positions[s * 6 + 3] - theirs.positions[p * 6 + 3]) < 1e-3 && Math.abs(ours.positions[s * 6 + 4] - theirs.positions[p * 6 + 4]) < 1e-3;
+      if (!sameEnd) continue;
+      compared++;
+      if (Math.abs(ours.width[s] - theirs.width[p]) > 1 || Math.abs(ours.height[s] - theirs.height[p]) > 1) {
+        off.push(`layer ${l} ${engine.roles[ours.roleIndex[s]]}: width ${ours.width[s]}/${theirs.width[p]}, height ${ours.height[s]}/${theirs.height[p]}`);
+      }
+    }
+  }
+  t.diagnostic(`bead widths and heights compared on ${compared} of ${ours.count} segments, ${off.length} differ`);
+  assert.ok(compared >= ours.count * 0.95, `only ${compared} of ${ours.count} segments line up with the parser's`);
+  assert.deepEqual(off.slice(0, 10), [], `${off.length} segments differ (engine/parser, size codes)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +270,37 @@ suite(`engine-${variant}`, () => {
     assertProgress(sliced.progress);
     assertStatsMatchText(output);
     assertToolpathsMatchParser(t, output);
+  });
+
+  test('support, ironing, gap fill and combined infill: every bead as wide and as tall as Orca draws it', needsBenchy, async (t) => {
+    const positions = await benchy([100, 90]);
+    const process = {
+      ...presets.process,
+      enable_support: '1',
+      support_type: 'normal(auto)',
+      ironing_type: 'top',
+      wall_generator: 'classic',
+      gap_fill_target: 'everywhere',
+      infill_combination: '1',
+    };
+    const sliced = slice(engine, { ...presets, process }, [{ name: 'Benchy.stl', positions }]);
+    const { output } = sliced;
+    report(t, 'benchy with support and ironing', sliced);
+    assertToolpathsMatchParser(t, output);
+
+    // Heights that are not the layer's: GCodeProcessor's, as Orca's preview draws them.
+    const { roles, extrusions } = output.toolpaths!;
+    const heightsOf = (role: string) => {
+      const index = roles.indexOf(role);
+      assert.ok(index >= 0, `no ${role}`);
+      return new Set(extrusions.height.filter((_, s) => extrusions.roleIndex[s] === index));
+    };
+    assert.deepEqual(heightsOf('Custom'), new Set([15]), 'the purge line, 0.15 mm above the bed');
+    assert.deepEqual(heightsOf('Bridge'), new Set([40]), 'bridges, as tall as the nozzle is wide');
+    assert.ok(heightsOf('Sparse infill').has(40), 'infill combined over two layers');
+    assert.deepEqual(heightsOf('Ironing'), new Set([1]), 'ironing, a film');
+    assert.ok(heightsOf('Support').size > 3, 'support layers of their own heights');
+    assert.ok(heightsOf('Gap infill').size > 0);
   });
 
   test('a cube in the M1 front notch fails with -64 (exclusion volume)', () => {

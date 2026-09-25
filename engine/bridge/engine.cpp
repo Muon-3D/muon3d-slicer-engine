@@ -240,6 +240,7 @@ val toolpaths_to_js(const muon::ToolpathData &t)
     extrusions.set("count", double(t.extrusion_count()));
     extrusions.set("roleIndex", typed_array("Uint8Array", t.extrusion_role));
     extrusions.set("width", typed_array("Uint8Array", t.extrusion_width));
+    extrusions.set("height", typed_array("Uint8Array", t.extrusion_height));
 
     val travels = val::object();
     travels.set("positions", typed_array("Float32Array", t.travel_positions));

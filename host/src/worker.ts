@@ -392,6 +392,7 @@ export function sliceTransferables(output: SliceOutput): Transferable[] {
       paths.extrusions.layerStart,
       paths.extrusions.roleIndex,
       paths.extrusions.width,
+      paths.extrusions.height,
       paths.travels.positions,
       paths.travels.layerStart,
     );
