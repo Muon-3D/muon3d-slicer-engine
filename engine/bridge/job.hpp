@@ -45,10 +45,13 @@ private:
     EngineError m_error;
 };
 
-// One plate object: a triangle soup (9 floats per triangle) already in bed coordinates.
+// One plate object: a triangle soup (9 floats per triangle) already in bed coordinates, and its
+// per-object settings (protocol.ts EngineObject.config): Orca option name -> value text, in the
+// order given, applied to the ModelObject's config as Orca's 3MF loader does.
 struct MeshInput {
-    std::string        name;
-    std::vector<float> positions;
+    std::string                                      name;
+    std::vector<float>                               positions;
+    std::vector<std::pair<std::string, std::string>> config;
 };
 
 // Receives progress and warnings while a job runs. Implementations must be thread-safe: in the

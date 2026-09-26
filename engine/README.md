@@ -18,7 +18,8 @@ engine/
   shims/             replacement headers: serial TBB (st), openssl/md5.h, OCCT headers Model.hpp pulls in
   stubs/             replacement sources for desktop-only parts (STEP, SVG, DRC, assimp, Platform, …)
   bridge/            headless port of the Orca CLI's slicing path (cli_config, model_input, slice_job,
-                     placement, toolpaths) and the embind API (engine.cpp)
+                     placement, toolpaths), Orca's option table as JSON (config_def), and the embind
+                     API (engine.cpp)
   test/              engine.test.ts: Node tests that load the built engine and slice real plates;
                      compare.ts: the same plates through the engine and the server's CLI
   scripts/           build.sh: builds one variant (st|mt) and publishes it into web/public/engine/
@@ -30,6 +31,7 @@ web/src/engine/
   engineHost.ts      probes /engine/manifest.json, shares one client, warms it up after page load
   localJob.ts        plate → SliceJob → JobInfo: the browser's counterpart of server/jobs.ts
   plateMesh.ts       a library model's mesh for a local job (from the 3D view's cache or the server)
+  configDefinitions.ts  the shape of configDefinitions() (below)
 ```
 
 How the engine fits into the app (serving, headers, the "Slice on" choice) is in
@@ -81,6 +83,28 @@ and every slice runs on the server.
 
 `node engine/test/compare.ts` slices the same plates with the engine and with the server's CLI (see
 the next section for why its tolerances are loose).
+
+## Per-object settings and the option table
+
+- **Per-object settings.** `EngineObject.config` (`protocol.ts`, optional) carries an object's own
+  settings as Orca text values, in the order given (`PlateObject.settings`, limited to the keys
+  in `shared/objectSettings.ts`; `localJob.ts` validates them before anything loads). Before any
+  mesh loads, `check_object_config` (`bridge/model_input.cpp`) applies them over the plate's
+  config and runs Orca's `validate()`, the check the presets pass; `load_object` then sets them on
+  the `ModelObject` with `config.set_deserialize`, as Orca's 3MF loader does, and `Print::apply`
+  takes them from there. An unknown key, a value Orca cannot read or one outside Orca's limits
+  fails the job with code -5 and a message naming the object and the setting, for example
+  `has an invalid value for the setting "Wall loops" (wall_loops): "-1". It must be between 0 and
+  1000.` Settings never carry over to the next job.
+- **`configDefinitions()`** (`bridge/config_def.cpp`) returns Orca's option table as JSON text:
+  every option of `print_config_def` (type, labels, tooltip, unit, limits, enum values, labels and
+  every name `deserialize` accepts, default in Orca's text form, mode, GUI type) plus the key sets
+  libslic3r defines (preset scopes, per-extruder and variant keys, per-object keys). It is
+  deterministic (everything sorted) and needs no job. The settings catalogue generator
+  (`npm run gen:settings`, `scripts/orca-settings/generate.ts`) loads the built `st` engine in
+  Node to read it, so after an engine rebuild run `npm run gen:settings -- --check` and regenerate
+  if it reports drift. The shape is `ConfigDefinitions` in `web/src/engine/configDefinitions.ts`
+  (`format: 1`).
 
 ## Parity with the server's CLI
 

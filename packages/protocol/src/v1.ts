@@ -20,6 +20,13 @@ export interface EngineObject {
   name: string;
   /** Triangle soup: 9 floats (3 vertices × xyz) per triangle. */
   positions: Float32Array;
+  /**
+   * Per-object settings (PlateObject.settings, keys from shared/objectSettings.ts): Orca option
+   * name → value text, applied to the ModelObject's config as Orca's 3MF loader does
+   * (config.set_deserialize). An unknown key or a bad value fails the job with code -5, naming the
+   * object. Absent or {} = none.
+   */
+  config?: Record<string, string>;
 }
 
 export interface SliceJob {

@@ -9,8 +9,11 @@
 //                                  -> CheckOutput or { error }
 //   requestCancel()                   makes a running slice stop at Orca's next cancellation point
 //   setLogLevel(level)                Orca/Boost.Log verbosity: 0 off, 1 error (default) … 5 trace
+//   configDefinitions()            -> JSON text: Orca's option definitions and key sets
+//                                     (config_def.hpp; web/src/engine/configDefinitions.ts)
 //
-// `objects` is [{ name, positions: Float32Array }]; presets are JSON text. Large arrays cross the
+// `objects` is [{ name, positions: Float32Array, config?: { key: value } }] (the check ignores
+// `config`); presets are JSON text. Large arrays cross the
 // boundary as one typed-array copy each way, never as JSON. Every returned typed array owns a
 // fresh ArrayBuffer (not a view of the wasm heap), so the worker can transfer it without copying.
 //
@@ -18,6 +21,7 @@
 // with the codes of protocol.ts EngineError; running out of memory is { code: 2 }, on every
 // thread (see ensure_initialised). A wasm trap or abort() does escape; the worker reports that as
 // code 1 (or 2 for out of memory) and the engine instance is gone.
+#include "config_def.hpp"
 #include "job.hpp"
 #include "model_input.hpp"
 #include "placement.hpp"
@@ -127,7 +131,33 @@ std::vector<std::string> strings_from_js(const val &array)
     return out;
 }
 
-std::vector<muon::MeshInput> meshes_from_js(const val &objects)
+// EngineObject.config ({ key: "value text" }, absent or null for none) as pairs, in the object's
+// own key order. Anything else fails the job with -5 naming the object, as a bad value does.
+std::vector<std::pair<std::string, std::string>> object_config_from_js(const val &config, const std::string &name)
+{
+    std::vector<std::pair<std::string, std::string>> out;
+    if (config.isUndefined() || config.isNull())
+        return out;
+    const std::string label = "The object \"" + name + "\"";
+    if (config.typeOf().as<std::string>() != "object" || val::global("Array").call<bool>("isArray", config))
+        throw muon::JobFailure(CLI_CONFIG_FILE_ERROR, label + ": its settings must be a map of setting names to text values.", {name});
+    const val      entries = val::global("Object").call<val>("entries", config);
+    const unsigned length  = entries["length"].as<unsigned>();
+    out.reserve(length);
+    for (unsigned i = 0; i < length; ++i) {
+        const val         entry = entries[i];
+        const std::string key   = entry[0].as<std::string>();
+        const val         value = entry[1];
+        if (value.typeOf().as<std::string>() != "string")
+            throw muon::JobFailure(CLI_CONFIG_FILE_ERROR, label + ": the value for \"" + key + "\" must be text.", {name});
+        out.emplace_back(key, value.as<std::string>());
+    }
+    return out;
+}
+
+// protocol.ts EngineObject[]. `with_config`: also each object's own settings; the placement check
+// leaves them out (it does not depend on them, and it caches loaded objects by their mesh alone).
+std::vector<muon::MeshInput> meshes_from_js(const val &objects, bool with_config)
 {
     std::vector<muon::MeshInput> out;
     const unsigned               length = objects["length"].as<unsigned>();
@@ -138,6 +168,8 @@ std::vector<muon::MeshInput> meshes_from_js(const val &objects)
         mesh.name = object["name"].as<std::string>();
         // One TypedArray.set into wasm memory.
         mesh.positions = emscripten::convertJSArrayToNumberVector<float>(object["positions"]);
+        if (with_config)
+            mesh.config = object_config_from_js(object["config"], mesh.name);
         out.push_back(std::move(mesh));
     }
     return out;
@@ -432,7 +464,7 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
         request.machine_json   = machine_json;
         request.process_json   = process_json;
         request.filament_jsons = strings_from_js(filaments);
-        request.objects        = meshes_from_js(objects);
+        request.objects        = meshes_from_js(objects, true);
         request.want_toolpaths = want_toolpaths;
 
         muon::SliceResult result = muon::run_slice(std::move(request), reporter);
@@ -483,7 +515,7 @@ val js_check(const std::string &machine_json, const std::string &process_json, c
         request.machine_json   = machine_json;
         request.process_json   = process_json;
         request.filament_jsons = strings_from_js(filaments);
-        request.objects        = meshes_from_js(objects);
+        request.objects        = meshes_from_js(objects, false);
 
         const std::vector<muon::CheckedObject> results = placement_checker().check(std::move(request));
 
@@ -535,4 +567,5 @@ EMSCRIPTEN_BINDINGS(orca_engine)
     emscripten::function("check", &js_check);
     emscripten::function("requestCancel", &js_request_cancel);
     emscripten::function("setLogLevel", &js_set_log_level);
+    emscripten::function("configDefinitions", &muon::config_definitions_json);
 }

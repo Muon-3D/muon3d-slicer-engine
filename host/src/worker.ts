@@ -32,6 +32,8 @@ import type {
 export interface EngineMeshInput {
   name: string;
   positions: Float32Array;
+  /** EngineObject.config: the object's own settings (the placement check ignores them). */
+  config?: Record<string, string>;
 }
 
 type EngineResult<T> = T | { error: EngineError };
@@ -55,6 +57,11 @@ export interface OrcaEngineModule {
   setLogLevel(level: number): void;
   /** The wasm heap now and at most (it never shrinks); answers even after a trap. Missing in older builds. */
   heapSize?(): { bytes: number; maxBytes: number };
+  /**
+   * Orca's option definitions and key sets as JSON text (ConfigDefinitions in
+   * ./configDefinitions.ts, which also reads it). Missing in builds before 2026-09-25.
+   */
+  configDefinitions?(): string;
 }
 
 /**
@@ -295,8 +302,11 @@ function guarded<A extends unknown[]>(callback: ((...args: A) => void) | undefin
 
 const presetJson = (config: object) => JSON.stringify(config);
 
-function meshInputs(objects: SliceJob['objects']): EngineMeshInput[] {
-  return objects.map((object) => ({ name: object.name, positions: object.positions }));
+/** The objects as the engine takes them; `config` only where the object has settings. Exported for the tests. */
+export function meshInputs(objects: SliceJob['objects']): EngineMeshInput[] {
+  return objects.map(({ name, positions, config }) =>
+    config && Object.keys(config).length > 0 ? { name, positions, config } : { name, positions },
+  );
 }
 
 /**

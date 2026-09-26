@@ -10,11 +10,13 @@ import {
   engineFailure,
   engineHeap,
   instantiateEngineWasm,
+  meshInputs,
   runCheck,
   runSlice,
   sliceTransferables,
   startFailure,
   withoutAssertionsHint,
+  type EngineMeshInput,
   type OrcaEngineModule,
 } from './worker.ts';
 
@@ -98,6 +100,24 @@ test('runSlice passes presets as JSON and objects as typed arrays', () => {
 
   runSlice(engine, { ...job, toolpaths: false });
   assert.equal(calls[1][4], false);
+  assert.ok(!('config' in objects[0]), 'no settings, no config');
+});
+
+test("runSlice hands each object's own settings to the engine as they are", () => {
+  let sent: EngineMeshInput[] = [];
+  const engine = fakeEngine({
+    slice: (_m, _p, _f, objects) => {
+      sent = objects;
+      return output();
+    },
+  });
+  const config = { layer_height: '0.1', wall_loops: '5' };
+  const [cube] = job.objects;
+  runSlice(engine, { ...job, objects: [{ ...cube, config }, { ...cube, name: 'Plain.stl' }, { ...cube, name: 'Empty.stl', config: {} }] });
+  assert.deepEqual(sent[0], { name: 'Cube.stl', positions: cube.positions, config });
+  assert.deepEqual(Object.keys(sent[1]), ['name', 'positions']);
+  assert.deepEqual(Object.keys(sent[2]), ['name', 'positions'], 'empty settings are no settings');
+  assert.deepEqual(meshInputs([{ ...cube, config }]), [{ name: 'Cube.stl', positions: cube.positions, config }]);
 });
 
 test('runSlice keeps the engine stage timings and measures the total itself', () => {

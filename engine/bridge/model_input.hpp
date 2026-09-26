@@ -39,10 +39,22 @@ private:
 void write_binary_stl(const std::string &path, const std::vector<float> &positions);
 
 // Loads one plate object into `model` exactly like the CLI loads an STL argument (OS:1718-1990):
-// Format/STL load_stl (admesh repair, normals recomputed), a default instance, ensure_on_bed.
-// Throws JobFailure(CLI_DATA_FILE_ERROR) when the mesh cannot be read, and std::bad_alloc when
-// memory ran out, also where Orca itself swallowed that (the convex hull).
+// Format/STL load_stl (admesh repair, normals recomputed), a default instance, ensure_on_bed;
+// `object.config` becomes the ModelObject's own settings, as a 3MF's object metadata would.
+// Throws JobFailure(CLI_DATA_FILE_ERROR) when the mesh cannot be read, JobFailure
+// (CLI_CONFIG_FILE_ERROR) naming the object for a setting Orca does not know or a value it cannot
+// read, and std::bad_alloc when memory ran out, also where Orca itself swallowed that (the convex
+// hull). The slice runs check_object_config on every object first.
 Slic3r::ModelObject *load_object(Slic3r::Model &model, const MeshInput &object, const std::string &stl_path);
+
+// Checks one object's own settings (`object.config`) before its mesh loads: each must be a setting
+// Orca knows with a value it can read (the failures load_object would give), and the plate's
+// config with them over it must pass the value checks the presets passed (PrintConfig.cpp
+// validate(), as prepare_config runs it): Orca's limits (def.min / def.max), a layer height above
+// 0, line widths the nozzle can print. Orca's 3MF loader skips that for object settings, and a
+// layer height of 0 then makes the slicer allocate layers until memory runs out. Throws
+// JobFailure(CLI_CONFIG_FILE_ERROR) naming the object and the setting.
+void check_object_config(const MeshInput &object, const Slic3r::DynamicPrintConfig &plate_config);
 
 // The plate's build volume as the CLI builds it for plate 1 (OS:4277 set_shapes, OS:6331).
 Slic3r::BuildVolume plate_build_volume(const Slic3r::DynamicPrintConfig &config);

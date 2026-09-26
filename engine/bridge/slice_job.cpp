@@ -365,6 +365,9 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
     DynamicPrintConfig &m_print_config = prepared.print_config;
 
     reporter.progress(2, "Loading objects");
+    // Every object's own settings first, so that a bad one fails before any mesh loads.
+    for (const MeshInput &object : request.objects)
+        check_object_config(object, m_print_config);
     Model model;
     boost::filesystem::create_directories(job_dir.path() + "/in");
     size_t label_id = 0;

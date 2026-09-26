@@ -147,6 +147,18 @@ export function translate(positions: Float32Array, dx: number, dy: number): Floa
   return moved;
 }
 
+/**
+ * The plate of the per-object settings experiment on the server's CLI (architecture.md §2.3,
+ * Appendix B): two 20 mm cubes, "CubeA.stl" at (60, 60) with `settings` as its own settings and
+ * "CubeB.stl" at (130, 60) with none.
+ */
+export function objectSettingsPlate(settings: Record<string, string> = { layer_height: '0.1', wall_loops: '5' }): EngineObject[] {
+  return [
+    { name: 'CubeA.stl', positions: cube([60, 60]), config: settings },
+    { name: 'CubeB.stl', positions: cube([130, 60]) },
+  ];
+}
+
 export function sliceJob(presets: Presets, objects: EngineObject[], toolpaths = true): SliceJob {
   return { ...presets, objects, toolpaths };
 }
