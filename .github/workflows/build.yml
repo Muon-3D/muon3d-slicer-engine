@@ -233,7 +233,8 @@ jobs:
 
   edge:
     needs: runtime
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # always(): `engine` upstream of `runtime` may have been skipped, which would skip this job too.
+    if: always() && needs.runtime.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     concurrency:
       group: edge-release
