@@ -1,0 +1,7 @@
+node_modules/
+# Build output: the engine, the host and the notices, ready to serve (npm run build)
+dist/
+# Engine test output, local samples
+test-out/
+test/fixtures/local/
+*.log
