@@ -2,16 +2,17 @@
 // ported function, which detects Orca changing a rule, and a literal parse of the option
 // definitions in PrintConfig.cpp, which the rules tests check keys, enum values and defaults against.
 //
-// Node-only (node:crypto, node:fs). Used by rules.test.ts and the settings generator; never
-// imported by the app. Run it to refresh rules.ts after re-porting (see the end of this file):
-//   node web/src/settings/rulesSource.ts          report what is out of date
-//   node web/src/settings/rulesSource.ts --write  rewrite READ and RULES_PORTED_FROM in rules.ts
+// Node-only (node:crypto, node:fs). Used by host/test/settings/rules.test.ts and the settings
+// generator; never part of the host bundle. Run it to refresh rules.ts after re-porting (see the end
+// of this file):
+//   node tools/settings-catalogue/rulesSource.ts          report what is out of date
+//   node tools/settings-catalogue/rulesSource.ts --write  rewrite READ and RULES_PORTED_FROM in rules.ts
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/** The engine's Orca tree, the one rules.ts is ported from ($ORCA_WASM_ROOT/orca). */
-export const ORCA_ENGINE_ROOT = `${process.env.ORCA_WASM_ROOT ?? '~/OrcaWasm'}/orca`;
+/** The engine's Orca tree, the one rules.ts is ported from: ORCA_SRC, else the orca/ submodule. */
+export const ORCA_ENGINE_ROOT = process.env.ORCA_SRC ?? fileURLToPath(new URL('../../orca', import.meta.url));
 
 /** C++ source with comments removed; strings and line breaks are kept. */
 export function stripCppComments(src: string): string {
@@ -344,7 +345,7 @@ export function parseOrcaDefinitions(printConfigCpp: string): Map<string, OrcaDe
 // ---------------------------------------------------------------------------------------------
 
 /** The rules port this file maintains. */
-export const RULES_TS = fileURLToPath(new URL('./rules.ts', import.meta.url));
+export const RULES_TS = fileURLToPath(new URL('../../host/src/settings/rules.ts', import.meta.url));
 
 /** The option types rules.ts reads (its OrcaKind). */
 export const READABLE_TYPES: readonly string[] = [

@@ -1,7 +1,10 @@
-// Types of the OrcaSlicer settings catalogue (catalogue.json), which `npm run gen:settings`
-// (scripts/orca-settings/generate.ts) builds from the engine's option definitions and the layout
-// of Orca's settings tabs (src/slic3r/GUI/Tab.cpp). Values use Orca's text encoding throughout:
-// what a preset JSON holds (a string, or an array of strings for a vector option).
+// Types of the OrcaSlicer settings catalogue (data/settings-catalogue.json), which
+// `npm run gen:settings` (tools/settings-catalogue/generate.ts) builds from the engine's option
+// definitions and the layout of Orca's settings tabs (src/slic3r/GUI/Tab.cpp). Values use Orca's text
+// encoding throughout: what a preset JSON holds (a string, or an array of strings for a vector option).
+//
+// Format 2 is format 1 without the fields that were one app's policy (readOnly, note) or compared
+// against one app's older CLI (server, engineOnly, engineOnlyValues).
 
 /** Orca's ConfigOptionType, without the `co` prefix. */
 export type OrcaOptionType =
@@ -14,20 +17,6 @@ export type SettingMode = 'simple' | 'advanced' | 'expert' | 'develop';
 
 /** The preset a setting is stored in (the app's PresetType). */
 export type SettingScope = 'process' | 'filament' | 'machine';
-
-/**
- * Why the web slicer does not let the user edit a setting:
- *  - denied: runs programs or reaches other machines (DENIED_KEYS in shared/overrides.ts); never
- *    shown, and the server and engine refuse overrides of it;
- *  - protected: identifies the preset (PROTECTED_KEYS); never shown;
- *  - metadata: preset bookkeeping, not a print setting; never shown;
- *  - unused: only OrcaSlicer desktop uses it (printer connection); never shown;
- *  - geometry: printer geometry the 3D view and placement checks read from the preset; shown read-only;
- *  - dependencies: which presets fit together; shown read-only;
- *  - dialog: OrcaSlicer edits it in a dialog of its own; shown read-only;
- *  - synthetic: not an option of its own (the nozzle count); shown read-only.
- */
-export type ReadOnlyReason = 'denied' | 'protected' | 'metadata' | 'unused' | 'geometry' | 'dependencies' | 'dialog' | 'synthetic';
 
 /** What the entries of a vector option stand for. */
 export type SlotKind =
@@ -91,14 +80,6 @@ export interface SettingDef {
   perObject?: 'object' | 'region';
   /** Old names Orca still reads for it. */
   aliases?: string[];
-  /** The server's Orca CLI (an older build) does not know it: only "This computer" uses it. */
-  engineOnly?: true;
-  /** Values of this enum the server's Orca CLI does not know (it falls back to the default). */
-  engineOnlyValues?: string[];
-  /** The web slicer's policy: not editable, and why (see ReadOnlyReason). */
-  readOnly?: ReadOnlyReason;
-  /** A sentence for the user about how the web slicer treats it. */
-  note?: string;
   /** Not an Orca option: a control Tab.cpp builds itself (extruders_count). */
   synthetic?: true;
 }
@@ -167,17 +148,15 @@ export interface LayoutTab {
 }
 
 export interface SettingsCatalogue {
-  format: 1;
+  format: 2;
   /** The Orca build the definitions and layout come from (the engine's). */
   orca: { version: string; commit: string };
-  /** The server CLI's Orca, which `engineOnly` / `engineOnlyValues` compare against. */
-  server: { commit: string };
   /**
    * Fingerprints of the Orca functions the catalogue was read from ("<file>#<function>" ->
-   * "sha256:<hex>", the format of web/src/settings/rulesSource.ts cppFunctionHash).
+   * "sha256:<hex>", the format of tools/settings-catalogue/rulesSource.ts cppFunctionHash).
    */
   sources: Record<string, string>;
-  /** The same fingerprints of the functions the settings rules port (web/src/settings/rules.ts). */
+  /** The same fingerprints of the functions the settings rules port (host/src/settings/rules.ts). */
   ruleSources: Record<string, string>;
   /** Every FFF and common option (plus the synthetic ones), by key. */
   options: Record<string, SettingDef>;

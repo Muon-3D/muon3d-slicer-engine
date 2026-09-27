@@ -1,29 +1,25 @@
 // Generates the OrcaSlicer settings catalogue: every option the engine's Orca defines, laid out in
-// the pages, groups and rows of Orca's settings tabs, with the web slicer's policy on top.
+// the pages, groups and rows of Orca's settings tabs.
 //
-//   npm run gen:settings              writes shared/orcaSettings/catalogue.json and optionTypes.ts
-//   npm run gen:settings -- --check   fails when those files differ from a fresh run (drift check)
+//   npm run gen:settings              writes data/settings-catalogue.json
+//   npm run gen:settings -- --check   fails when that file differs from a fresh run (drift check)
 //
 // Sources, each read the most robust way:
 //   - option definitions (type, labels, tooltip, unit, limits, enum values, default, mode, …) and the
 //     key sets libslic3r defines (preset scopes, per-extruder, variant and per-object keys): the
 //     built engine's configDefinitions() export (engine/bridge/config_def.cpp), loaded in Node;
 //   - the layout: a strict parse of the build functions of src/slic3r/GUI/Tab.cpp (tabParser.ts);
-//   - which options and enum values the server's older Orca CLI lacks: its PrintConfig.cpp/.hpp at
-//     its build commit (serverDiff.ts);
-//   - fingerprints of the Orca functions read, and of those the settings rules port (rules.ts), so
-//     a test fails when Orca changes one.
-// The output is deterministic (sorted keys, fixed layout) and committed.
+//   - fingerprints of the Orca functions read, and of those the settings rules port
+//     (host/src/settings/rules.ts), so a test fails when Orca changes one.
+// The output is deterministic (sorted keys, fixed layout) and committed. It describes Orca only: what
+// a particular app lets its users edit (read-only keys, notes, hidden options) is that app's business,
+// applied on top.
 //
 // Environment:
-//   ORCA_WASM_ROOT      the engine workspace (default ~/OrcaWasm)
-//   ORCA_SRC            the engine's Orca checkout (default $ORCA_WASM_ROOT/orca)
-//   ENGINE_DIR          the built engine (default web/public/engine; the st variant is used)
-//   ORCA_SERVER_SRC     the server CLI's Orca checkout (default ../OrcaSlicer/OrcaSlicer)
-//   ORCA_SERVER_COMMIT  the commit the server CLI was built from (default 7c5b1764ba)
+//   ORCA_SRC            the engine's Orca checkout (default: the orca/ submodule)
+//   ENGINE_DIR          the built engine (default dist/; the st variant is used)
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type {
@@ -37,12 +33,10 @@ import type {
   SettingScope,
   SettingsCatalogue,
   SlotKind,
-} from '../../shared/orcaSettings/types.ts';
-import { RULES_PORTED_FROM } from '../../web/src/settings/rules.ts';
-import { cppFunctionHash, parseEnumKeyMaps, ruleSourceHashes } from '../../web/src/settings/rulesSource.ts';
+} from './types.ts';
+import { RULES_PORTED_FROM } from '../../host/src/settings/rules.ts';
+import { cppFunctionHash, parseEnumKeyMaps, ruleSourceHashes } from './rulesSource.ts';
 import { lineOf, literalsIn, prepareCpp, replaceLambdas, functionBody, type CppFile } from './cpp.ts';
-import { HIDDEN_REASONS, noteFor, policyKeys, readOnlyReason, widgetFor } from './policy.ts';
-import { readServerOrca, type ServerOrca } from './serverDiff.ts';
 import {
   parseBuildFunction,
   parsePublishableLists,
@@ -55,8 +49,7 @@ import {
 } from './tabParser.ts';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const CATALOGUE_PATH = path.join(repoRoot, 'shared/orcaSettings/catalogue.json');
-export const OPTION_TYPES_PATH = path.join(repoRoot, 'shared/orcaSettings/optionTypes.ts');
+export const CATALOGUE_PATH = path.join(repoRoot, 'data/settings-catalogue.json');
 
 export const TAB_CPP = 'src/slic3r/GUI/Tab.cpp';
 export const PUBLISH_CPP = 'src/libslic3r/PublishSettings.cpp';
@@ -89,7 +82,7 @@ const TABS: ReadonlyArray<{ id: SettingScope; title: string }> = [
 // Inputs
 // ---------------------------------------------------------------------------------------------
 
-/** One option of the engine's configDefinitions() (web/src/engine/configDefinitions.ts has the full shape). */
+/** One option of the engine's configDefinitions() (host/src/configDefinitions.ts has the full shape). */
 export interface EngineOption {
   type: OrcaOptionType | 'none';
   nullable?: true;
@@ -132,39 +125,30 @@ export interface EngineDefinitions {
 export interface GeneratorPaths {
   orcaRoot: string;
   engineDir: string;
-  serverRepo: string;
-  serverCommit: string;
 }
 
 export function defaultPaths(env: NodeJS.ProcessEnv = process.env): GeneratorPaths {
-  const wasmRoot = env.ORCA_WASM_ROOT ?? (path.join(os.homedir(), 'OrcaWasm'));
   return {
-    orcaRoot: path.resolve(env.ORCA_SRC ?? path.join(wasmRoot, 'orca')),
-    engineDir: path.resolve(env.ENGINE_DIR ?? path.join(repoRoot, 'web/public/engine')),
-    serverRepo: path.resolve(env.ORCA_SERVER_SRC ?? path.join(repoRoot, '../OrcaSlicer/OrcaSlicer')),
-    serverCommit: env.ORCA_SERVER_COMMIT ?? '7c5b1764ba',
+    orcaRoot: path.resolve(env.ORCA_SRC ?? path.join(repoRoot, 'orca')),
+    engineDir: path.resolve(env.ENGINE_DIR ?? path.join(repoRoot, 'dist')),
   };
 }
 
-/** Whether everything the generator reads is on this machine. */
+/** Whether everything the generator reads is on this machine: a built st engine and the Orca sources. */
 export function sourcesAvailable(paths: GeneratorPaths): boolean {
-  return (
-    existsSync(path.join(paths.engineDir, 'engine-st.mjs')) &&
-    existsSync(path.join(paths.orcaRoot, TAB_CPP)) &&
-    existsSync(path.join(paths.serverRepo, '.git'))
-  );
+  return existsSync(path.join(paths.engineDir, 'engine-st.mjs')) && existsSync(path.join(paths.orcaRoot, TAB_CPP));
 }
 
 /** The engine's option definitions (its configDefinitions() export). */
 export async function readEngineDefinitions(engineDir: string): Promise<EngineDefinitions> {
   // Imported by URL so the type checker does not pull the browser worker into Node-only code.
-  const worker = pathToFileURL(path.join(repoRoot, 'web/src/engine/worker.ts')).href;
+  const worker = pathToFileURL(path.join(repoRoot, 'host/src/worker.ts')).href;
   const { loadEngine } = (await import(worker)) as {
     loadEngine(dir: string, variant: 'st'): Promise<{ engine: { configDefinitions?: () => string } }>;
   };
   const { engine } = await loadEngine(pathToFileURL(engineDir + path.sep).href, 'st');
   if (typeof engine.configDefinitions !== 'function') {
-    throw new Error(`The engine in ${engineDir} has no configDefinitions(): rebuild it (engine/scripts/build.sh).`);
+    throw new Error(`The engine in ${engineDir} has no configDefinitions(): rebuild it (npm run build:engine).`);
   }
   const defs = JSON.parse(engine.configDefinitions()) as EngineDefinitions & { error?: string };
   if (defs.error) throw new Error(`configDefinitions(): ${defs.error}`);
@@ -224,10 +208,20 @@ export function readOrcaSources(orcaRoot: string): OrcaSources {
 export interface CatalogueParts {
   defs: EngineDefinitions;
   orca: OrcaSources;
-  server: ServerOrca;
-  /** RULES_PORTED_FROM's keys (web/src/settings/rules.ts). */
+  /** RULES_PORTED_FROM's keys (host/src/settings/rules.ts). */
   ruleFunctions: readonly string[];
 }
+
+/** Orca's custom row widgets (create_line_with_widget), by option. */
+const WIDGETS: Record<string, NonNullable<LayoutLine['widget']>> = {
+  printable_area: 'bedShape',
+  bed_exclude_area: 'excludeArea',
+  filament_ramming_parameters: 'ramming',
+  compatible_printers: 'compatible',
+  compatible_prints: 'compatible',
+};
+
+const widgetFor = (key: string): NonNullable<LayoutLine['widget']> => WIDGETS[key] ?? 'custom';
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
 
@@ -337,7 +331,7 @@ function vectorSlots(key: string, o: EngineOption, defs: EngineDefinitions, scop
   throw new Error(`${key}: a ${o.type} option no rule classifies; add it to SLOTS_BY_KEY in generate.ts`);
 }
 
-function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, server: ServerOrca, filamentOverrideKeys: ReadonlySet<string>): SettingDef {
+function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, filamentOverrideKeys: ReadonlySet<string>): SettingDef {
   if (o.type === 'none') throw new Error(`${key}: option without a type`);
   const scopes = TABS.map((t) => t.id).filter((s) =>
     s === 'machine' ? defs.presetKeys.machine.includes(key) || defs.presetKeys.machineLimits.includes(key) : defs.presetKeys[s].includes(key),
@@ -381,16 +375,6 @@ function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, serve
   if (defs.objectKeys.includes(key)) out.perObject = 'object';
   else if (defs.regionKeys.includes(key)) out.perObject = 'region';
   if (o.aliases.length) out.aliases = o.aliases;
-  if (!server.keys.has(key)) out.engineOnly = true;
-  const known = server.enumValues.get(key);
-  if (known && out.enumValues) {
-    const missing = out.enumValues.filter((v) => !known.has(v));
-    if (missing.length) out.engineOnlyValues = missing;
-  }
-  const reason = readOnlyReason(key);
-  if (reason) out.readOnly = reason;
-  const note = noteFor(key, reason);
-  if (note) out.note = note;
   return out;
 }
 
@@ -399,10 +383,6 @@ function syntheticDef(s: SyntheticOption): SettingDef {
   if (s.tooltip) out.tooltip = s.tooltip;
   if (s.min !== undefined) out.min = s.min;
   if (s.max !== undefined) out.max = s.max;
-  const reason = readOnlyReason(s.key);
-  if (reason) out.readOnly = reason;
-  const note = noteFor(s.key, reason);
-  if (note) out.note = note;
   return out;
 }
 
@@ -430,7 +410,7 @@ export function literalKeysIn(file: CppFile, fn: string, isKey: (key: string) =>
   return out;
 }
 
-export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueParts): SettingsCatalogue {
+export function buildCatalogue({ defs, orca, ruleFunctions }: CatalogueParts): SettingsCatalogue {
   const problems: string[] = [];
   if (defs.orcaCommit !== orca.commit) {
     throw new Error(`The engine was built from Orca ${defs.orcaCommit}, but ${TAB_CPP} is at ${orca.commit}: rebuild the engine or check out its commit.`);
@@ -471,7 +451,7 @@ export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueP
   const options: Record<string, SettingDef> = {};
   for (const key of Object.keys(defs.options).sort()) {
     try {
-      options[key] = settingDef(key, defs.options[key], defs, server, orca.filamentOverrideKeys);
+      options[key] = settingDef(key, defs.options[key], defs, orca.filamentOverrideKeys);
     } catch (err) {
       problems.push((err as Error).message);
     }
@@ -519,14 +499,13 @@ export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueP
     }
   }
 
-  for (const key of policyKeys()) if (!options[key]) problems.push(`policy.ts names "${key}", which is not an Orca option`);
+  for (const key of Object.keys(WIDGETS)) if (!options[key]) problems.push(`WIDGETS names "${key}", which is not an Orca option`);
 
-  // "Other": each scope's options no tab places, except the hidden and the excluded ones.
+  // "Other": each scope's options no tab places, except the excluded ones.
   const excludedKeys = new Set(excluded.map((e) => e.key));
   for (const tab of tabs) {
-    const hidden = (key: string) => options[key].readOnly !== undefined && HIDDEN_REASONS.has(options[key].readOnly);
     const keys = Object.keys(options)
-      .filter((key) => options[key].scopes?.includes(tab.id) && !seen.has(key) && !hidden(key) && !excludedKeys.has(key))
+      .filter((key) => options[key].scopes?.includes(tab.id) && !seen.has(key) && !excludedKeys.has(key))
       .sort();
     if (keys.length) {
       tab.pages.push({
@@ -545,9 +524,8 @@ export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueP
   for (const fn of Object.keys(orca.parser.publishable).sort()) sources[`${PUBLISH_CPP}#${fn}`] = cppFunctionHash(orca.raw[PUBLISH_CPP], fn);
 
   return {
-    format: 1,
+    format: 2,
     orca: { version: defs.orcaVersion, commit: defs.orcaCommit },
-    server: { commit: server.commit },
     sources,
     ruleSources: sortedRecord(ruleSourceHashes(orca.root, ruleFunctions)),
     options,
@@ -587,45 +565,12 @@ export function catalogueJson(catalogue: SettingsCatalogue): string {
   return `${body.replace('"options": {}', `"options": {\n${optionLines}\n  }`)}\n`;
 }
 
-/** shared/orcaSettings/optionTypes.ts: the option types shared/overrides.ts converts values with. */
-export function optionTypesSource(catalogue: SettingsCatalogue): string {
-  const real = Object.entries(catalogue.options).filter(([, def]) => !def.synthetic);
-  const name = (key: string) => (/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key));
-  const list = (keys: string[]) => keys.map((k) => `  '${k}',`).join('\n');
-  return `// Generated by \`npm run gen:settings\` (scripts/orca-settings/generate.ts) from the engine's option
-// definitions (Orca ${catalogue.orca.commit.slice(0, 10)}): do not edit. The option types of catalogue.json, kept apart so
-// shared/overrides.ts can convert override values without loading the whole catalogue.
-import type { OrcaOptionType } from './types.ts';
-
-/** Orca's type of every option, by key. Look keys up with Object.hasOwn. */
-export const OPTION_TYPES: Readonly<Record<string, OrcaOptionType>> = {
-${real.map(([key, def]) => `  ${name(key)}: '${def.type}',`).join('\n')}
-};
-
-/** Vector options whose slots may be "nil" (unset). */
-export const NULLABLE_OPTIONS: ReadonlySet<string> = new Set([
-${list(real.filter(([, d]) => d.nullable).map(([k]) => k))}
-]);
-
-/** Strings options Orca edits as one ";"-separated text (gui_flags "serialized"). */
-export const SERIALIZED_OPTIONS: ReadonlySet<string> = new Set([
-${list(real.filter(([, d]) => d.serialized).map(([k]) => k))}
-]);
-
-/** Vector options whose entries are the value itself (a polygon, a list of names), not one value per slot. */
-export const LIST_OPTIONS: ReadonlySet<string> = new Set([
-${list(real.filter(([, d]) => d.slots === 'list').map(([k]) => k))}
-]);
-`;
-}
-
 /** Reads every source and builds the catalogue and the files it is written to. */
 export async function generate(paths: GeneratorPaths = defaultPaths()): Promise<{ catalogue: SettingsCatalogue; files: Record<string, string> }> {
   const defs = await readEngineDefinitions(paths.engineDir);
   const orca = readOrcaSources(paths.orcaRoot);
-  const server = readServerOrca(paths.serverRepo, paths.serverCommit);
-  const catalogue = buildCatalogue({ defs, orca, server, ruleFunctions: Object.keys(RULES_PORTED_FROM) });
-  return { catalogue, files: { [CATALOGUE_PATH]: catalogueJson(catalogue), [OPTION_TYPES_PATH]: optionTypesSource(catalogue) } };
+  const catalogue = buildCatalogue({ defs, orca, ruleFunctions: Object.keys(RULES_PORTED_FROM) });
+  return { catalogue, files: { [CATALOGUE_PATH]: catalogueJson(catalogue) } };
 }
 
 async function main(args: string[]): Promise<number> {
@@ -646,8 +591,7 @@ async function main(args: string[]): Promise<number> {
     }
   }
   const placed = catalogue.tabs.map((t) => `${t.id} ${[...placedKeys(t.pages.filter((p) => !p.other))].length}`).join(', ');
-  const engineOnly = Object.values(catalogue.options).filter((d) => d.engineOnly).length;
-  console.log(`${Object.keys(catalogue.options).length} options; placed: ${placed}; ${engineOnly} engine-only; Orca ${catalogue.orca.commit.slice(0, 10)}, server ${catalogue.server.commit.slice(0, 10)}`);
+  console.log(`${Object.keys(catalogue.options).length} options; placed: ${placed}; Orca ${catalogue.orca.commit.slice(0, 10)}`);
   return stale ? 1 : 0;
 }
 

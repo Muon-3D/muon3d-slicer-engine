@@ -4,7 +4,7 @@
 // the Tab.cpp parser (tabParser.ts) to match one by one.
 //
 // Node-free and pure, so the tests can feed it small fixtures.
-import { stripCppComments } from '../../web/src/settings/rulesSource.ts';
+import { stripCppComments } from './rulesSource.ts';
 
 /** A statement or shape the generator does not understand, at `file:line`. */
 export class CppParseError extends Error {

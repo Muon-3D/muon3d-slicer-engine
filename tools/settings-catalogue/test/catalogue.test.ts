@@ -1,46 +1,53 @@
-// The committed settings catalogue (catalogue.json, optionTypes.ts): its layout against its
-// definitions, the policy marks, and (when the engine, the Orca sources and the server CLI's Orca
-// are on this machine) that `npm run gen:settings` reproduces it byte for byte and that every
-// option key Orca's tab code names is placed.
+// The committed settings catalogue (data/settings-catalogue.json): its layout against its
+// definitions, and (when a built engine and the Orca sources are on this machine) that
+// `npm run gen:settings` reproduces it byte for byte and that every option key Orca's tab code names
+// is placed.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { RULES_PORTED_FROM } from '../../../host/src/settings/rules.ts';
+import { findPlacement, lineLabel, lineMode, loadCatalogue, settingDef, shownInMode } from '../catalogue.ts';
 import {
   CATALOGUE_PATH,
   LAYOUT_FUNCTIONS,
-  OPTION_TYPES_PATH,
   defaultPaths,
   generate,
   literalKeysIn,
   readEngineDefinitions,
   readOrcaSources,
   sourcesAvailable,
-} from '../../scripts/orca-settings/generate.ts';
-import { RULES_PORTED_FROM } from '../../web/src/settings/rules.ts';
-import { DENIED_KEYS, PROTECTED_KEYS } from '../overrides.ts';
-import { findPlacement, lineLabel, lineMode, loadCatalogue, settingDef, shownInMode } from './index.ts';
-import { LIST_OPTIONS, NULLABLE_OPTIONS, OPTION_TYPES, SERIALIZED_OPTIONS } from './optionTypes.ts';
-import type { LayoutLine, SettingsCatalogue } from './types.ts';
+} from '../generate.ts';
+import type { LayoutLine, SettingsCatalogue } from '../types.ts';
 
 const catalogue = await loadCatalogue();
-const MANIFEST = fileURLToPath(new URL('../../web/public/engine/manifest.json', import.meta.url));
 const paths = defaultPaths();
+const MANIFEST = fileURLToPath(new URL('manifest.json', `file:///${paths.engineDir.replace(/\\/g, '/')}/`));
 const haveSources = sourcesAvailable(paths);
 
-function* rows(c: SettingsCatalogue): Generator<{ tab: string; page: string; line: LayoutLine }> {
-  for (const tab of c.tabs) for (const page of tab.pages) for (const group of page.groups) for (const line of group.lines) yield { tab: tab.id, page: page.title, line };
+function* rows(c: SettingsCatalogue): Generator<{ tab: string; page: string; line: LayoutLine; other: boolean }> {
+  for (const tab of c.tabs) {
+    // Orca's pages first, so the "Other" check below sees everything Orca places.
+    const pages = [...tab.pages.filter((p) => !p.other), ...tab.pages.filter((p) => p.other)];
+    for (const page of pages) for (const group of page.groups) for (const line of group.lines) yield { tab: tab.id, page: page.title, line, other: page.other === true };
+  }
 }
 
 describe('settings catalogue', () => {
   it('places every option once, with a definition from the tab\'s own preset', () => {
+    // Orca's tabs place each option at most once. The generated "Other" pages list, per scope, what no
+    // Orca tab places, so a key every preset stores (inherits) is on each of them.
     const seen = new Map<string, string>();
-    for (const { tab, page, line } of rows(catalogue)) {
+    for (const { tab, page, line, other } of rows(catalogue)) {
       assert.ok(line.options.length > 0, `an empty row on ${tab}/${page}`);
       for (const { key } of line.options) {
         const def = settingDef(catalogue, key);
         assert.ok(def, `${tab}/${page} places "${key}" without a definition`);
         assert.ok(def.synthetic || def.scopes?.includes(tab as 'process'), `${tab}/${page} places "${key}", stored in ${def.scopes}`);
+        if (other) {
+          assert.ok(!seen.has(key), `"${key}" is on ${tab}/Other, but Orca places it on ${seen.get(key)}`);
+          continue;
+        }
         assert.ok(!seen.has(key), `"${key}" is placed on ${seen.get(key)} and on ${tab}/${page}`);
         seen.set(key, `${tab}/${page}`);
       }
@@ -89,30 +96,17 @@ describe('settings catalogue', () => {
     assert.ok(shownInMode('advanced', 'expert') && !shownInMode('develop', 'expert'));
   });
 
-  it('marks the web slicer\'s read-only and hidden settings', () => {
-    for (const key of DENIED_KEYS) if (catalogue.options[key]) assert.equal(catalogue.options[key].readOnly, 'denied', key);
-    for (const key of PROTECTED_KEYS) if (catalogue.options[key]) assert.equal(catalogue.options[key].readOnly, 'protected', key);
-    for (const key of ['printable_area', 'printable_height', 'bed_exclude_area', 'bed_exclude_volumes', 'extruder_printable_area', 'nozzle_diameter']) {
-      assert.equal(catalogue.options[key].readOnly, 'geometry', key);
-      assert.ok(catalogue.options[key].note, key);
+  it('describes Orca only: format 2 carries no app policy', () => {
+    assert.equal(catalogue.format, 2);
+    assert.ok(!('server' in catalogue));
+    for (const [key, def] of Object.entries(catalogue.options)) {
+      for (const field of ['readOnly', 'note', 'engineOnly', 'engineOnlyValues']) assert.ok(!(field in def), `${key}.${field}`);
     }
-    assert.equal(catalogue.options.extruders_count.readOnly, 'synthetic');
-    assert.equal(catalogue.options.compatible_printers.readOnly, 'dependencies');
-    assert.equal(catalogue.options.layer_height.readOnly, undefined);
-    // The generated "Other" pages hold no hidden setting.
-    for (const tab of catalogue.tabs) {
-      for (const page of tab.pages.filter((p) => p.other)) {
-        for (const g of page.groups) for (const l of g.lines) assert.ok(!['denied', 'protected', 'metadata', 'unused'].includes(catalogue.options[l.options[0].key].readOnly ?? ''), l.options[0].key);
-      }
-    }
-  });
-
-  it('flags what the server CLI lacks', () => {
-    assert.equal(catalogue.options.wipe_inward.engineOnly, true);
-    assert.equal(catalogue.options.bed_exclude_volumes.engineOnly, true);
-    assert.equal(catalogue.options.layer_height.engineOnly, undefined);
-    assert.deepEqual(catalogue.options.print_order.engineOnlyValues, ['best_of', 'snake']);
-    assert.deepEqual(catalogue.options.top_surface_pattern.engineOnlyValues, ['spiralinset']);
+    // The "Other" pages hold every option of the scope no Orca tab places, bookkeeping keys included.
+    const other = catalogue.tabs.find((t) => t.id === 'machine')!.pages.find((p) => p.other)!;
+    const keys = other.groups.flatMap((g) => g.lines.map((l) => l.options[0].key));
+    assert.ok(keys.includes('printer_model') && keys.includes('inherits'), 'bookkeeping keys are listed');
+    assert.equal(catalogue.options.extruders_count.synthetic, true);
   });
 
   it('has enum defaults among the enum values', () => {
@@ -124,21 +118,13 @@ describe('settings catalogue', () => {
     }
   });
 
-  it('matches its option types module (the one shared/overrides.ts reads)', () => {
-    const real = Object.entries(catalogue.options).filter(([, d]) => !d.synthetic);
-    assert.deepEqual(OPTION_TYPES, Object.fromEntries(real.map(([k, d]) => [k, d.type])));
-    assert.deepEqual([...NULLABLE_OPTIONS], real.filter(([, d]) => d.nullable).map(([k]) => k));
-    assert.deepEqual([...SERIALIZED_OPTIONS], real.filter(([, d]) => d.serialized).map(([k]) => k));
-    assert.deepEqual([...LIST_OPTIONS], real.filter(([, d]) => d.slots === 'list').map(([k]) => k));
-  });
-
   it('fingerprints the functions the settings rules port as rules.ts does', () => {
     // Regenerating the catalogue against a newer Orca changes these; rules.ts must then be re-ported.
     assert.deepEqual(catalogue.ruleSources, Object.fromEntries(Object.entries(RULES_PORTED_FROM).sort(([a], [b]) => (a < b ? -1 : 1))));
     assert.ok(Object.values(catalogue.sources).every((h) => /^sha256:[0-9a-f]{64}$/.test(h)));
   });
 
-  it('comes from the Orca build the published engine was built from', { skip: !existsSync(MANIFEST) && 'no built engine (web/public/engine/manifest.json)' }, () => {
+  it('comes from the Orca build the engine was built from', { skip: !existsSync(MANIFEST) && `no built engine (${MANIFEST})` }, () => {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8')) as { orcaCommit: string; orcaVersion: string };
     assert.equal(catalogue.orca.commit, manifest.orcaCommit, 'the engine was rebuilt from another Orca: run npm run gen:settings');
     assert.equal(catalogue.orca.version, manifest.orcaVersion);
@@ -150,13 +136,12 @@ describe('settings catalogue', () => {
   });
 });
 
-describe('settings catalogue generator', { skip: !haveSources && 'the engine, the Orca sources or the server CLI\'s Orca is not on this machine' }, () => {
-  it('regenerates the committed files byte for byte, twice', async () => {
+describe('settings catalogue generator', { skip: !haveSources && 'no built st engine or no Orca sources on this machine' }, () => {
+  it('regenerates the committed file byte for byte, twice', async () => {
     const first = await generate(paths);
     const second = await generate(paths);
     assert.deepEqual(first.files, second.files);
-    assert.equal(first.files[CATALOGUE_PATH], readFileSync(CATALOGUE_PATH, 'utf8'), 'catalogue.json is out of date: run npm run gen:settings');
-    assert.equal(first.files[OPTION_TYPES_PATH], readFileSync(OPTION_TYPES_PATH, 'utf8'), 'optionTypes.ts is out of date: run npm run gen:settings');
+    assert.equal(first.files[CATALOGUE_PATH], readFileSync(CATALOGUE_PATH, 'utf8'), 'data/settings-catalogue.json is out of date: run npm run gen:settings');
   });
 
   it('lists only enum values Orca can read back', async () => {
@@ -167,7 +152,6 @@ describe('settings catalogue generator', { skip: !haveSources && 'the engine, th
     }
     // Orca lists "Default" in its drop-down but cannot read it.
     assert.deepEqual(catalogue.options.filament_map_mode.enumValues, ['Auto For Flush', 'Auto For Match', 'Manual', 'Nozzle Manual']);
-    assert.equal(catalogue.options.filament_map_mode.engineOnlyValues, undefined);
   });
 
   it('places or excludes every option key the tab functions name', () => {

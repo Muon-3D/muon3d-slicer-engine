@@ -11,8 +11,8 @@ import {
   prepareCpp,
   replaceLambdas,
   squash,
-} from '../../scripts/orca-settings/cpp.ts';
-import { parseBuildFunction, parsePublishableLists, type ParsedFunction } from '../../scripts/orca-settings/tabParser.ts';
+} from '../cpp.ts';
+import { parseBuildFunction, parsePublishableLists, type ParsedFunction } from '../tabParser.ts';
 
 const FLAVOURS = new Map([
   ['GCodeFlavor', new Map([['gcfMarlinFirmware', 'marlin2'], ['gcfKlipper', 'klipper'], ['gcfRepRapFirmware', 'reprapfirmware']])],
