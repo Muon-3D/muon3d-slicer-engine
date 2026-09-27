@@ -54,7 +54,9 @@ export ORCA_WASM_ROOT=$PWD/root                           # prefixes and build t
 export ORCA_EMSDK=~/emsdk                                 # an installed and activated emsdk 6.0.10
 export EM_CACHE=$PWD/emcache                              # a fresh Emscripten cache is fine
 mkdir -p $ORCA_WASM_ROOT/deps-src/_archives $EM_CACHE && cp third-party-sources-*/deps/* $ORCA_WASM_ROOT/deps-src/_archives/
-$ORCA_EMSDK/upstream/emscripten/emcc --check              # writes the new cache's sanity file first
+export PATH=$ORCA_EMSDK/upstream/emscripten:$PATH
+emcc --check                                              # writes the new cache's sanity file first
+echo 'int main(void) { return 0; }' > x.c && emcc -c x.c -o x.o   # installs the sysroot headers
 node muon3d-slicer-engine-$V/tools/release/emscripten-ports.mjs seed \
   $ORCA_EMSDK/upstream/emscripten third-party-sources-*/emscripten-ports $EM_CACHE/ports
 
