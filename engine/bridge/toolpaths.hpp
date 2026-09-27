@@ -1,6 +1,6 @@
 // Turns Orca's GCodeProcessorResult (the G-code as Orca's own processor understood it) into what
-// the web app shows: the preview toolpaths in the format of web/src/gcode/parse.ts and the print
-// statistics of shared/types.ts GcodeStats.
+// a client shows: the preview toolpaths (Toolpaths in packages/protocol/src/v1.ts) and the print
+// statistics (GcodeStats there).
 #pragma once
 
 #include "job.hpp"
@@ -14,7 +14,7 @@ namespace muon {
 // view is mapped onto them). `with_extras` also fills the ToolpathExtras arrays.
 ToolpathData build_toolpaths(const Slic3r::GCodeProcessorResult &result, bool with_extras = true);
 
-// The values the server reads from the G-code header and footer (server/gcodeStats.ts), computed
+// The values a reader takes from the G-code header and footer (test/helpers/gcodeStats.ts), computed
 // from the same data Orca writes them from, with the same rounding.
 GcodeStats build_stats(const Slic3r::GCodeProcessorResult &result, const Slic3r::Print &print);
 

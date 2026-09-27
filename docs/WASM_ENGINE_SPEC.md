@@ -1,19 +1,20 @@
 # Spec: OrcaSlicer WebAssembly engine for the Muon3D web slicer
 
-> **Status (2026-09-25): historical.** This is the brief the engine was built from, kept for its
-> reasoning. The engine as built differs from it in several places, and where they disagree,
-> `engine/` and `web/src/engine/protocol.ts` are right:
-> - **Where:** `engine/` in this repository (not a `wasm/` folder in the fork), building
->   `$ORCA_WASM_ROOT/orca`, branch `muon3d-wasm` (PR #13777 + the Muon3D profiles), out of tree. There
->   is no container or CI build yet (`engine/README.md`, "Build, publish, test").
+> **Status (2026-09-25, paths updated 2026-09-27): historical.** This is the brief the engine was
+> built from, kept for its reasoning. It was written for the Muon3D web slicer app, where the engine
+> started. The engine as built differs from it in several places, and where they disagree, `engine/`
+> and `packages/protocol/src/v1.ts` are right:
+> - **Where:** `engine/` in this repository (not a `wasm/` folder in the fork), building the `orca/`
+>   submodule, branch `muon3d-wasm` (PR #13777 + the Muon3D profiles), out of tree. There is no
+>   container or CI build yet (`engine/README.md`, "Build, publish, test").
 > - **Dependencies:** Boost built with its own CMake (not b2), CGAL without GMP/MPFR
 >   (`CGAL_DISABLE_GMP`), libjpeg-turbo instead of Emscripten's libjpeg (`engine/deps/README.md`).
-> - **API:** the worker protocol and types are `web/src/engine/protocol.ts`, not §6. Objects arrive
->   already placed in bed coordinates (no `transform`), there is no npm package, and there is no
->   `cancel` message: cancelling terminates the worker.
-> - **Parity (§8):** no native CLI has been built from the engine's commit. The engine is compared
->   with the server's CLI, an older Orca build, so the G-code is not identical; see
->   `engine/README.md`, "Parity with the server's CLI".
+> - **API:** the worker protocol and types are `packages/protocol/src/v1.ts` (the host is
+>   `host/src/worker.ts`), not §6. Objects arrive already placed in bed coordinates (no `transform`),
+>   and there is no `cancel` message: cancelling terminates the worker.
+> - **Parity (§8):** no native CLI has been built from the engine's commit. The engine was compared
+>   with an older native CLI build, so the G-code is not identical; see `engine/README.md`, "Parity
+>   with a native CLI".
 
 You are building a WebAssembly build of **our OrcaSlicer fork's real slicing core** (libslic3r) that
 runs in a browser Web Worker: meshes and presets in, G-code plus structured results out. It will

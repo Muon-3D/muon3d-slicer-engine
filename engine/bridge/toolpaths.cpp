@@ -1,7 +1,7 @@
 // GCodeProcessorResult -> preview toolpaths and print statistics.
 //
-// The preview format is web/src/gcode/parse.ts's ParsedGcode, which the UI already renders from
-// parsed G-code text; the aim is that the same file gives the same picture whichever way it was
+// The preview format is Toolpaths (packages/protocol), which a G-code text parser also produces
+// (test/helpers/parseGcode.ts); the aim is that the same file gives the same picture whichever way it was
 // read. Where Orca's processor and the text parser see a move differently, the parser's view wins:
 //
 //  * One segment per G-code move. The processor splits a straight move into pieces at its
@@ -121,7 +121,7 @@ double round2(double value)
     return std::strtod(buf, nullptr);
 }
 
-// server/gcodeStats.ts parseAmount: the sum of the printed values, rounded to 3 decimals.
+// parseAmount (test/helpers/gcodeStats.ts): the sum of the printed values, rounded to 3 decimals.
 double sum_as_printed(const std::vector<double> &values)
 {
     double sum = 0.;
@@ -130,7 +130,7 @@ double sum_as_printed(const std::vector<double> &values)
     return std::round(sum * 1000.) / 1000.;
 }
 
-// server/gcodeStats.ts parseDuration for Orca's get_time_dhms text ("1d 2h 3m 4s", "44m 38s",
+// parseDuration (test/helpers/gcodeStats.ts) for Orca's get_time_dhms text ("1d 2h 3m 4s", "44m 38s",
 // "0.500000s"): total seconds, rounded like Math.round.
 std::optional<double> parse_duration(const std::string &text)
 {
@@ -359,7 +359,7 @@ GcodeStats build_stats(const GCodeProcessorResult &result, const Print &print)
         stats.filament_mm  = sum_as_printed(used_mm);
         stats.filament_cm3 = sum_as_printed(used_cm3);
         if (print.is_BBL_printer()) {
-            // Bambu G-code has no "total" lines; the server sums the per-filament lines, which
+            // Bambu G-code has no "total" lines; a text reader sums the per-filament lines, which
             // Orca writes only when some filament has a weight (and a cost).
             if (total_g > 0.)
                 stats.filament_g = sum_as_printed(used_g);

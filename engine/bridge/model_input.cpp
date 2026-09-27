@@ -223,8 +223,8 @@ void write_binary_stl(const std::string &path, const std::vector<float> &positio
     if (!file)
         throw JobFailure(ENGINE_INTERNAL_ERROR, "Could not create " + path + " in the engine's virtual file system.");
 
-    // Same header text as server/meshio.ts writeBinaryStl. admesh tells binary from ASCII by
-    // sniffing the bytes after the header, so matching the server's bytes also matches how the
+    // The header text a web app writes for Orca's CLI. admesh tells binary from ASCII by
+    // sniffing the bytes after the header, so matching those bytes also matches how the
     // CLI decides that.
     unsigned char header[84] = {};
     static const char text[] = "Binary STL written by Muon3D Web Slicer";
@@ -241,7 +241,7 @@ void write_binary_stl(const std::string &path, const std::vector<float> &positio
         for (size_t t = 0; t < n; ++t) {
             const float   *p   = positions.data() + (first + t) * 9;
             unsigned char *out = chunk.data() + t * FACET_BYTES;
-            // Unit face normal, computed in double like the server (the value itself does not
+            // Unit face normal, computed in double like the app's STL writer (the value does not
             // matter: admesh recomputes normals on import).
             const double ux = double(p[3]) - p[0], uy = double(p[4]) - p[1], uz = double(p[5]) - p[2];
             const double vx = double(p[6]) - p[0], vy = double(p[7]) - p[1], vz = double(p[8]) - p[2];
@@ -303,8 +303,8 @@ ModelObject *load_object(Model &model, const MeshInput &object, const std::strin
     for (const ModelVolume *volume : model_object->volumes)
         if (!volume->mesh().empty() && volume->get_convex_hull().empty() && heap_nearly_full())
             throw std::bad_alloc();
-    // What Model::read_from_file records: the path given on the CLI's command line, which on the
-    // server is the bare STL file name, i.e. the object name.
+    // What Model::read_from_file records: the path given on the CLI's command line, which for
+    // a CLI run from the job folder is the bare STL file name, i.e. the object name.
     model_object->input_file = object.name;
     model.add_default_instances(); // LoadStrategy::AddDefaultInstances
     model_object->ensure_on_bed(); // OS:1987

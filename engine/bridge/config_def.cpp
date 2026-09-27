@@ -31,7 +31,7 @@ using json = nlohmann::json;
 namespace muon {
 namespace {
 
-// Bump when the shape changes (web/src/engine/configDefinitions.ts CONFIG_DEFINITIONS_FORMAT).
+// Bump when the shape changes (host/src/configDefinitions.ts CONFIG_DEFINITIONS_FORMAT).
 constexpr int FORMAT = 1;
 
 const char *type_name(ConfigOptionType type)

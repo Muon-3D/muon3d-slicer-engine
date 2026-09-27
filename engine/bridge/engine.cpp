@@ -1,5 +1,5 @@
 // JavaScript API of the engine module (the Emscripten factory createOrcaEngine), used by
-// web/src/engine/worker.ts and engine/test. Everything Orca-specific happens in the other bridge
+// host/src/worker.ts and test/. Everything Orca-specific happens in the other bridge
 // files; this one converts between JS values and the plain C++ types of job.hpp.
 //
 //   version()                      -> { orcaVersion, orcaCommit }
@@ -10,7 +10,7 @@
 //   requestCancel()                   makes a running slice stop at Orca's next cancellation point
 //   setLogLevel(level)                Orca/Boost.Log verbosity: 0 off, 1 error (default) … 5 trace
 //   configDefinitions()            -> JSON text: Orca's option definitions and key sets
-//                                     (config_def.hpp; web/src/engine/configDefinitions.ts)
+//                                     (config_def.hpp; host/src/configDefinitions.ts)
 //
 // `objects` is [{ name, positions: Float32Array, config?: { key: value } }] (the check ignores
 // `config`); presets are JSON text. Large arrays cross the
@@ -263,7 +263,7 @@ val vec3_to_js(const float *v)
     return out;
 }
 
-// web/src/gcode/parse.ts ParsedGcode
+// Toolpaths (packages/protocol/src/v1.ts)
 val toolpaths_to_js(const muon::ToolpathData &t)
 {
     val extrusions = val::object();

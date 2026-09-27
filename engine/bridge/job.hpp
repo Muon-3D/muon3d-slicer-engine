@@ -2,7 +2,7 @@
 // slice_job, toolpaths, placement). Nothing here depends on Emscripten, so the core can also be
 // compiled natively for debugging.
 //
-// The shapes mirror web/src/engine/protocol.ts (EngineError, EngineWarning, SliceOutput, CheckOutput).
+// The shapes mirror packages/protocol/src/v1.ts (EngineError, EngineWarning, SliceOutput, CheckOutput).
 #pragma once
 
 #include <cstdint>
@@ -66,7 +66,7 @@ public:
     virtual bool cancel_requested() { return false; }
 };
 
-// shared/types.ts GcodeStats. Absent values are std::nullopt (null in JS).
+// GcodeStats (packages/protocol/src/v1.ts). Absent values are std::nullopt (null in JS).
 struct GcodeStats {
     std::optional<double>      print_time_seconds;
     std::optional<std::string> print_time_text;
@@ -79,7 +79,7 @@ struct GcodeStats {
     std::optional<double>      max_z;
 };
 
-// web/src/gcode/parse.ts ParsedGcode plus protocol.ts ToolpathExtras, as flat arrays.
+// Toolpaths plus ToolpathExtras (packages/protocol/src/v1.ts), as flat arrays.
 struct ToolpathData {
     std::vector<std::string> roles;        // first-seen order, Orca's ';TYPE:' names
     std::vector<double>      role_length;  // mm extruded per role, parallel to `roles`

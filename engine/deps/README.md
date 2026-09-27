@@ -290,7 +290,7 @@ concurrently with `JOBS=12` each on the 24-core machine, while other builds were
 - **GMP/MPFR (`WITH_GMP=1`):** the autotools path on Windows has never been run. It is not needed by
   default.
 - **Browsers:** the smoke test runs under node (emsdk's node 24.19). The engine built on these
-  prefixes (`../README.md`) has since run under Node 24 (`engine/test`, both variants) and in
+  prefixes (`../README.md`) has since run under Node 24 (`test/`, both variants) and in
   headless Chrome (st and mt, 2026-09-25). Safari, Firefox and iPadOS have not been tried.
 - **Other hardware:** TBB behaviour on machines with fewer cores, or with a pool smaller than
   `hardwareConcurrency+4`, has not been tried. (The engine has been run with 2 to 24 threads, but

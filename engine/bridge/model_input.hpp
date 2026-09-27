@@ -34,8 +34,8 @@ private:
     std::string m_dir;
 };
 
-// Writes `positions` (9 floats per triangle) as a binary STL, byte for byte what the server's
-// writeBinaryStl (server/meshio.ts) produces for the CLI.
+// Writes `positions` (9 floats per triangle) as a binary STL, byte for byte the file a web app
+// writes for Orca's CLI from the same triangles (test/helpers/stl.ts writes the same triangles).
 void write_binary_stl(const std::string &path, const std::vector<float> &positions);
 
 // Loads one plate object into `model` exactly like the CLI loads an STL argument (OS:1718-1990):

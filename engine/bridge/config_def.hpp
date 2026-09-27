@@ -1,6 +1,6 @@
 // configDefinitions(): Orca's option table (print_config_def) and the key sets that libslic3r
 // defines (preset scopes, per-extruder and variant keys, per-object keys), as JSON text, for the
-// settings catalogue generator. The shape is ConfigDefinitions in web/src/engine/configDefinitions.ts.
+// settings catalogue generator. The shape is ConfigDefinitions in host/src/configDefinitions.ts.
 #pragma once
 
 #include <string>
