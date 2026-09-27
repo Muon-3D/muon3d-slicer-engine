@@ -1,0 +1,5 @@
+[submodule "orca"]
+	path = orca
+	url = https://github.com/Muon-3D/OrcaSlicer.git
+	branch = muon3d-wasm
+	shallow = true

@@ -7,14 +7,14 @@
 #   VARIANT=mt bash engine/bridge/check-syntax.sh # pthreads + oneTBB headers
 #   bash engine/bridge/check-syntax.sh engine.cpp # selected files only
 #
-# Paths default to the layout in engine/README.md; override with ORCA_WASM_ROOT / ORCA_SRC.
+# Paths default to the layout in engine/README.md (ORCA_WASM_ROOT, and the orca/ submodule for ORCA_SRC).
 set -euo pipefail
 
 VARIANT=${VARIANT:-st}
 ROOT=${ORCA_WASM_ROOT:-$HOME/OrcaWasm}
-ORCA=${ORCA_SRC:-$ROOT/orca}
-DEPS=$ROOT/deps-src
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W 2>/dev/null || pwd)
+ORCA=${ORCA_SRC:-$HERE/../../orca}
+DEPS=$ROOT/deps-src
 SHIMS=$HERE/../shims
 GEN=$ROOT/bridge-check/$VARIANT   # generated libslic3r_version.h + response file
 

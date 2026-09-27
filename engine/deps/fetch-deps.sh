@@ -20,6 +20,7 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=../scripts/toolchain.sh
 source "$HERE/../scripts/toolchain.sh"
 ORCA_WASM_ROOT=$(mixed_path "${ORCA_WASM_ROOT:-$ORCAWASM_DEFAULT_ROOT}")   # accepts /x/... or X:/... forms
+check_root "$ORCA_WASM_ROOT"
 SRC=$ORCA_WASM_ROOT/deps-src
 ARC=$SRC/_archives
 SUMS=$HERE/SHA256SUMS

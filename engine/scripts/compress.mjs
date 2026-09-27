@@ -1,10 +1,10 @@
 // Precompresses published engine files: writes <file>.br (brotli, quality 11, 16 MiB window) and
-// <file>.gz (gzip -9) next to each one, which server/engineAssets.ts sends instead of compressing
-// 10 MB of wasm on every request (brotli-11 is also about a quarter smaller than what the
-// compression middleware produces on the fly).
+// <file>.gz (gzip -9) next to each one, which a web server can send as they are instead of
+// compressing 10 MB of wasm on every request (brotli-11 is also about a quarter smaller than what
+// a server compresses on the fly).
 //
-//   node engine/scripts/compress.mjs web/public/engine/engine-st.mjs web/public/engine/engine-st.wasm
-//   node engine/scripts/compress.mjs web/public/engine          # every engine-*.mjs / .wasm in it
+//   node engine/scripts/compress.mjs dist/engine-st.mjs dist/engine-st.wasm
+//   node engine/scripts/compress.mjs dist          # every engine-*.mjs / .wasm in it
 //
 // scripts/build.sh runs it on the variant it publishes. Each file is written under a temporary name
 // and renamed into place, after the file it compresses, so a server never sees a partial or stale

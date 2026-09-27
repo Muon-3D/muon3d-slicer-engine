@@ -12,6 +12,7 @@
 #   unix_path P     /x/OrcaWasm on Windows (for PATH), P unchanged elsewhere
 #   native_path P   X:\OrcaWasm on Windows (for Windows programs that parse their own arguments)
 #   dir_path D      the absolute path of folder D, in mixed_path form
+#   check_root R    stops when the workspace root R contains a space
 #   setup_emsdk     exports EMSDK, EM_CONFIG, EM_CACHE, EMSDK_NODE (+ EMSDK_PYTHON on Windows) and puts
 #                   Emscripten and its node first on PATH; ORCA_WASM_ROOT must be set first
 #   check_emcc V    stops unless `emcc --version` is Emscripten V
@@ -37,6 +38,15 @@ else
 fi
 # `pwd -W` is Git Bash's X:/... form of the current directory; other shells reject the option.
 dir_path() { (cd "$1" && { pwd -W 2>/dev/null || pwd; }); }
+
+# The workspace root goes into every compile flag (-ffile-prefix-map) and Emscripten's cache paths, so it
+# must not contain a space (on Windows the default ~/OrcaWasm does when the user name has one).
+check_root() {
+  [[ $1 != *" "* ]] || {
+    echo "ORCA_WASM_ROOT=$1 contains a space: set ORCA_WASM_ROOT to a folder without one." >&2
+    exit 1
+  }
+}
 
 setup_emsdk() {
   : "${ORCA_WASM_ROOT:?set ORCA_WASM_ROOT before setup_emsdk}"

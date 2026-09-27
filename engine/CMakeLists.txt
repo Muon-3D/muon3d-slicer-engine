@@ -3,7 +3,7 @@
 #
 # Configure (Git Bash, emsdk environment; see scripts/build.sh, which does all of this):
 #   emcmake cmake -C $ORCA_WASM_ROOT/prefix-<v>/share/orcawasm/initial-cache.cmake -G Ninja \
-#       -S engine -B $ORCA_WASM_ROOT/build-<v> -DORCA_SRC=$ORCA_WASM_ROOT/orca -DENGINE_VARIANT=<st|mt>
+#       -S engine -B $ORCA_WASM_ROOT/build-<v> -DORCA_SRC=<repository>/orca -DENGINE_VARIANT=<st|mt>
 #
 # Nothing under ORCA_SRC is modified: its source list is read from Orca's own CMakeLists, desktop-only
 # sources are left out or replaced by engine/stubs, missing headers come from engine/shims, and the few
@@ -21,7 +21,7 @@ set(ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 list(PREPEND CMAKE_MODULE_PATH "${ENGINE_DIR}/cmake")
 
 # --- Options ---------------------------------------------------------------------------------------------------
-set(ORCA_SRC "" CACHE PATH "OrcaSlicer source tree (e.g. $ORCA_WASM_ROOT/orca)")
+set(ORCA_SRC "" CACHE PATH "OrcaSlicer source tree (the orca/ submodule)")
 set(ENGINE_VARIANT "st" CACHE STRING "Engine variant: st (single-threaded) or mt (pthreads + oneTBB)")
 set_property(CACHE ENGINE_VARIANT PROPERTY STRINGS st mt)
 option(ENGINE_PCH "Build libslic3r with Orca's pchheader.hpp precompiled and force-included, as Orca does (OFF is untested)" ON)

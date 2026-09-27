@@ -16,7 +16,7 @@
 #   ORCA_WASM_ROOT  default ~/OrcaWasm. Sources in $ORCA_WASM_ROOT/deps-src, build trees in
 #                   $ORCA_WASM_ROOT/build-deps/$VARIANT (short on purpose: MAX_PATH), output in
 #                   $ORCA_WASM_ROOT/prefix-$VARIANT. No spaces (it is part of the compile flags).
-#   ORCA_SRC        default $ORCA_WASM_ROOT/orca (read-only; only the GMP patch is taken from it).
+#   ORCA_SRC        default: the orca/ submodule (read-only; only the GMP patch is taken from it).
 #   ORCA_EMSDK      default $ORCA_WASM_ROOT/emsdk (scripts/toolchain.sh).
 #   JOBS            parallel compile jobs, default nproc.
 #   EM_CACHE        default: the emsdk's own cache. Must be on the same drive as the build trees
@@ -42,7 +42,8 @@ source "$SCRIPT_DIR/../scripts/toolchain.sh"
 HERE=$(dir_path "$SCRIPT_DIR")    # X:/... form on Windows: passed to native tools
 # Mixed-style paths (X:/...) everywhere, so no MSYS path conversion is involved when calling cmake/emcc.
 ORCA_WASM_ROOT=$(mixed_path "${ORCA_WASM_ROOT:-$ORCAWASM_DEFAULT_ROOT}")
-ORCA_SRC=$(mixed_path "${ORCA_SRC:-$ORCA_WASM_ROOT/orca}")
+check_root "$ORCA_WASM_ROOT"
+ORCA_SRC=$(mixed_path "${ORCA_SRC:-$HERE/../../orca}")
 SRC=$ORCA_WASM_ROOT/deps-src
 PREFIX=$ORCA_WASM_ROOT/prefix-$VARIANT
 BLD=$ORCA_WASM_ROOT/build-deps/$VARIANT
