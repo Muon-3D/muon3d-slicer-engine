@@ -73,7 +73,8 @@ function seed(emscripten, archives, portsDir) {
     fs.rmSync(target, { recursive: true, force: true });
     fs.mkdirSync(target, { recursive: true });
     fs.writeFileSync(path.join(portsDir, p.cacheName), data);
-    execFileSync('tar', ['-xzf', archive, '-C', target], { stdio: 'inherit' });
+    // The archive by its bare name: GNU tar reads "C:\..." as a remote host.
+    execFileSync('tar', ['-xzf', path.basename(archive), '-C', target], { cwd: path.dirname(archive), stdio: 'inherit' });
     fs.writeFileSync(path.join(target, '.emscripten_url'), p.url + '\n');
     console.log(`[seeded] ${p.name} ${p.version} -> ${target}`);
   }

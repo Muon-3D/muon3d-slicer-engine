@@ -53,8 +53,12 @@ cp "$TP"/deps/* "$WORK/root/deps-src/_archives/"
 # ---- The toolchain: the image's emsdk, an empty cache, the ports from the mirror ---------------------------------
 export ORCA_WASM_ROOT=$WORK/root ORCA_EMSDK=$EMSDK_DIR EM_CACHE=$WORK/emcache
 mkdir -p "$EM_CACHE"
-# A first emcc run writes the cache's sanity file; a cache without one is cleared on first use, ports and all.
+# A first emcc run writes the cache's sanity file (a cache without one is cleared on first use, ports and all),
+# and a first compile installs the sysroot headers (embuilder's port builds expect sysroot/lib/pkgconfig).
 PATH=$EMSDK_DIR/upstream/emscripten:$PATH emcc --check > /dev/null 2>&1 || true
+echo 'int main(void) { return 0; }' > "$WORK/sysroot.c"
+PATH=$EMSDK_DIR/upstream/emscripten:$PATH emcc -c "$WORK/sysroot.c" -o "$WORK/sysroot.o"
+rm -f "$WORK/sysroot.c" "$WORK/sysroot.o"
 NODE=$(ls -d "$EMSDK_DIR"/node/*_64bit | sort -V | tail -1)/bin/node
 "$NODE" "$SRC/tools/release/emscripten-ports.mjs" seed "$EMSDK_DIR/upstream/emscripten" "$TP/emscripten-ports" "$EM_CACHE/ports"
 
