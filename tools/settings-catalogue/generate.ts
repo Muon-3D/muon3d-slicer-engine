@@ -181,6 +181,23 @@ export interface OrcaSources {
   raw: Record<string, string>;
   parser: ParserInput;
   commit: string;
+  /** is_filament_extruder_override_key (PrintConfig.cpp): the filament options that override the printer's. */
+  filamentOverrideKeys: ReadonlySet<string>;
+}
+
+/**
+ * The keys of is_filament_extruder_override_key (src/libslic3r/PrintConfig.cpp): the
+ * filament_extruder_override_keys list plus filament_retract_length_nc, which it names itself.
+ */
+export function parseFilamentOverrideKeys(printConfigCpp: string): Set<string> {
+  const list = /filament_extruder_override_keys\s*=\s*\{([^}]*)\}/.exec(printConfigCpp);
+  const fn = /bool is_filament_extruder_override_key\([^)]*\)\s*\{([^}]*)\}/.exec(printConfigCpp);
+  if (!list || !fn) throw new Error('src/libslic3r/PrintConfig.cpp: filament_extruder_override_keys or is_filament_extruder_override_key not found');
+  const strip = (text: string) => text.replace(/\/\/[^\n]*/g, '');
+  const keys = new Set([...strip(list[1]).matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]));
+  for (const m of strip(fn[1]).matchAll(/opt_key\s*==\s*"([a-z0-9_]+)"/g)) keys.add(m[1]);
+  if (keys.size < 10) throw new Error(`src/libslic3r/PrintConfig.cpp: only ${keys.size} filament override keys found`);
+  return keys;
 }
 
 export function readOrcaSources(orcaRoot: string): OrcaSources {
@@ -189,14 +206,15 @@ export function readOrcaSources(orcaRoot: string): OrcaSources {
   const tab = prepareCpp(TAB_CPP, raw[TAB_CPP]);
   const maxExtruders = /MAXIMUM_EXTRUDER_NUMBER\s*=\s*(\d+)/.exec(read('src/libslic3r/libslic3r.h'));
   if (!maxExtruders) throw new Error('src/libslic3r/libslic3r.h: MAXIMUM_EXTRUDER_NUMBER not found');
+  const printConfig = read('src/libslic3r/PrintConfig.cpp');
   const parser: ParserInput = {
     tab,
     publishable: parsePublishableLists(prepareCpp(PUBLISH_CPP, raw[PUBLISH_CPP])),
-    enumKeys: parseEnumKeyMaps(read('src/libslic3r/PrintConfig.cpp')),
+    enumKeys: parseEnumKeyMaps(printConfig),
     constants: { MAXIMUM_EXTRUDER_NUMBER: Number(maxExtruders[1]) },
   };
   const commit = execFileSync('git', ['-C', orcaRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  return { root: orcaRoot, tab, raw, parser, commit };
+  return { root: orcaRoot, tab, raw, parser, commit, filamentOverrideKeys: parseFilamentOverrideKeys(printConfig) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -306,9 +324,12 @@ const SLOTS_BY_KEY: Readonly<Record<string, SlotKind>> = {
 
 function vectorSlots(key: string, o: EngineOption, defs: EngineDefinitions, scopes: SettingScope[]): SlotKind | undefined {
   if (!VECTOR_TYPES.has(o.type)) return undefined;
-  if (defs.extruderKeys.includes(key)) return 'extruder';
+  // The variant sets first: a printer option such as retraction_length is also one of
+  // extruder_option_keys, but presets store it per extruder variant (printer_extruder_variant),
+  // which is how Orca's tabs index it (get_index_for_extruder).
   const variants = defs.variantKeys;
   if (variants.print.includes(key) || variants.filament.includes(key) || variants.printer1.includes(key) || variants.printer2.includes(key)) return 'variant';
+  if (defs.extruderKeys.includes(key)) return 'extruder';
   if (defs.presetKeys.machineLimits.includes(key)) return 'machineLimits';
   if (SLOTS_BY_KEY[key]) return SLOTS_BY_KEY[key];
   if (o.type === 'points' || o.guiFlags === 'serialized') return 'list';
@@ -316,7 +337,7 @@ function vectorSlots(key: string, o: EngineOption, defs: EngineDefinitions, scop
   throw new Error(`${key}: a ${o.type} option no rule classifies; add it to SLOTS_BY_KEY in generate.ts`);
 }
 
-function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, server: ServerOrca): SettingDef {
+function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, server: ServerOrca, filamentOverrideKeys: ReadonlySet<string>): SettingDef {
   if (o.type === 'none') throw new Error(`${key}: option without a type`);
   const scopes = TABS.map((t) => t.id).filter((s) =>
     s === 'machine' ? defs.presetKeys.machine.includes(key) || defs.presetKeys.machineLimits.includes(key) : defs.presetKeys[s].includes(key),
@@ -328,6 +349,10 @@ function settingDef(key: string, o: EngineOption, defs: EngineDefinitions, serve
   if (o.sidetext) out.unit = o.sidetext;
   if (o.category) out.category = o.category;
   if (o.default !== undefined) out.default = o.default;
+  // Orca's default filament preset, which every filament preset is loaded on top of, has each
+  // nullable filament override unset (PresetBundle::PresetBundle: "Set all the nullable values to
+  // nils"), so a filament preset that does not name one uses the printer's value.
+  if (o.nullable && filamentOverrideKeys.has(key)) out.default = ['nil'];
   if (o.min !== undefined) out.min = o.min;
   if (o.max !== undefined) out.max = o.max;
   if (o.type === 'floatOrPercent' || o.type === 'floatsOrPercents') {
@@ -446,7 +471,7 @@ export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueP
   const options: Record<string, SettingDef> = {};
   for (const key of Object.keys(defs.options).sort()) {
     try {
-      options[key] = settingDef(key, defs.options[key], defs, server);
+      options[key] = settingDef(key, defs.options[key], defs, server, orca.filamentOverrideKeys);
     } catch (err) {
       problems.push((err as Error).message);
     }
@@ -508,7 +533,7 @@ export function buildCatalogue({ defs, orca, server, ruleFunctions }: CatalogueP
         id: 'other',
         title: 'Other',
         other: true,
-        groups: [{ id: 'other.not-in-orca-tabs', title: 'Not in OrcaSlicer’s tabs', lines: keys.map((key) => ({ options: [{ key }] })) }],
+        groups: [{ id: 'other.not-in-orca-tabs', title: 'Other settings', lines: keys.map((key) => ({ options: [{ key }] })) }],
       });
     }
   }

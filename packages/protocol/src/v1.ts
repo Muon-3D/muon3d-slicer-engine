@@ -148,8 +148,11 @@ export type EngineRequest =
 // never shrinks, so the client replaces a worker whose heap has grown large. Absent when unknown.
 export type EngineResponse =
   | { type: 'ready'; variant: EngineVariant; orcaVersion: string; orcaCommit: string; initMs: number }
-  /** Download progress of the .wasm while the engine starts: bytes of the uncompressed file, total 0 when unknown. */
-  | { type: 'loading'; loadedBytes: number; totalBytes: number }
+  /**
+   * Download progress of the .wasm while the engine starts: bytes of the uncompressed file, total 0
+   * when unknown. `done` on the last one, once the whole file has arrived (it then compiles and starts).
+   */
+  | { type: 'loading'; loadedBytes: number; totalBytes: number; done?: boolean }
   | { type: 'progress'; id: string; percent: number; message: string }
   | { type: 'warning'; id: string; warning: EngineWarning }
   | { type: 'sliced'; id: string; output: SliceOutput; heapBytes?: number }

@@ -298,21 +298,23 @@ describe('instantiateEngineWasm', () => {
 
   it('compiles the response while it streams in, and reports the download', async () => {
     serve(() => wasm(MEMORY_MODULE));
-    const progress: Array<[number, number]> = [];
-    const result = await instantiateEngineWasm(WASM_URL, {}, { wasmBytes: MEMORY_MODULE.length, onDownload: (l, t) => progress.push([l, t]) });
+    const progress: Array<[number, number, boolean]> = [];
+    const result = await instantiateEngineWasm(WASM_URL, {}, { wasmBytes: MEMORY_MODULE.length, onDownload: (l, t, done) => progress.push([l, t, done]) });
     assert.ok(result.instance.exports.memory instanceof WebAssembly.Memory);
     assert.ok(result.module instanceof WebAssembly.Module);
     assert.deepEqual(requested, [WASM_URL]);
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(progress.at(-1), [MEMORY_MODULE.length, MEMORY_MODULE.length]);
+    // The last report says the download is complete (the client's start-up watchdog relies on it).
+    assert.deepEqual(progress.at(-1), [MEMORY_MODULE.length, MEMORY_MODULE.length, true]);
+    assert.ok(progress.slice(0, -1).every(([, , done]) => !done));
   });
 
   it('compiles the bytes when the server does not say application/wasm', async () => {
     serve(() => wasm(MEMORY_MODULE, 'application/octet-stream'));
-    const progress: Array<[number, number]> = [];
-    const result = await instantiateEngineWasm(WASM_URL, {}, { onDownload: (l, t) => progress.push([l, t]) });
+    const progress: Array<[number, number, boolean]> = [];
+    const result = await instantiateEngineWasm(WASM_URL, {}, { onDownload: (l, t, done) => progress.push([l, t, done]) });
     assert.ok(result.instance.exports.memory instanceof WebAssembly.Memory);
-    assert.deepEqual(progress.at(-1), [MEMORY_MODULE.length, 0], 'no total known');
+    assert.deepEqual(progress.at(-1), [MEMORY_MODULE.length, 0, true], 'no total known, but the end is');
   });
 
   it('names the file that is missing or could not be downloaded', async () => {

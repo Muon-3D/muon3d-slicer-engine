@@ -108,8 +108,11 @@ export function withoutAssertionsHint(message: string): string {
 export interface LoadEngineOptions {
   /** Size of the uncompressed .wasm (the manifest's wasmBytes), for download progress. */
   wasmBytes?: number;
-  /** Download progress of the .wasm: bytes of the uncompressed file so far, and the total (0 when unknown). */
-  onDownload?: (loadedBytes: number, totalBytes: number) => void;
+  /**
+   * Download progress of the .wasm: bytes of the uncompressed file so far, and the total (0 when
+   * unknown); `done` on the last call, once the whole file has arrived.
+   */
+  onDownload?: (loadedBytes: number, totalBytes: number, done: boolean) => void;
 }
 
 export interface LoadedEngine {
@@ -235,7 +238,7 @@ function downloadReporter(onDownload: LoadEngineOptions['onDownload'], total: nu
     if (!done && t - last < 100) return;
     last = t;
     try {
-      onDownload(loaded, total);
+      onDownload(loaded, total, done);
     } catch (err) {
       console.error('Engine download callback failed:', err);
     }
@@ -468,7 +471,7 @@ function startWorker(scope: WorkerScope): void {
       if (request.variant === 'mt' && request.threads) limitThreads(request.threads);
       const loaded = await loadEngine(request.baseUrl, request.variant, {
         wasmBytes: request.wasmBytes,
-        onDownload: (loadedBytes, totalBytes) => post({ type: 'loading', loadedBytes, totalBytes }),
+        onDownload: (loadedBytes, totalBytes, done) => post({ type: 'loading', loadedBytes, totalBytes, ...(done ? { done } : {}) }),
       });
       const version = loaded.engine.version();
       engine = loaded.engine;

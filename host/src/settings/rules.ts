@@ -32,6 +32,7 @@
 //
 // Pure (types-only imports) so it runs under plain Node in tests.
 import type { ConfigValue } from '../../../shared/types.ts';
+import { extruderVariantString, indexForExtruder } from './variants.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Public types
@@ -359,6 +360,8 @@ const READ: Readonly<Record<string, readonly [OrcaKind, string]>> = {
   ensure_vertical_shell_thickness: ['enum', 'ensure_all'],
   extruder_bed_exclude_volumes: ['strings', ''],
   extruder_max_nozzle_count: ['ints', '1'],
+  extruder_type: ['enums', 'Direct Drive'],
+  extruder_variant_list: ['strings', 'Direct Drive Standard'],
   filament_deretraction_speed: ['floats', 'nil'],
   filament_diameter: ['floats', '1.75'],
   filament_ironing_flow: ['percents', 'nil'],
@@ -436,6 +439,8 @@ const READ: Readonly<Record<string, readonly [OrcaKind, string]>> = {
   precise_z_height: ['bool', '0'],
   preheat_steps: ['int', '1'],
   print_sequence: ['enum', 'by layer'],
+  printer_extruder_id: ['ints', '1'],
+  printer_extruder_variant: ['strings', 'Direct Drive Standard'],
   printer_structure: ['enum', 'undefine'],
   purge_in_prime_tower: ['bool', '1'],
   raft_layers: ['int', '0'],
@@ -788,6 +793,20 @@ function hasBedExcludeVolumes(c: Config): boolean {
   if (c.is('bed_exclude_volume_mode', 'per_extruder'))
     return c.slots('extruder_bed_exclude_volumes').some(hasNonemptyString);
   return hasNonemptyString(c.text('bed_exclude_volumes'));
+}
+
+/**
+ * TabPrinter::toggle_options's get_index_for_extruder(i): the slot of extruder i's nozzle variant
+ * in the printer's per-variant options (variants.ts), with a Standard nozzle as both slicers use.
+ * Orca stops when there is none; the port reads extruder i's slot then.
+ */
+function printerVariantIndex(c: Config, extruder: number): number {
+  const index = indexForExtruder(
+    { variants: c.slots('printer_extruder_variant'), ids: c.slots('printer_extruder_id'), extruderVariantList: c.slots('extruder_variant_list') },
+    extruder + 1,
+    extruderVariantString(c.text('extruder_type', extruder), 'Standard'),
+  );
+  return index >= 0 ? index : extruder;
 }
 
 /** active_bed_exclude_volume_mode: the mode, which is Shared while no collision volume is set. */
@@ -2025,8 +2044,7 @@ function tabPrinterToggleOptions(x: Ctx, t: Toggles, issues: RuleIssue[]): void 
   // Extruder pages ("Extruder" or "Extruder 1".."Extruder N")
   let firmwareRetractionAsked = false;
   for (let i = 0; i < x.extruderCount; i++) {
-    // get_index_for_extruder: one variant per extruder on the printers the web slicer runs.
-    const variant_index = i;
+    const variant_index = printerVariantIndex(c, i);
     const have_retract_length = c.num('retraction_length', variant_index) > 0;
 
     t.field('extruder_printable_area', false, i); // disable
