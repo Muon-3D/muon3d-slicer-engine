@@ -11,7 +11,9 @@ slicer takes for one plate. It takes Orca presets and placed meshes, and returns
 statistics, toolpaths for a preview, and Orca's warnings and error codes.
 
 **Status:** pre-release. The host speaks protocol v1; protocol v2 (a documented envelope, handshake and
-capabilities, and a settings service) is next. There are no releases yet: build it from source as below.
+capabilities, and a settings service) is next. Releases, each with its complete source, are on
+[GitHub Releases](https://github.com/Muon-3D/muon3d-slicer-engine/releases); the rolling `edge` prerelease follows
+`main`. Or build it from source as below.
 
 ## What is here
 
@@ -20,11 +22,13 @@ engine/              the C++ bridge, the out-of-tree CMake build of libslic3r, s
 orca/                submodule: OrcaSlicer, branch muon3d-wasm of github.com/Muon-3D/OrcaSlicer, at a tagged pin
 host/                the Web Worker host (TypeScript) and its build; host/src/settings: Orca's settings rules
 packages/protocol/   @muon3d/slicer-engine-protocol: the protocol types (Apache-2.0)
-tools/               settings-catalogue/ (the settings catalogue generator), check-imports.mjs
+tools/               settings-catalogue/ (the settings catalogue generator), check-imports.mjs, release/ (release
+                     assets, notices, offline rebuild), ci/ (the Linux toolchain)
 data/                settings-catalogue.json: every Orca option, laid out as Orca's settings tabs
 test/                engine tests (Node), preset fixtures, test helpers
 examples/node-cli/   slice from the command line through the host
-docs/                the original engine spec and research notes
+docs/                BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original engine spec, research notes
+.github/             workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
 ```
 
 ## Build and test
@@ -58,7 +62,7 @@ node examples/node-cli/slice.mjs --cube 20 -o cube.gcode
 | `engine-st.mjs`, `engine-st.wasm` | the single-threaded engine: works in every current browser |
 | `engine-mt.mjs`, `engine-mt.wasm` | the multithreaded engine: needs a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`) |
 | `*.br`, `*.gz` | precompressed copies a server can send as they are |
-| `LICENSE`, `NOTICE`, `SOURCE.md` | the licence, the notices, and where the source of this build is |
+| `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES.md`, `SOURCE.md` | the licence, the notices (ours and the third-party components'), and where the source of this build is |
 
 ```js
 const base = '/engine/';                                   // wherever dist/ is served

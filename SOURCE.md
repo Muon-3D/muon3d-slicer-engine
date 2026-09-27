@@ -43,7 +43,14 @@ system, the build is byte-for-byte reproducible: compare the sha256 of your `eng
 
 ## Releases
 
-Each release on <https://github.com/Muon-3D/muon3d-slicer-engine/releases> will carry, next to the runtime, a source
-bundle of this repository at the release tag and, once per Orca pin, the Orca source and mirrored copies of every
-dependency archive above, so the source stays available even if an upstream download disappears. Until the first
-release, the repository, the fork's tag and the upstream URLs above are the source.
+Each release on <https://github.com/Muon-3D/muon3d-slicer-engine/releases> carries its Corresponding Source next to
+the runtime, so it stays available even if an upstream download disappears:
+
+- `muon3d-slicer-engine-<version>-source.tar.gz`: this repository at the release tag;
+- `orcaslicer-<commit>-source.tar.xz`: the OrcaSlicer tree at the pinned commit;
+- `third-party-sources-<key>.tar`: every library archive above, and the Emscripten ports zlib and libpng as
+  Emscripten downloads them.
+
+`docs/BUILD.md` ("From a release's source assets") rebuilds the engine from these three files alone, without the
+network; every release is checked that way before it is published (`docs/RELEASING.md`). The `SOURCE.md` inside a
+release's runtime adds a section naming that build's commits and source assets, with their sha256.
