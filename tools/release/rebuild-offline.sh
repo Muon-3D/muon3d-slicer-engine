@@ -37,7 +37,9 @@ tar -xzf "$ENGINE_BUNDLE" -C "$WORK/src"
 SRC=$(one "$WORK/src/muon3d-slicer-engine-*")
 ORCA_COMMIT=$(sed -n 's/^orca=//p' "$SRC/SOURCE_COMMITS")
 # git archive records the commit it was made from in the tar header: the Orca bundle must be the pinned commit.
-BUNDLE_COMMIT=$(xz -dc "$ORCA_BUNDLE" | git get-tar-commit-id) || die "$ORCA_BUNDLE carries no commit id"
+# (git stops reading after the first header, so xz may die of SIGPIPE: only git's status counts.)
+BUNDLE_COMMIT=$( { xz -dc "$ORCA_BUNDLE" 2> /dev/null || true; } | git get-tar-commit-id) ||
+  die "$ORCA_BUNDLE carries no commit id"
 [[ $BUNDLE_COMMIT == "$ORCA_COMMIT" ]] || die "$ORCA_BUNDLE is commit $BUNDLE_COMMIT, SOURCE_COMMITS pins $ORCA_COMMIT"
 tar -xJf "$ORCA_BUNDLE" -C "$SRC"
 echo "sources: $(sed 's/$/ /' "$SRC/SOURCE_COMMITS" | tr -d '\n')"
