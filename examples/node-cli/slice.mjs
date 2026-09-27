@@ -101,6 +101,7 @@ worker.on('message', (message) => {
       break;
     case 'sliced': {
       const { gcode, stats } = message.output;
+      fs.mkdirSync(path.dirname(out), { recursive: true });
       fs.writeFileSync(out, gcode);
       console.log(`sliced ${name} in ${((performance.now() - started) / 1000).toFixed(1)} s: ${stats.layers} layers, ${stats.printTimeText}, ` +
         `${stats.filamentMm} mm / ${stats.filamentG} g filament, max Z ${stats.maxZ}`);
