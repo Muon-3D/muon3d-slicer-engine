@@ -20,9 +20,15 @@ ORCA_TAG=muon3d-wasm/2026-09-24                      # tag on ORCA_REPO naming t
 ORCA_BASE_REPO=https://github.com/OrcaSlicer/OrcaSlicer.git
 ORCA_BASE_REF=refs/pull/13777/head
 ORCA_BASE_COMMIT=432debfc74a7e62e84b1af420804c47590ace43f   # "Restore shared printer option variable"
-# The committed pin; a pin that is staged but not committed yet (while moving it) counts too.
-ORCA_PINNED_COMMIT=$(git -C "$REPO_DIR" rev-parse -q --verify HEAD:orca 2>/dev/null ||
-                     git -C "$REPO_DIR" rev-parse -q --verify :orca 2>/dev/null) || {
-  echo "pin.sh: no orca submodule in $REPO_DIR" >&2
-  exit 1
-}
+# The committed pin; a pin that is staged but not committed yet (while moving it) counts too. A release's
+# source bundle is not a git checkout: it names its commits in SOURCE_COMMITS (tools/release/source-bundles.sh).
+if [[ ! -e $REPO_DIR/.git && -f $REPO_DIR/SOURCE_COMMITS ]]; then
+  ORCA_PINNED_COMMIT=$(sed -n 's/^orca=//p' "$REPO_DIR/SOURCE_COMMITS")
+  [[ -n $ORCA_PINNED_COMMIT ]] || { echo "pin.sh: no orca= line in $REPO_DIR/SOURCE_COMMITS" >&2; exit 1; }
+else
+  ORCA_PINNED_COMMIT=$(git -C "$REPO_DIR" rev-parse -q --verify HEAD:orca 2>/dev/null ||
+                       git -C "$REPO_DIR" rev-parse -q --verify :orca 2>/dev/null) || {
+    echo "pin.sh: no orca submodule in $REPO_DIR" >&2
+    exit 1
+  }
+fi

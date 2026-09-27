@@ -27,6 +27,7 @@
 #   JOBS            parallel jobs (default: all cores)
 #   NINJA_ARGS      extra arguments for ninja, e.g. "-k 0"
 #   EM_CACHE        default: the emsdk's own cache (must be on the same drive as the build tree)
+#   SOURCE_DATE_EPOCH  when set, manifest.json's builtAt (seconds since 1970) instead of the current time
 # =====================================================================================================
 set -euo pipefail
 
@@ -66,13 +67,23 @@ check_emcc 6.0.10
 # ---- Orca commit ------------------------------------------------------------------------------------------
 # Compiled into the engine (version() -> the worker's `ready` message) and written to the manifest, from
 # this one value. The published engine must correspond to a commit (AGPL source offer), so say when not.
-ORCA_COMMIT=$(git -C "$ORCA_SRC" rev-parse HEAD)
-if [[ -n $(git -C "$ORCA_SRC" status --porcelain --untracked-files=no -- src deps_src resources version.inc) ]]; then
-  ORCA_COMMIT="$ORCA_COMMIT-dirty"
-  echo "warning: $ORCA_SRC has uncommitted changes; the engine reports $ORCA_COMMIT" >&2
-fi
 # shellcheck source=orca/pin.sh
 source "$SCRIPT_DIR/orca/pin.sh"
+if [[ -e $ORCA_SRC/.git ]]; then
+  ORCA_COMMIT=$(git -C "$ORCA_SRC" rev-parse HEAD)
+  if [[ -n $(git -C "$ORCA_SRC" status --porcelain --untracked-files=no -- src deps_src resources version.inc) ]]; then
+    ORCA_COMMIT="$ORCA_COMMIT-dirty"
+    echo "warning: $ORCA_SRC has uncommitted changes; the engine reports $ORCA_COMMIT" >&2
+  fi
+elif [[ ! -e $REPO_DIR/.git && -f $REPO_DIR/SOURCE_COMMITS ]]; then
+  # Built from a release's source bundles (docs/BUILD.md): orca/ is the Orca source bundle of the commit that
+  # SOURCE_COMMITS names (tools/release/rebuild-offline.sh checks the bundle's commit id before building).
+  ORCA_COMMIT=$ORCA_PINNED_COMMIT
+  echo "note: $ORCA_SRC is not a git checkout; the Orca commit $ORCA_COMMIT comes from SOURCE_COMMITS" >&2
+else
+  echo "ORCA_SRC=$ORCA_SRC is not a git checkout (get it with bash engine/scripts/get-orca.sh)." >&2
+  exit 1
+fi
 if [[ ${ORCA_COMMIT%-dirty} != "$ORCA_PINNED_COMMIT" ]]; then
   echo "warning: $ORCA_SRC is at ${ORCA_COMMIT%-dirty}, not at the pinned $ORCA_PINNED_COMMIT (the orca/" \
        "submodule), so nobody else can get this source: push and tag it on the fork, then commit the pin." >&2
@@ -129,10 +140,16 @@ SHA_MJS=$(sha256sum "$PUBLISH/$MJS" | cut -d' ' -f1)
 SHA_WASM=$(sha256sum "$PUBLISH/$WASM" | cut -d' ' -f1)
 # This repository's commit, for the bridge and the build recipe compiled into the engine; "-dirty" when
 # engine/ has changes that are not committed (docs do not count).
-ENGINE_COMMIT=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
-if [[ $ENGINE_COMMIT != unknown && -n $(git -C "$REPO_DIR" status --porcelain -- engine \
-      ':(exclude)engine/research' ':(exclude,glob)engine/**/*.md') ]]; then
-  ENGINE_COMMIT="$ENGINE_COMMIT-dirty"
+# A source bundle (no .git) names its commit in SOURCE_COMMITS.
+if [[ -e $REPO_DIR/.git ]]; then
+  ENGINE_COMMIT=$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+  if [[ $ENGINE_COMMIT != unknown && -n $(git -C "$REPO_DIR" status --porcelain -- engine \
+        ':(exclude)engine/research' ':(exclude,glob)engine/**/*.md') ]]; then
+    ENGINE_COMMIT="$ENGINE_COMMIT-dirty"
+  fi
+else
+  ENGINE_COMMIT=$(sed -n 's/^engine=//p' "$REPO_DIR/SOURCE_COMMITS" 2>/dev/null || true)
+  ENGINE_COMMIT=${ENGINE_COMMIT:-unknown}
 fi
 
 # Merge into manifest.json. An entry for the other variant survives only if it was built from the same
@@ -153,7 +170,8 @@ if (previous && !sameBuild && Object.keys(previous.variants || {}).some((v) => v
 const manifest = {
   orcaVersion: e.MANIFEST_ORCA_VERSION,
   orcaCommit: e.MANIFEST_ORCA_COMMIT,
-  builtAt: new Date().toISOString(),
+  // SOURCE_DATE_EPOCH (the commit time, in CI) makes the manifest reproducible too.
+  builtAt: (e.SOURCE_DATE_EPOCH ? new Date(Number(e.SOURCE_DATE_EPOCH) * 1000) : new Date()).toISOString(),
   ...(previous && previous.host ? { host: previous.host } : {}),
   variants: {
     ...(sameBuild ? previous.variants : {}),

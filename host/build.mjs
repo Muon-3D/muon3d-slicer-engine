@@ -1,6 +1,6 @@
 // `npm run build:host`: bundles the worker host (host/src/worker.ts) with esbuild into
 // dist/host.<hash>.js, an ES module worker script, and records it in dist/manifest.json. It also
-// copies LICENSE, NOTICE and SOURCE.md into dist/, so they are served next to the object code.
+// copies LICENSE, NOTICE, THIRD-PARTY-NOTICES.md and SOURCE.md into dist/, so they are served next to the object code.
 //
 //   npm run build:host                 # dist/host.<content hash>.js (+ .br/.gz)
 //   npm run build:host -- --watch      # dist/host.dev.js, rebuilt on every change (for a client's dev loop)
@@ -10,7 +10,8 @@
 // (package-lock.json) and the commit named in the banner.
 //
 // Environment:
-//   ENGINE_DIST  output folder, default dist/ in this repository (as engine/scripts/build.sh)
+//   ENGINE_DIST    output folder, default dist/ in this repository (as engine/scripts/build.sh)
+//   HOST_METAFILE  also write esbuild's metafile (every bundled input) there; the release notices use it
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -26,12 +27,25 @@ const PROTOCOL = 1;
 
 /** This repository's commit, "-dirty" when the host or the protocol types have uncommitted changes. */
 function engineCommit() {
+  // A release's source bundle is not a git checkout: it names its commit in SOURCE_COMMITS.
+  if (!fs.existsSync(path.join(repo, '.git'))) {
+    const named = /^engine=(\S+)$/m.exec(readOptional(path.join(repo, 'SOURCE_COMMITS')))?.[1];
+    return named ?? 'unknown';
+  }
   try {
     const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     const dirty = execFileSync('git', ['-C', repo, 'status', '--porcelain', '--', 'host/src', 'packages/protocol/src'], { encoding: 'utf8' }).trim();
     return dirty ? `${head}-dirty` : head;
   } catch {
     return 'unknown';
+  }
+}
+
+function readOptional(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
   }
 }
 
@@ -79,7 +93,7 @@ function writeManifest(host) {
 }
 
 function copyNotices() {
-  for (const name of ['LICENSE', 'NOTICE', 'SOURCE.md']) fs.copyFileSync(path.join(repo, name), path.join(dist, name));
+  for (const name of ['LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'SOURCE.md']) fs.copyFileSync(path.join(repo, name), path.join(dist, name));
 }
 
 function removeOldHosts(keep) {
@@ -115,7 +129,8 @@ if (watch) {
   console.log(`watching host/src and packages/protocol/src; writing ${path.join(dist, 'host.dev.js')}`);
 } else {
   const commit = engineCommit();
-  const result = await esbuild.build(options(commit));
+  const result = await esbuild.build({ ...options(commit), metafile: Boolean(process.env.HOST_METAFILE) });
+  if (process.env.HOST_METAFILE) fs.writeFileSync(process.env.HOST_METAFILE, JSON.stringify(result.metafile, null, 2) + '\n');
   const text = result.outputFiles[0].contents;
   const sha256 = createHash('sha256').update(text).digest('hex');
   const name = `host.${sha256.slice(0, 16)}.js`;

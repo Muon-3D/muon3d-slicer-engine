@@ -87,6 +87,9 @@ set(ENGINE_LINK_OPTIONS
     -sSTACK_SIZE=16MB                                  # Orca gives its threads 16 MB stacks; deep recursion
                                                        # in Arachne / CGAL has no guard page in wasm
     --emit-symbol-map                                  # engine-<v>.mjs.symbols, to decode crash stacks
+    # The licence banner at the top of engine-<v>.mjs (a /*! comment, which minifiers keep). It carries no
+    # commit or date, so the output still depends only on the sources.
+    "SHELL:--extern-pre-js \"${ENGINE_DIR}/cmake/licence-banner.js\""
 )
 if (ENGINE_VARIANT STREQUAL "mt")
     list(APPEND ENGINE_LINK_OPTIONS
@@ -135,4 +138,4 @@ foreach (resource IN LISTS ENGINE_RESOURCE_FILES)
 endforeach ()
 
 target_link_options(orca_engine PRIVATE ${ENGINE_LINK_OPTIONS} ${ENGINE_EXTRA_LINK_OPTIONS})
-set_property(TARGET orca_engine APPEND PROPERTY LINK_DEPENDS ${resource_deps})
+set_property(TARGET orca_engine APPEND PROPERTY LINK_DEPENDS ${resource_deps} "${ENGINE_DIR}/cmake/licence-banner.js")
