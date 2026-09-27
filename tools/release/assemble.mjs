@@ -70,8 +70,9 @@ if (manifest.orcaCommit.endsWith('-dirty')) fail(`the engine was built from a mo
 if (release && (engineCommits.size !== 1 || !engineCommits.has(commit))) {
   fail(`a release is built from one commit (${commit}); ${dist} has ${[...engineCommits].join(', ')}`);
 }
-if (release && opts.version !== JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).version) {
-  fail(`--version ${opts.version} is not package.json's version`);
+// A release is package.json's version; a release candidate (docs/RELEASING.md) is that version with -rc.<n>.
+if (release && opts.version.replace(/-rc\.\d+$/, '') !== JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).version) {
+  fail(`--version ${opts.version} is not package.json's version (or that version with -rc.<n>)`);
 }
 
 // ---- The runtime files ---------------------------------------------------------------------------------------

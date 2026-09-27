@@ -31,6 +31,8 @@ then publishes. Between releases, every push to `main` updates the rolling `edge
    git push origin v0.1.0
    ```
 
+   To try the whole pipeline first, push a release candidate tag `v0.1.0-rc.1`: it runs every job but `publish`
+   and leaves a verified draft (a prerelease), which can then be deleted with its tag.
 5. **Watch `Release`** (`gh run watch`). It takes about an hour: the two clean engine builds, the source assets,
    the draft, then the offline rebuilds of both variants in parallel.
 6. **Check the result:** `bash tools/release/verify-release.sh v0.1.0` downloads every asset, checks
