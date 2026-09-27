@@ -1,0 +1,28 @@
+# Licence and copyright per path (https://reuse.software/spec-3.3/). File headers take precedence where a file
+# has its own. orca/ is a submodule with OrcaSlicer's own notices.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Muon 3D Technologies Limited"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "packages/protocol/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Muon 3D Technologies Limited"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "engine/shims/tbb-serial/**"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Hiosdra/OrcaWasm contributors", "2026 Muon 3D Technologies Limited"]
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+# Generated from OrcaSlicer's option definitions and settings tabs, and flattened from its printer profiles.
+path = ["data/settings-catalogue.json", "test/fixtures/presets/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = ["OrcaSlicer, Bambu Studio and PrusaSlicer authors", "2026 Muon 3D Technologies Limited"]
+SPDX-License-Identifier = "AGPL-3.0-only"

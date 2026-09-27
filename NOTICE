@@ -1,0 +1,35 @@
+Muon3D Slicer Engine (based on OrcaSlicer)
+
+Copyright (C) the OrcaSlicer, Bambu Studio, PrusaSlicer, SuperSlicer, Slic3r and CuraEngine authors;
+see the copyright notices in the OrcaSlicer sources (orca/), which are kept.
+Modifications Copyright (C) 2026 Muon 3D Technologies Limited.
+
+This program is a modified version of OrcaSlicer (https://github.com/OrcaSlicer/OrcaSlicer). OrcaSlicer is based on
+Bambu Studio by Bambu Lab, which is based on PrusaSlicer by Prusa Research, which is based on Slic3r by Alessandro
+Ranellucci and the RepRap community. It also carries work from SuperSlicer and from Ultimaker's CuraEngine (the
+Arachne wall generator, AGPL-3.0-or-later).
+
+engine/shims/tbb-serial is derived from the serial TBB shim of Hiosdra/OrcaWasm
+(https://github.com/Hiosdra/OrcaWasm, AGPL-3.0).
+
+Modified by Muon 3D Technologies Limited from September 2026: OrcaSlicer's libslic3r built headless for WebAssembly
+(Emscripten); a bridge that runs OrcaSlicer's command-line slicing path without a GUI; a Web Worker host speaking
+the protocol in packages/protocol; a settings catalogue generated from OrcaSlicer's option definitions and settings
+tabs; and a TypeScript translation of OrcaSlicer's settings rules (ConfigManipulation.cpp, Tab.cpp). Changes to
+OrcaSlicer's own files are the commits on branch muon3d-wasm of https://github.com/Muon-3D/OrcaSlicer after the
+upstream base named in SOURCE.md, and the patches listed in engine/PATCHES.md.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General
+Public License, version 3, as published by the Free Software Foundation. This program is distributed in the hope
+that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License in LICENSE for more details.
+
+packages/protocol/ is a separate work under the Apache License 2.0 (see packages/protocol/LICENSE).
+
+"OrcaSlicer" names the project this program derives from. The OrcaSlicer project has not made, endorsed or reviewed
+this program.
+
+Third-party components built into the engine (Boost, CGAL, oneTBB, Eigen, cereal, NLopt, libnoise, Qhull,
+libjpeg-turbo, and Emscripten's zlib, libpng, musl and libc++) are listed with their versions and sources in
+engine/deps/README.md and engine/deps/SHA256SUMS; their licence texts ship with each release as
+THIRD-PARTY-NOTICES.md.
