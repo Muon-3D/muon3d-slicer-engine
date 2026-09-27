@@ -1,0 +1,278 @@
+# Build and test on every pull request and every push to main (docs/BUILD.md, "Continuous integration").
+#
+#   changes  decides whether the engine (wasm) must be built: only when engine/, the orca pin or the CI
+#            toolchain changed. Otherwise the jobs below reuse the engine of the rolling `edge` prerelease.
+#   checks   npm run check (imports, types) and npm test, on every run
+#   engine   st and mt in parallel: toolchain (cached), engine build (ccache), the Node engine tests
+#   runtime  the host build, the engine tests if the engine was reused, a cube sliced on both variants from
+#            the assembled runtime (tools/release/assemble.mjs), uploaded as an artifact
+#   edge     on main only: the runtime as the rolling `edge` prerelease
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      wasm:
+        description: Build the engine even when engine/ did not change
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      wasm: ${{ steps.filter.outputs.wasm }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Does the engine need building?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORCE: ${{ inputs.wasm }}
+        run: |
+          wasm=false
+          if [[ $EVENT == workflow_dispatch ]]; then
+            wasm=$FORCE
+          elif [[ -z $BASE || $BASE == 0000000000000000000000000000000000000000 ]] || ! git cat-file -e "$BASE^{commit}"; then
+            wasm=true
+          else
+            changed=$(git diff --name-only "$BASE" HEAD)
+            echo "Changed files:"; sed 's/^/  /' <<<"$changed"
+            # engine/ (docs aside), the orca pin, the toolchain and this workflow
+            if grep -E '^(engine/|orca$|tools/ci/|\.github/actions/toolchain/|\.github/workflows/build\.yml$)' <<<"$changed" |
+               grep -vqE '^engine/.*\.md$'; then
+              wasm=true
+            fi
+          fi
+          # Nothing to reuse yet.
+          if [[ $wasm == false ]] && ! gh release view edge --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "No edge prerelease to reuse the engine from."
+            wasm=true
+          fi
+          echo "wasm=$wasm" >> "$GITHUB_OUTPUT"
+          echo "Build the engine: $wasm" >> "$GITHUB_STEP_SUMMARY"
+
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: npm run check (imports, types)
+        run: npm run check
+      - name: npm test (host, settings rules and catalogue)
+        run: npm test
+
+  engine:
+    needs: changes
+    if: needs.changes.outputs.wasm == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [st, mt]
+    env:
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: OrcaSlicer at the pin
+        id: orca
+        run: |
+          bash engine/scripts/get-orca.sh
+          echo "commit=$(git rev-parse HEAD:orca)" >> "$GITHUB_OUTPUT"
+      - name: Toolchain
+        id: toolchain
+        uses: ./.github/actions/toolchain
+        with:
+          variant: ${{ matrix.variant }}
+      - name: Restore ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.ccache
+          key: ccache-v1-${{ matrix.variant }}-${{ steps.orca.outputs.commit }}-${{ github.sha }}
+          restore-keys: |
+            ccache-v1-${{ matrix.variant }}-${{ steps.orca.outputs.commit }}-
+            ccache-v1-${{ matrix.variant }}-
+      - name: Build the engine (${{ matrix.variant }})
+        run: |
+          export EM_COMPILER_WRAPPER=ccache CCACHE_DIR=$HOME/.ccache CCACHE_MAXSIZE=1500M
+          export CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          ccache -z > /dev/null
+          start=$SECONDS
+          bash engine/scripts/build.sh "$VARIANT"
+          took=$((SECONDS - start))
+          stats=$(ccache -s | tr -s ' ' | grep -E 'Hits|Misses' | head -2 | tr '\n' ' ')
+          echo "::notice title=Engine $VARIANT::built in $took s (toolchain cache hit: ${{ steps.toolchain.outputs.cache-hit || 'false' }}; ccache $stats)"
+          echo "- engine $VARIANT built in $took s; toolchain from cache: ${{ steps.toolchain.outputs.cache-hit || 'false' }}; ccache: $stats" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum dist/engine-$VARIANT.* | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Save ccache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.ccache
+          key: ccache-v1-${{ matrix.variant }}-${{ steps.orca.outputs.commit }}-${{ github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Engine tests (${{ matrix.variant }})
+        run: |
+          start=$SECONDS
+          npm run test:engine -- "$VARIANT"
+          echo "- engine tests $VARIANT: $((SECONDS - start)) s" >> "$GITHUB_STEP_SUMMARY"
+      - name: THIRD-PARTY-NOTICES.md is up to date
+        if: matrix.variant == 'st'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libarchive-tools
+          bash engine/deps/fetch-deps.sh > /dev/null
+          node tools/release/third-party-notices.mjs --check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: engine-${{ matrix.variant }}
+          path: |
+            dist/engine-${{ matrix.variant }}.*
+            dist/manifest.json
+          retention-days: 14
+          if-no-files-found: error
+
+  runtime:
+    needs: [changes, engine]
+    if: always() && needs.changes.result == 'success' && (needs.engine.result == 'success' || needs.engine.result == 'skipped')
+    runs-on: ubuntu-24.04
+    env:
+      WASM_BUILT: ${{ needs.changes.outputs.wasm }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: The engine built above
+        if: env.WASM_BUILT == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: engine-*
+          path: artifacts
+      - name: Put the engine into dist/
+        run: |
+          if [[ $WASM_BUILT == true ]]; then
+            node tools/release/merge-dist.mjs dist artifacts/engine-st artifacts/engine-mt
+          else
+            # engine/ did not change: the engine of the edge prerelease is the same build.
+            gh release download edge --repo "$GITHUB_REPOSITORY" --pattern 'muon3d-slicer-engine-edge.tgz' --dir edge
+            mkdir -p edge/x dist && tar -xzf edge/muon3d-slicer-engine-edge.tgz -C edge/x
+            cp edge/x/*/engine-* dist/
+            node -e '
+              const fs = require("fs"); const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              const { orcaVersion, orcaCommit, builtAt, variants } = m;
+              fs.writeFileSync("dist/manifest.json", JSON.stringify({ orcaVersion, orcaCommit, builtAt, variants }, null, 2) + "\n");
+            ' edge/x/*/manifest.json
+            echo "Reused the engine of edge $(node -p 'require("./dist/manifest.json").variants.st.engineCommit')" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build the host
+        run: npm run build:host
+      - name: Engine tests on the reused engine
+        if: env.WASM_BUILT != 'true'
+        run: npm run test:engine
+      - name: Assemble the runtime
+        id: assemble
+        run: |
+          short=$(git rev-parse --short=10 HEAD)
+          base=$(node -p 'require("./package.json").version')
+          if [[ $GITHUB_EVENT_NAME == pull_request ]]; then
+            version=$base-pr.${{ github.event.pull_request.number }}.$short
+          else
+            version=$base-edge.$short
+          fi
+          node tools/release/assemble.mjs --dist dist --out "out/muon3d-slicer-engine-$version" --version "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Slice a cube with the runtime (st and mt)
+        run: |
+          for variant in st mt; do
+            node examples/node-cli/slice.mjs --cube 20 --variant "$variant" --dist out/muon3d-slicer-engine-*/ -o "out/cube-$variant.gcode"
+            grep -q '^; total layer number: 100$' "out/cube-$variant.gcode"
+          done
+      - name: Runtime tarball
+        run: |
+          version=${{ steps.assemble.outputs.version }}
+          tarball=muon3d-slicer-engine-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'edge' }}.tgz
+          epoch=$(git log -1 --format=%ct)
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
+            -cf - "muon3d-slicer-engine-$version" | gzip -n -9 > "$tarball"
+          sha256sum "$tarball" | tee SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runtime
+          path: |
+            muon3d-slicer-engine-*.tgz
+            SHA256SUMS
+          retention-days: 14
+          if-no-files-found: error
+
+  edge:
+    needs: runtime
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: edge-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: runtime
+      - uses: actions/attest@v4
+        with:
+          subject-checksums: SHA256SUMS
+      - name: Update the edge prerelease
+        run: |
+          repo=$GITHUB_REPOSITORY
+          # The tag `edge` follows main.
+          if gh api "repos/$repo/git/ref/tags/edge" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$repo/git/refs/tags/edge" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/$repo/git/refs" -f ref=refs/tags/edge -f sha="$GITHUB_SHA" > /dev/null
+          fi
+          cat > notes.md <<EOF
+          The rolling prerelease of \`main\`, rebuilt on every push: **not a release**. Commit
+          [\`${GITHUB_SHA:0:10}\`](https://github.com/$repo/commit/$GITHUB_SHA), built by
+          [this run](https://github.com/$repo/actions/runs/$GITHUB_RUN_ID).
+
+          Pin a numbered release in anything that ships. \`SOURCE.md\` in the tarball names this build's source: this
+          repository at that commit, the OrcaSlicer tag, and the third-party source archives mirrored on the releases.
+          EOF
+          if gh release view edge --repo "$repo" > /dev/null 2>&1; then
+            gh release upload edge muon3d-slicer-engine-edge.tgz SHA256SUMS --repo "$repo" --clobber
+            gh release edit edge --repo "$repo" --prerelease --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
+          else
+            gh release create edge muon3d-slicer-engine-edge.tgz SHA256SUMS --repo "$repo" --prerelease --latest=false \
+              --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
+          fi

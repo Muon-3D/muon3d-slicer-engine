@@ -1,0 +1,70 @@
+# Weekly: builds and tests the engine against upstream OrcaSlicer instead of the pin, so that a change upstream
+# that breaks the engine (a new source file, a moved header, a changed API the bridge uses) shows up before the
+# pin moves. Two upstream trees: the head of PR #13777 (the base of the fork's branch, while it is open) and
+# upstream main. Opens (or comments on) an issue labelled `upstream-canary` when a build fails.
+name: Upstream canary
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'   # Mondays, 04:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: [pr-13777, main]
+        variant: [st, mt]
+    env:
+      VARIANT: ${{ matrix.variant }}
+      UPSTREAM_REF: ${{ matrix.upstream == 'main' && 'refs/heads/main' || 'refs/pull/13777/head' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: OrcaSlicer at upstream ${{ matrix.upstream }}
+        run: |
+          bash engine/scripts/get-orca.sh
+          git -C orca fetch --quiet --depth 1 https://github.com/OrcaSlicer/OrcaSlicer.git "$UPSTREAM_REF"
+          git -C orca checkout --quiet --detach FETCH_HEAD
+          commit=$(git -C orca rev-parse HEAD)
+          echo "Upstream ${{ matrix.upstream }} ($UPSTREAM_REF): [\`${commit:0:10}\`](https://github.com/OrcaSlicer/OrcaSlicer/commit/$commit) $(git -C orca log -1 --format='%cs %s')" >> "$GITHUB_STEP_SUMMARY"
+      - uses: ./.github/actions/toolchain
+        with:
+          variant: ${{ matrix.variant }}
+      - name: Build the engine (${{ matrix.variant }})
+        run: bash engine/scripts/build.sh "$VARIANT"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Engine tests (${{ matrix.variant }})
+        run: npm run test:engine -- "$VARIANT"
+
+  report:
+    needs: build
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Open or update the canary issue
+        run: |
+          run_url="https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+          body="The weekly build against upstream OrcaSlicer failed on $(date -u +%F): $run_url. Look at the failing jobs: a change upstream breaks the engine build or its tests, which the next pin move will meet."
+          gh label create upstream-canary --color d93f0b --description "The weekly build against upstream OrcaSlicer" 2> /dev/null || true
+          issue=$(gh issue list --label upstream-canary --state open --json number --jq '.[0].number')
+          if [[ -n $issue ]]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "Upstream canary: the engine does not build or pass its tests against upstream OrcaSlicer" \
+              --label upstream-canary --body "$body"
+          fi

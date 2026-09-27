@@ -1,0 +1,33 @@
+# Builds the toolchain cache (Emscripten, CMake, Ninja, ccache and both dependency prefixes; see
+# .github/actions/toolchain) when the dependency recipe changes on main, so the next builds find it warm.
+# build.yml and release.yml restore the same cache and build it themselves on a miss.
+name: Toolchain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - engine/deps/**
+      - engine/scripts/toolchain.sh
+      - tools/ci/setup-toolchain.sh
+      - .github/actions/toolchain/**
+      - .github/workflows/toolchain.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [st, mt]
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash engine/scripts/get-orca.sh
+      - uses: ./.github/actions/toolchain
+        with:
+          variant: ${{ matrix.variant }}

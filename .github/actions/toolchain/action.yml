@@ -1,0 +1,60 @@
+name: Engine toolchain
+description: >-
+  Emscripten 6.0.10, CMake, Ninja, ccache and one variant's dependency prefix under ~/OrcaWasm: restored from
+  the Actions cache, or built (tools/ci/setup-toolchain.sh, engine/deps) and saved. The key is the hash of
+  the dependency recipe, so a change there rebuilds the prefix. Needs the orca/ submodule (the deps' smoke
+  test uses Orca's CMake modules).
+inputs:
+  variant:
+    description: st or mt
+    required: true
+outputs:
+  cache-hit:
+    description: "'true' when the toolchain came from the cache"
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Toolchain environment
+      shell: bash
+      run: |
+        root=$HOME/OrcaWasm
+        echo "ORCA_WASM_ROOT=$root" >> "$GITHUB_ENV"
+        echo "$root/tools/cmake/bin" >> "$GITHUB_PATH"
+        echo "$root/tools/bin" >> "$GITHUB_PATH"
+
+    - name: Restore the toolchain (${{ inputs.variant }})
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          ~/OrcaWasm/emsdk
+          ~/OrcaWasm/tools
+          ~/OrcaWasm/prefix-${{ inputs.variant }}
+        key: toolchain-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.variant }}-${{ hashFiles('engine/deps/**', '!engine/deps/**/*.md', 'engine/scripts/toolchain.sh', 'tools/ci/setup-toolchain.sh') }}
+
+    - name: Build the toolchain and the dependencies (${{ inputs.variant }})
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
+      run: |
+        start=$SECONDS
+        sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libarchive-tools
+        bash tools/ci/setup-toolchain.sh
+        tools_done=$SECONDS
+        bash engine/deps/fetch-deps.sh
+        bash "$PWD/engine/deps/build-deps.sh"
+        rm -rf "$ORCA_WASM_ROOT/build-deps" "$ORCA_WASM_ROOT/deps-src"
+        echo "::notice title=Toolchain $VARIANT (cache miss)::toolchain $((tools_done - start)) s, dependencies $((SECONDS - tools_done)) s"
+        echo "- toolchain $VARIANT built (cache miss): toolchain install $((tools_done - start)) s, dependencies $((SECONDS - tools_done)) s" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Save the toolchain (${{ inputs.variant }})
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          ~/OrcaWasm/emsdk
+          ~/OrcaWasm/tools
+          ~/OrcaWasm/prefix-${{ inputs.variant }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}

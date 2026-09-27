@@ -1,0 +1,288 @@
+# A release, on a pushed tag v<version> (docs/RELEASING.md):
+#
+#   engine    st and mt built from clean (no ccache, fresh build trees), engine tests
+#   sources   the source assets (tools/release/source-bundles.sh) and the THIRD-PARTY-NOTICES.md check
+#   draft     the runtime (tools/release/assemble.mjs), SHA256SUMS, the build-provenance attestation, a cube
+#             sliced from the runtime tarball; a draft GitHub release with every asset
+#   verify    downloads the draft's assets, checks them (tools/release/verify-release.sh), and rebuilds each
+#             variant from the source assets alone in the emsdk container with the network off and an empty
+#             Emscripten cache (tools/release/rebuild-offline.sh): the sha256 must match
+#   publish   publishes the draft, with the verification in its notes
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: true
+      matrix:
+        variant: [st, mt]
+    env:
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag names package.json's version
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          [[ $TAG == "v$version" ]] || { echo "::error::tag $TAG, but package.json says $version"; exit 1; }
+      - run: bash engine/scripts/get-orca.sh
+      - uses: ./.github/actions/toolchain
+        with:
+          variant: ${{ matrix.variant }}
+      - name: Build the engine from clean (${{ matrix.variant }})
+        run: |
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          start=$SECONDS
+          bash engine/scripts/build.sh "$VARIANT"
+          echo "- engine $VARIANT built from clean in $((SECONDS - start)) s" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum dist/engine-$VARIANT.* | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Engine tests (${{ matrix.variant }})
+        run: npm run test:engine -- "$VARIANT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-engine-${{ matrix.variant }}
+          path: |
+            dist/engine-${{ matrix.variant }}.*
+            dist/manifest.json
+          if-no-files-found: error
+
+  sources:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash engine/scripts/get-orca.sh
+      # The emsdk (the ports' URLs, hashes and licences) and the Emscripten cache with the port sources.
+      - uses: ./.github/actions/toolchain
+        with:
+          variant: st
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Fetch the third-party sources
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libarchive-tools
+          bash engine/deps/fetch-deps.sh
+      - name: THIRD-PARTY-NOTICES.md is up to date
+        run: |
+          ENGINE_DIST=$RUNNER_TEMP/host HOST_METAFILE=$RUNNER_TEMP/host-meta.json node host/build.mjs
+          HOST_METAFILE=$RUNNER_TEMP/host-meta.json node tools/release/third-party-notices.mjs --check
+      - name: Source assets
+        run: |
+          HOST_METAFILE=$RUNNER_TEMP/host-meta.json bash tools/release/source-bundles.sh sources "${TAG#v}"
+          ls -l sources
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-sources
+          path: sources
+          compression-level: 0
+          if-no-files-found: error
+
+  draft:
+    needs: [engine, sources]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Assemble the runtime
+        run: |
+          version=${TAG#v}
+          node tools/release/merge-dist.mjs dist artifacts/release-engine-st artifacts/release-engine-mt
+          npm run build:host
+          node tools/release/assemble.mjs --dist dist --out "out/muon3d-slicer-engine-$version" --version "$version" \
+            --tag "$TAG" --sources artifacts/release-sources/sources.json
+          mkdir -p assets
+          epoch=$(git log -1 --format=%ct)
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
+            -cf - "muon3d-slicer-engine-$version" | gzip -n -9 > "assets/muon3d-slicer-engine-$version.tgz"
+          for key in bundle orca thirdParty; do
+            file=$(node -p "require('./artifacts/release-sources/sources.json').$key.file")
+            mv "artifacts/release-sources/$file" assets/
+          done
+          (cd assets && sha256sum * > ../SHA256SUMS) && mv SHA256SUMS assets/
+          cat assets/SHA256SUMS
+      - name: Slice a cube from the runtime tarball (st and mt)
+        run: |
+          version=${TAG#v}
+          mkdir -p check && tar -xzf "assets/muon3d-slicer-engine-$version.tgz" -C check
+          for variant in st mt; do
+            node examples/node-cli/slice.mjs --cube 20 --variant "$variant" --dist "check/muon3d-slicer-engine-$version" -o "check/cube-$variant.gcode"
+            grep -q '^; total layer number: 100$' "check/cube-$variant.gcode"
+          done
+      - uses: actions/attest@v4
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - name: Draft release
+        run: |
+          version=${TAG#v}
+          manifest=check/muon3d-slicer-engine-$version/manifest.json
+          orca_version=$(node -p "require('./$manifest').orca.version")
+          orca_commit=$(node -p "require('./$manifest').orca.commit")
+          orca_tag=$(node -p "require('./$manifest').orca.tag")
+          title="Muon3D Slicer Engine $version (OrcaSlicer $orca_version @ ${orca_commit:0:10})"
+          {
+            echo "The Muon3D Slicer Engine $version: OrcaSlicer's libslic3r compiled to WebAssembly, with the Web Worker host"
+            echo "(protocol v$(node -p "require('./$manifest').protocol.major")). Built from OrcaSlicer $orca_version at"
+            echo "[\`$orca_commit\`](https://github.com/Muon-3D/OrcaSlicer/commit/$orca_commit) (tag \`$orca_tag\` of Muon-3D/OrcaSlicer)."
+            echo
+            echo "## Assets"
+            echo
+            echo "| File | What | sha256 |"
+            echo "|---|---|---|"
+            while read -r sum file; do
+              case $file in
+                muon3d-slicer-engine-$version.tgz) what='The runtime: serve its folder as it is (README, "Using it from a web page")' ;;
+                muon3d-slicer-engine-$version-source.tar.gz) what='Source: this repository at the tag' ;;
+                orcaslicer-*-source.tar.xz) what='Source: OrcaSlicer at the pinned commit (extract into the folder above)' ;;
+                third-party-sources-*.tar) what='Source: every third-party archive the build uses, mirrored' ;;
+                *) what='' ;;
+              esac
+              echo "| \`$file\` | $what | \`$sum\` |"
+            done < assets/SHA256SUMS
+            echo
+            echo "Check a download with \`sha256sum -c SHA256SUMS\`, and its provenance with"
+            echo "\`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`. The runtime's \`SOURCE.md\` says where the"
+            echo "Corresponding Source of this build is; \`docs/BUILD.md\` has the steps to rebuild it, offline, from the three source assets."
+          } > notes.md
+          # A draft left by an earlier run of this tag goes; a published release stops the run.
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\"")
+          if [[ -n $existing ]]; then
+            read -r id draft <<<"$existing"
+            [[ $draft == true ]] || { echo "::error::$TAG is already published"; exit 1; }
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          fi
+          gh release create "$TAG" assets/* --draft --verify-tag --title "$title" --notes-file notes.md
+
+  verify:
+    needs: draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: write   # a draft release is visible only with write access
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [st, mt]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Download and check the release
+        run: bash tools/release/verify-release.sh "$TAG" rel
+      - name: Rebuild ${{ matrix.variant }} from the source assets (container, no network, empty cache)
+        run: |
+          version=${TAG#v}
+          mkdir -p in work
+          for f in rel/assets/*-source.tar.gz rel/assets/*-source.tar.xz rel/assets/third-party-sources-*.tar; do ln "$f" in/; done
+          # The rebuild script as released, from the engine's source bundle.
+          tar -xzf "in/muon3d-slicer-engine-$version-source.tar.gz" -O "muon3d-slicer-engine-$version/tools/release/rebuild-offline.sh" > work/rebuild-offline.sh
+          tar -xzf "in/muon3d-slicer-engine-$version-source.tar.gz" -C work "muon3d-slicer-engine-$version/tools/release/offline/Dockerfile"
+          docker build -q -t engine-offline "work/muon3d-slicer-engine-$version/tools/release/offline"
+          start=$SECONDS
+          docker run --rm --network none -v "$PWD/in:/in:ro" -v "$PWD/work:/work" engine-offline bash /work/rebuild-offline.sh "$VARIANT"
+          took=$((SECONDS - start))
+          manifest=rel/runtime/muon3d-slicer-engine-$version/manifest.json
+          want_wasm=$(node -p "require('./$manifest').variants.$VARIANT.sha256.wasm")
+          want_mjs=$(node -p "require('./$manifest').variants.$VARIANT.sha256.mjs")
+          got_wasm=$(sha256sum "work/out-$VARIANT/engine-$VARIANT.wasm" | cut -d' ' -f1)
+          got_mjs=$(sha256sum "work/out-$VARIANT/engine-$VARIANT.mjs" | cut -d' ' -f1)
+          echo "engine-$VARIANT.wasm: released $want_wasm, rebuilt $got_wasm"
+          echo "engine-$VARIANT.mjs:  released $want_mjs, rebuilt $got_mjs"
+          mkdir -p result
+          if [[ $want_wasm == "$got_wasm" && $want_mjs == "$got_mjs" ]]; then
+            echo "- \`engine-$VARIANT.wasm\` and \`engine-$VARIANT.mjs\` rebuilt byte for byte from the three source assets alone, in \`emscripten/emsdk:6.0.10\` with the network off and an empty Emscripten cache ($((took / 60)) min)." > "result/$VARIANT.md"
+            cat "result/$VARIANT.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::the offline rebuild of $VARIANT differs from the release"
+            exit 1
+          fi
+      - name: Rebuild the host from the source bundle
+        if: matrix.variant == 'st'
+        run: |
+          version=${TAG#v}
+          rm -rf hostcheck && mkdir hostcheck
+          tar -xzf "in/muon3d-slicer-engine-$version-source.tar.gz" -C hostcheck
+          cd "hostcheck/muon3d-slicer-engine-$version"
+          npm ci --no-audit --no-fund
+          ENGINE_DIST=$PWD/out node host/build.mjs
+          manifest=../../rel/runtime/muon3d-slicer-engine-$version/manifest.json
+          want=$(node -p "require('$manifest').host.sha256")
+          got=$(node -p "require('./out/manifest.json').host.sha256")
+          [[ $want == "$got" ]] || { echo "::error::host rebuilt from the source bundle: $got, released $want"; exit 1; }
+          echo "- \`$(node -p "require('$manifest').host.file")\` rebuilt byte for byte from the source bundle (with its locked npm dependencies)." > ../../result/host.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verify-${{ matrix.variant }}
+          path: result
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: verify-*
+          merge-multiple: true
+          path: result
+      - name: Publish the release
+        run: |
+          id=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id")
+          [[ -n $id ]] || { echo "::error::no draft release for $TAG"; exit 1; }
+          gh api "repos/$GH_REPO/releases/$id" --jq .body > notes.md
+          {
+            echo
+            echo "## Verified"
+            echo
+            echo "- Every asset matches \`SHA256SUMS\`, every runtime file matches \`manifest.json\`, and a 20 mm cube slices on st and mt from the runtime tarball."
+            cat result/*.md
+            echo
+            echo "Run: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+          } >> notes.md
+          gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false -f make_latest=true -F body=@notes.md --jq .html_url
