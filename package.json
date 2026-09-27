@@ -24,6 +24,8 @@
     "check:imports": "node tools/check-imports.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "gen:settings": "node tools/settings-catalogue/generate.ts",
+    "notices": "node tools/release/third-party-notices.mjs",
+    "notices:check": "node tools/release/third-party-notices.mjs --check",
     "slice": "node examples/node-cli/slice.mjs"
   },
   "devDependencies": {
