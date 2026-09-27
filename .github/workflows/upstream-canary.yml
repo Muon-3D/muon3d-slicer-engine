@@ -1,7 +1,11 @@
 # Weekly: builds and tests the engine against upstream OrcaSlicer instead of the pin, so that a change upstream
 # that breaks the engine (a new source file, a moved header, a changed API the bridge uses) shows up before the
 # pin moves. Two upstream trees: the head of PR #13777 (the base of the fork's branch, while it is open) and
-# upstream main. Opens (or comments on) an issue labelled `upstream-canary` when a build fails.
+# upstream main. Opens (or comments on) an issue labelled `upstream-canary` when the PR #13777 build fails.
+#
+# Upstream main does not have PR #13777's exclusion volumes yet, which the bridge uses (BedExcludeRegion & co.),
+# so its build is expected to fail until the PR merges: it runs with continue-on-error; its result shows in the
+# run, but it alone opens no issue. Drop that once the PR is merged.
 name: Upstream canary
 
 on:
@@ -16,6 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    continue-on-error: ${{ matrix.upstream == 'main' }}
     strategy:
       fail-fast: false
       matrix:
