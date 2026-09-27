@@ -31,7 +31,7 @@
 // patch with the edit.
 //
 // Pure (types-only imports) so it runs under plain Node in tests.
-import type { ConfigValue } from '../../../shared/types.ts';
+import type { ConfigValue } from '../../../packages/protocol/src/v1.ts';
 import { extruderVariantString, indexForExtruder } from './variants.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -315,7 +315,7 @@ type OrcaKind =
 /**
  * Orca's type and default (first slot for a vector) of every option the rules read, from
  * PrintConfigDef in the engine Orca. The default is used when the view has no value. Generated:
- * `node web/src/settings/rulesSource.ts --write` rewrites the lines below, and rules.test.ts fails
+ * `node tools/settings-catalogue/rulesSource.ts --write` rewrites the lines below, and rules.test.ts fails
  * when they differ from what it would write.
  */
 const READ: Readonly<Record<string, readonly [OrcaKind, string]>> = {

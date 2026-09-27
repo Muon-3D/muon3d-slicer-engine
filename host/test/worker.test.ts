@@ -1,9 +1,9 @@
-// Run: node --test web/src/engine/worker.test.ts
+// Run: node --test host/test/worker.test.ts
 // The worker's engine-facing functions against a fake engine module (the real one is exercised by
-// engine/test/slice.ts once the engine is built).
+// test/engine.test.ts once the engine is built).
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, test } from 'node:test';
-import type { CheckOutput, EngineWarning, SliceJob, SliceOutput } from './protocol.ts';
+import type { CheckOutput, EngineWarning, SliceJob, SliceOutput } from '../../packages/protocol/src/v1.ts';
 import {
   EngineJobError,
   EngineStartError,
@@ -18,7 +18,7 @@ import {
   withoutAssertionsHint,
   type EngineMeshInput,
   type OrcaEngineModule,
-} from './worker.ts';
+} from '../src/worker.ts';
 
 const job: SliceJob = {
   machine: { name: 'Muon3D M1 0.4 nozzle', type: 'machine', from: 'system' },

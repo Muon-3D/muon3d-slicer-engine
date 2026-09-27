@@ -1,11 +1,84 @@
-// Contract between the browser slicing engine (OrcaSlicer's libslic3r compiled to WebAssembly,
-// running in a Web Worker: engine/ + web/src/engine/worker.ts) and the rest of the web app.
-// Type-only module. Change it only additively: the C++ bridge, the worker and the UI all
-// build against it.
+// SPDX-License-Identifier: Apache-2.0
+// Protocol v1 of the Muon3D Slicer Engine: the messages between a page and the engine's Web Worker
+// host (host/src/worker.ts, which runs OrcaSlicer's libslic3r compiled to WebAssembly), the job and
+// result types, and the manifest the build publishes. Type-only module. Change it only additively:
+// the C++ bridge, the host and every client build against it.
 //
-// Coordinates are Orca bed coordinates (mm, +Z up), exactly as in shared/types.ts.
-import type { FlatConfig, GcodeStats } from '../../../shared/types.ts';
-import type { ParsedGcode } from '../gcode/parse.ts';
+// Coordinates are Orca bed coordinates (mm, +Z up): origin at the printable area's front-left.
+
+// ---------------------------------------------------------------------------
+// Values
+// ---------------------------------------------------------------------------
+
+/** One preset value in Orca's JSON encoding: a string, or an array of strings for a vector option. */
+export type ConfigValue = string | string[];
+/** A fully resolved (inheritance-flattened) Orca preset: option key -> value. */
+export type FlatConfig = Record<string, ConfigValue>;
+
+export type Vec3 = [number, number, number];
+
+/** Print statistics, as Orca writes them into the G-code header and footer. */
+export interface GcodeStats {
+  /** Estimated print time in seconds (normal mode). */
+  printTimeSeconds: number | null;
+  /** Orca's own formatting, e.g. "44m 38s". */
+  printTimeText: string | null;
+  firstLayerTimeText: string | null;
+  filamentMm: number | null;
+  filamentCm3: number | null;
+  filamentG: number | null;
+  filamentCost: number | null;
+  layers: number | null;
+  maxZ: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Toolpaths
+// ---------------------------------------------------------------------------
+
+export interface SegmentSet {
+  /** Segment endpoints, 6 floats each (x0, y0, z0, x1, y1, z1) in mm, in file (= layer) order. */
+  positions: Float32Array;
+  /** Index of each layer's first segment; `layerCount + 1` entries, the last is `count`. */
+  layerStart: Uint32Array;
+  count: number;
+}
+
+export interface ExtrusionSet extends SegmentSet {
+  /** Per segment: index into `Toolpaths.roles`. */
+  roleIndex: Uint8Array;
+  /**
+   * Per segment: line width as a size code (0.01 mm steps up to 2 mm = code 200, then 0.05 mm steps
+   * up to 4.75 mm = code 255; so 42 = 0.42 mm). 0 means unknown (use `Toolpaths.lineWidth` then).
+   */
+  width: Uint8Array;
+  /**
+   * Per segment: bead height as a size code, as Orca's GCodeProcessor sees it: usually the layer
+   * thickness, more for bridges and overhang walls. The segment's Z is the top of the bead. 0 means
+   * unknown.
+   */
+  height: Uint8Array;
+}
+
+/** Toolpaths for a preview, built from Orca's GCodeProcessor result. */
+export interface Toolpaths {
+  layerCount: number;
+  /** Print height of each layer in mm. */
+  layerZ: Float32Array;
+  extrusions: ExtrusionSet;
+  travels: SegmentSet;
+  /** Feature roles in first-seen order, as named after ';TYPE:' (e.g. "Outer wall"). */
+  roles: string[];
+  /** Toolpath length in mm extruded for each role, parallel to `roles`. */
+  roleLength: number[];
+  /** The line width (mm) most of the toolpath length is printed at; null when unknown. */
+  lineWidth: number | null;
+  /** Box around every extrusion, or null when nothing is extruded. */
+  bounds: { min: Vec3; max: Vec3 } | null;
+}
+
+/** The name the first clients used for Toolpaths (the shape of their G-code parser's output). */
+export type ParsedGcode = Toolpaths;
 
 // ---------------------------------------------------------------------------
 // Jobs
@@ -14,15 +87,15 @@ import type { ParsedGcode } from '../gcode/parse.ts';
 /** One plate object, already placed: its mesh is in bed coordinates, resting on z = 0. */
 export interface EngineObject {
   /**
-   * Object name as Orca writes it in the G-code (EXCLUDE_OBJECT_DEFINE NAME=…). The server path
-   * uses the sanitised STL file name, e.g. "Benchy.stl"; keep the same convention for parity.
+   * Object name as Orca writes it in the G-code (EXCLUDE_OBJECT_DEFINE NAME=…). Orca's CLI uses the
+   * STL file name, e.g. "Benchy.stl"; keep the same convention for parity with it.
    */
   name: string;
   /** Triangle soup: 9 floats (3 vertices × xyz) per triangle. */
   positions: Float32Array;
   /**
-   * Per-object settings (PlateObject.settings, keys from shared/objectSettings.ts): Orca option
-   * name → value text, applied to the ModelObject's config as Orca's 3MF loader does
+   * Per-object settings: Orca option name (a per-object key: objectKeys or regionKeys of
+   * configDefinitions()) → value text, applied to the ModelObject's config as Orca's 3MF loader does
    * (config.set_deserialize). An unknown key or a bad value fails the job with code -5, naming the
    * object. Absent or {} = none.
    */
@@ -31,9 +104,8 @@ export interface EngineObject {
 
 export interface SliceJob {
   /**
-   * Fully resolved presets (inheritance flattened, overrides applied) exactly as the server
-   * writes cfg/{machine,process,filament}.json for the CLI: `from: "system"`, a `type`, no
-   * `inherits`.
+   * Fully resolved presets (inheritance flattened, overrides applied) exactly as Orca's CLI takes
+   * them with --load-settings / --load-filaments: `from: "system"`, a `type`, no `inherits`.
    */
   machine: FlatConfig;
   process: FlatConfig;
@@ -63,8 +135,8 @@ export interface CheckJob {
 
 export interface EngineError {
   /**
-   * Orca CLI exit codes (src/libslic3r/Utils.hpp), so the UI can explain them the way the
-   * server does: -5 bad preset, -17 incompatible process, -18 invalid values, -50 nothing
+   * Orca CLI exit codes (src/libslic3r/Utils.hpp), so a client can explain them as it would
+   * for a CLI run: -5 bad preset, -17 incompatible process, -18 invalid values, -50 nothing
    * inside the plate, -51 validation error, -52 partly outside, -63/-64 collisions (incl.
    * exclusion volumes), -100 slicing error, -102 unprintable area.
    * Engine-level codes: 1 = internal error / abort, 2 = out of memory, 3 = cancelled.
@@ -104,11 +176,10 @@ export interface SliceOutput {
   gcode: Uint8Array;
   stats: GcodeStats;
   /**
-   * Toolpaths for the preview, in the same format the G-code parser (web/src/gcode/parse.ts)
-   * produces, so the preview can show them without re-reading the G-code. Null when not
+   * Toolpaths for a preview, so it can show them without re-reading the G-code. Null when not
    * requested.
    */
-  toolpaths: ParsedGcode | null;
+  toolpaths: Toolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
   /** Wall-clock milliseconds per stage, for diagnostics. */
@@ -126,7 +197,7 @@ export interface CheckOutput {
 }
 
 // ---------------------------------------------------------------------------
-// Worker messages (web/src/engine/worker.ts)
+// Worker messages (host/src/worker.ts)
 // ---------------------------------------------------------------------------
 
 export type EngineVariant = 'st' | 'mt';
@@ -147,7 +218,11 @@ export type EngineRequest =
 // `heapBytes` on job results: the size of the engine's wasm memory after the job. Wasm memory
 // never shrinks, so the client replaces a worker whose heap has grown large. Absent when unknown.
 export type EngineResponse =
-  | { type: 'ready'; variant: EngineVariant; orcaVersion: string; orcaCommit: string; initMs: number }
+  /**
+   * The engine is loaded. `canary`: a string unique to the engine host, which it reports so a client
+   * can check that it runs the host from its own URL (a client's own bundle must never contain it).
+   */
+  | { type: 'ready'; variant: EngineVariant; orcaVersion: string; orcaCommit: string; initMs: number; canary?: string }
   /**
    * Download progress of the .wasm while the engine starts: bytes of the uncompressed file, total 0
    * when unknown. `done` on the last one, once the whole file has arrived (it then compiles and starts).
@@ -165,17 +240,19 @@ export type EngineResponse =
    */
   | { type: 'fatal'; message: string; code?: number; detail?: string };
 
-/** What the build publishes next to the engine files (web/public/engine/manifest.json). */
+/** What the build publishes next to the engine files (dist/manifest.json). */
 export interface EngineManifest {
   orcaVersion: string;
   orcaCommit: string;
   builtAt: string;
+  /** The worker host to start: new Worker(<folder of manifest.json> + host.file, { type: 'module' }). */
+  host?: EngineManifestHost;
   /**
    * `mjs` and `wasm` are relative to manifest.json and may sit in a folder of their own (e.g. one
    * named after a content hash, cached for good). The engine loads engine-<variant>.mjs and
    * engine-<variant>.wasm from the folder of `mjs`: those names are built into the .mjs, which
    * also starts its pthread workers from its own URL. `wasmBytes` is the uncompressed size;
-   * `wasmTransferBytes`, when present, what the server actually sends (compressed).
+   * `wasmTransferBytes`, when present, what a server sends a browser that accepts brotli (the .br).
    */
   variants: Partial<Record<EngineVariant, EngineManifestVariant>>;
 }
@@ -194,8 +271,21 @@ export interface EngineManifestVariant {
   engineCommit?: string;
 }
 
+export interface EngineManifestHost {
+  /** File name, relative to manifest.json: host.<content hash>.js, an ES module worker script. */
+  file: string;
+  /** sha256 (hex) of the file. */
+  sha256: string;
+  /** The protocol major version the host speaks. */
+  protocol: 1;
+  /** The string the host reports in `ready` (see there). */
+  canary: string;
+  /** The commit of this repository the host was built from ("-dirty" with uncommitted changes in host/). */
+  engineCommit?: string;
+}
+
 // ---------------------------------------------------------------------------
-// Client API (web/src/engine/client.ts) — what the store and UI use
+// Client API: what a client wrapping the worker offers its app (the first client's shape; optional)
 // ---------------------------------------------------------------------------
 
 export type EngineStatus =

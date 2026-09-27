@@ -1,7 +1,7 @@
 // get_index_for_extruder: the slot of a nozzle in options stored per (extruder, nozzle variant).
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { VARIANT_KEYS, extruderVariantString, indexForExtruder } from './variants.ts';
+import { VARIANT_KEYS, extruderVariantString, indexForExtruder } from '../../src/settings/variants.ts';
 
 const H2D = {
   variants: ['Direct Drive Standard', 'Direct Drive High Flow', 'Direct Drive Standard', 'Direct Drive High Flow', 'Direct Drive TPU High Flow'],

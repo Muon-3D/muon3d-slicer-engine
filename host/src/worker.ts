@@ -1,16 +1,17 @@
 // Web Worker hosting the slicing engine: OrcaSlicer's libslic3r compiled to WebAssembly
 // (engine/, API in engine/bridge/engine.cpp). Implements the EngineRequest/EngineResponse protocol
-// of ./protocol.ts; web/src/engine/client.ts is the only sender.
+// of protocol v1 (packages/protocol/src/v1.ts). A page starts it by URL (host.<hash>.js in dist/, named
+// in manifest.json) and is its only sender.
 //
 // One job at a time: a slice blocks this thread until it is done, so requests simply queue. Every
 // typed array in a result is transferred, not copied. Cancelling a slice means terminating this
-// worker (client.ts); the engine has no way to receive a message while it slices.
+// worker (the client's job); the engine has no way to receive a message while it slices.
 //
 // While the engine starts, the worker downloads the .wasm itself (loadEngine) to report progress
 // ('loading') and to say which file failed ('fatal'); each job result carries the size of the
 // wasm heap (heapBytes), which only grows, so the client knows when to replace the worker.
 //
-// The functions below the message handler are exported so the Node tests (engine/test) run the
+// The functions below the message handler are exported so the Node tests (test/, host/test/) run the
 // exact code the browser runs; the handler itself is only installed inside a worker.
 import type {
   CheckJob,
@@ -22,7 +23,8 @@ import type {
   EngineWarning,
   SliceJob,
   SliceOutput,
-} from './protocol.ts';
+} from '../../packages/protocol/src/v1.ts';
+import { HOST_CANARY } from './canary.ts';
 
 // ---------------------------------------------------------------------------
 // The engine module (engine/bridge/engine.cpp)
@@ -476,7 +478,14 @@ function startWorker(scope: WorkerScope): void {
       const version = loaded.engine.version();
       engine = loaded.engine;
       memory = loaded.memory;
-      ready = { type: 'ready', variant: request.variant, orcaVersion: version.orcaVersion, orcaCommit: version.orcaCommit, initMs: loaded.initMs };
+      ready = {
+        type: 'ready',
+        variant: request.variant,
+        orcaVersion: version.orcaVersion,
+        orcaCommit: version.orcaCommit,
+        initMs: loaded.initMs,
+        canary: HOST_CANARY,
+      };
       post(ready);
     } catch (err) {
       post({ type: 'fatal', ...startFailure(err) });

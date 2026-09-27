@@ -6,7 +6,7 @@
 // DynamicPrintConfig::get_index_for_extruder (libslic3r/PrintConfig.cpp); this is a port of it.
 //
 // Pure (no imports but types) so it runs under plain Node in tests.
-import type { SettingScope } from '../../../shared/orcaSettings/types.ts';
+import type { SettingScope } from '../../../tools/settings-catalogue/types.ts';
 
 /**
  * extruder_variant_keys (Tab.cpp): per preset, the option naming each slot's extruder (none for a

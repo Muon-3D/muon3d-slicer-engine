@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { describe, it } from 'node:test';
-import type { ConfigValue } from '../../../shared/types.ts';
+import type { ConfigValue } from '../../../packages/protocol/src/v1.ts';
 import {
   MATERIAL_TYPES,
   ORCA_RULES_COMMIT,
@@ -21,7 +21,7 @@ import {
   type RuleScope,
   type RulesEnv,
   type RulesResult,
-} from './rules.ts';
+} from '../../src/settings/rules.ts';
 import {
   ORCA_ENGINE_ROOT,
   RULES_TS,
@@ -35,7 +35,7 @@ import {
   rulesReadKeys,
   stripCppComments,
   type OrcaDefinition,
-} from './rulesSource.ts';
+} from '../../../tools/settings-catalogue/rulesSource.ts';
 
 type Values = Record<string, ConfigValue>;
 
@@ -1021,13 +1021,13 @@ describe('rules: the port against Orca’s sources', { skip: orcaTree ? false : 
     assert.match(ORCA_RULES_COMMIT, /^[0-9a-f]{40}$/);
     const current = ruleSourceHashes(ORCA_ENGINE_ROOT, Object.keys(RULES_PORTED_FROM));
     const changed = Object.keys(RULES_PORTED_FROM).filter((id) => RULES_PORTED_FROM[id] !== current[id]);
-    assert.deepEqual(changed, [], `Orca changed since the port: re-port these, then run node web/src/settings/rulesSource.ts --write`);
+    assert.deepEqual(changed, [], `Orca changed since the port: re-port these, then run node tools/settings-catalogue/rulesSource.ts --write`);
     for (const hash of Object.values(RULES_PORTED_FROM)) assert.match(hash, /^sha256:[0-9a-f]{64}$/);
   });
 
   it('READ has Orca’s type and default of every key the rules read', () => {
     const expected = readTableSource(readTableEntries(rulesReadKeys(rulesSrc), defs));
-    assert.equal(readTableInRules(rulesSrc), expected, 'run node web/src/settings/rulesSource.ts --write');
+    assert.equal(readTableInRules(rulesSrc), expected, 'run node tools/settings-catalogue/rulesSource.ts --write');
   });
 
   it('ports every toggle call site of Orca’s functions, minus the listed ones', () => {

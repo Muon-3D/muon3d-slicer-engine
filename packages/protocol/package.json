@@ -1,0 +1,18 @@
+{
+  "name": "@muon3d/slicer-engine-protocol",
+  "version": "1.0.0",
+  "description": "Types of the Muon3D Slicer Engine's Web Worker protocol (v1): jobs, results, worker messages and the build manifest.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Muon-3D/muon3d-slicer-engine.git",
+    "directory": "packages/protocol"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v1": "./src/v1.ts"
+  },
+  "files": ["src", "LICENSE", "README.md"],
+  "sideEffects": false
+}
