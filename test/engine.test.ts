@@ -1,25 +1,24 @@
 // End-to-end tests of the built engine under plain Node, through the same loader and marshalling
-// code the browser worker uses (web/src/engine/worker.ts). Skipped until the engine is built.
+// code the worker host uses in a browser (host/src/worker.ts). Skipped until the engine is built
+// (npm run test:engine fails instead).
 //
-//   node --test engine/test/engine.test.ts                    # web/public/engine/engine-st.mjs
-//   ENGINE_VARIANT=mt node --test engine/test/engine.test.ts
-//   ENGINE_DIR=$ORCA_WASM_ROOT/build-st/out node --test engine/test/engine.test.ts
+//   node --test test/engine.test.ts                           # dist/engine-st.mjs
+//   ENGINE_VARIANT=mt node --test test/engine.test.ts
+//   ENGINE_DIR=$ORCA_WASM_ROOT/build-st/out node --test test/engine.test.ts
 //
-// Besides "does it slice", every G-code the engine returns is read back with the server's footer
-// parser (server/gcodeStats.ts) and the UI's G-code parser (web/src/gcode/parse.ts): the stats must
-// be identical, and the toolpaths the engine builds from Orca's GCodeProcessor must match what the
-// parser draws from the text. The G-code is written to ENGINE_TEST_OUT for inspection.
+// Besides "does it slice", every G-code the engine returns is read back with a footer parser
+// (test/helpers/gcodeStats.ts) and a G-code toolpath parser (test/helpers/parseGcode.ts): the stats
+// must be identical, and the toolpaths the engine builds from Orca's GCodeProcessor must match what
+// the parser draws from the text. The G-code is written to ENGINE_TEST_OUT for inspection.
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, test, type TestContext } from 'node:test';
-import { parseStatsText } from '../../server/gcodeStats.ts';
-import type { GcodeStats } from '../../shared/types.ts';
-import { parseGcode, sizeCode, type ParsedGcode } from '../../web/src/gcode/parse.ts';
-import { OBJECT_SETTING_KEYS } from '../../shared/objectSettings.ts';
-import { readConfigDefinitions } from '../../web/src/engine/configDefinitions.ts';
-import type { CheckOutput, EngineObject, EngineWarning, SliceOutput } from '../../web/src/engine/protocol.ts';
-import { EngineJobError, runCheck, runSlice, type OrcaEngineModule } from '../../web/src/engine/worker.ts';
+import { readConfigDefinitions } from '../host/src/configDefinitions.ts';
+import { EngineJobError, runCheck, runSlice, type OrcaEngineModule } from '../host/src/worker.ts';
+import type { CheckOutput, EngineObject, EngineWarning, GcodeStats, ParsedGcode, SliceOutput } from '../packages/protocol/src/v1.ts';
+import { parseStatsText } from './helpers/gcodeStats.ts';
+import { parseGcode, sizeCode } from './helpers/parseGcode.ts';
 import {
   benchy,
   benchyAvailable,
@@ -28,10 +27,8 @@ import {
   checkJob,
   cube,
   cylinder,
-  engineBuilt,
-  engineModulePath,
+  engineSkip,
   flatPresets,
-  m1ResourcesAvailable,
   m1Presets,
   ms,
   objectSettingsPlate,
@@ -44,11 +41,9 @@ import {
   type Presets,
 } from './fixtures.ts';
 
-const suite = engineBuilt && m1ResourcesAvailable ? describe : describe.skip;
-if (!engineBuilt) console.log(`# ${engineModulePath} not found: build the engine first (engine/scripts/build.sh).`);
-else if (!m1ResourcesAvailable) console.log(`# No Muon3D M1 profiles in ${process.env.ORCA_RESOURCES}: set ORCA_WASM_ROOT, ORCA_SRC or ORCA_RESOURCES.`);
-// A fresh clone has no data/ folder: the Benchy tests are skipped rather than failed.
-const needsBenchy = benchyAvailable ? {} : { skip: `${benchyPath} not found` };
+if (engineSkip) console.log(`# ${engineSkip}`);
+// 3DBenchy is not part of the repository: the Benchy tests are skipped rather than failed without it.
+const needsBenchy = benchyAvailable ? {} : { skip: `${benchyPath} not found (set ENGINE_TEST_BENCHY)` };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,7 +75,7 @@ function failure(run: () => unknown) {
   assert.fail('expected the job to fail');
 }
 
-/** What the server would show for this G-code: its header/footer parse. */
+/** The stats the G-code text itself gives: its header and footer. */
 function statsFromText(gcode: Uint8Array): GcodeStats {
   const decoder = new TextDecoder();
   const head = decoder.decode(gcode.subarray(0, 16 * 1024));
@@ -185,7 +180,7 @@ function assertProgress(progress: Array<[number, string]>): void {
   assert.ok(progress.at(-1)![0] >= 95, `last progress ${JSON.stringify(progress.at(-1))}`);
 }
 
-/** Stats must mean exactly what the server reads from the same G-code. */
+/** Stats must mean exactly what the G-code header and footer say. */
 function assertStatsMatchText(output: SliceOutput): void {
   assert.deepEqual(output.stats, statsFromText(output.gcode), 'stats differ from the G-code header/footer');
   const s = output.stats;
@@ -279,7 +274,7 @@ function assertBeadsMatchParser(t: TestContext, engine: ParsedGcode, parsed: Par
 // Tests
 // ---------------------------------------------------------------------------
 
-suite(`engine-${variant}`, () => {
+describe(`engine-${variant}`, { skip: engineSkip }, () => {
   let engine: OrcaEngineModule;
   let presets: Presets;
 
@@ -304,7 +299,7 @@ suite(`engine-${variant}`, () => {
 
     const text = new TextDecoder().decode(output.gcode);
     assert.match(text, /^; generated by OrcaSlicer 2\.5\.0-dev/m);
-    assert.match(text, /EXCLUDE_OBJECT_DEFINE NAME=Cube\.stl/, 'object named as on the server');
+    assert.match(text, /EXCLUDE_OBJECT_DEFINE NAME=Cube\.stl/, 'object named as Orca\'s CLI names it');
     assert.equal(output.stats.maxZ, 20);
     assert.ok(Math.abs(output.stats.layers! - 100) <= 1, `layers ${output.stats.layers}`);
     assertProgress(sliced.progress);
@@ -383,7 +378,7 @@ suite(`engine-${variant}`, () => {
     report(t, 'notch neighbours', sliced);
     const kinds = sliced.output.warnings.map((w) => `${w.kind}: ${w.message}`);
     t.diagnostic(`warnings: ${kinds.length ? kinds.join(' | ') : 'none'}`);
-    // Spec §7 expects the fork's path check to flag the skirt; whether it does depends on the
+    // WASM_ENGINE_SPEC.md §7 expects the fork's path check to flag the skirt; whether it does depends on the
     // branch's skirt/travel handling, so this is reported rather than asserted.
   });
 
@@ -572,9 +567,9 @@ suite(`engine-${variant}`, () => {
     assert.ok(moved.objects[0].exclusionHits.length > 0, 'a Benchy at y = 20 reaches into the notch');
   });
 
-  // ---- Per-object settings (EngineObject.config), architecture.md §2.2
+  // ---- Per-object settings (EngineObject.config)
 
-  test('object settings: layer height 0.1 and 5 walls on one cube, as the server CLI slices its 3MF', (t) => {
+  test("object settings: layer height 0.1 and 5 walls on one cube, as Orca's CLI slices it from a 3MF", (t) => {
     const sliced = slice(engine, presets, objectSettingsPlate());
     const { output } = sliced;
     report(t, 'object settings', sliced);
@@ -773,8 +768,11 @@ suite(`engine-${variant}`, () => {
     assert.ok(defs.presetKeys.machine.includes('printable_area') && defs.presetKeys.machine.includes('machine_max_speed_x'));
     assert.ok(defs.extruderKeys.includes('nozzle_diameter') && defs.filamentOverrideKeys.includes('filament_retraction_length'));
     assert.ok(defs.objectKeys.includes('layer_height') && defs.regionKeys.includes('wall_loops'));
-    // Every setting the web slicer offers per object is one Orca applies per object.
+    // Every per-object key is an option, and the settings the object tests set are per-object keys.
     const perObject = new Set([...defs.objectKeys, ...defs.regionKeys]);
-    for (const key of OBJECT_SETTING_KEYS) assert.ok(perObject.has(key) && key in defs.options, key);
+    for (const key of perObject) assert.ok(key in defs.options, key);
+    for (const key of ['layer_height', 'wall_loops', 'sparse_infill_pattern', 'sparse_infill_density', 'enable_support', 'top_shell_layers', 'support_threshold_angle', 'brim_width']) {
+      assert.ok(perObject.has(key), key);
+    }
   });
 });

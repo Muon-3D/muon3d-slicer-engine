@@ -1,22 +1,26 @@
-// Slices the same plates with the browser engine and with the server's OrcaSlicer CLI, invoked
-// exactly as server/jobs.ts does, and compares the results.
+// Slices the same plates with the engine and with a native OrcaSlicer CLI, and compares the results.
 //
-//   node engine/test/compare.ts                 # CLI from server/config.ts (ORCA_EXE / ORCA_DIR)
-//   ORCA_EXE=path/to/orca-slicer.exe node engine/test/compare.ts
-//   node engine/test/compare.ts --cli-only      # only the CLI side (checks the reference setup)
+//   ORCA_EXE=path/to/orca-slicer node test/compare.ts            # both sides
+//   ORCA_EXE=path/to/orca-slicer node test/compare.ts --cli-only # only the CLI side (checks the setup)
 //
-// The server's CLI is a different Orca build (the muon3d-m1 release) than the engine (branch
-// muon3d-wasm), so the comparison is deliberately loose: layer count within 1, print time within
-// 10 %, filament within 5 %, max Z within 0.05 mm. Byte parity against a CLI built from the same
-// commit is the job of the parity suite (docs/WASM_ENGINE_SPEC.md §8). Both get the same flattened
-// presets; like the server, the CLI's process preset is pinned to the printer by name. Exits 1
-// when a plate is outside the tolerances or either side fails.
+// The CLI is run the way Orca's one-plate CLI path is driven for the engine's bridge: the flattened
+// presets as --load-settings / --load-filaments, the objects as STL files already placed on the bed,
+// `--arrange 0 --slice 0`. Like the CLI needs, the process preset is pinned to the printer by name.
+//
+// With a CLI built from another Orca commit than the engine (an older release, say) the G-code
+// differs, so the comparison is deliberately loose: layer count within 1, print time within 10 %,
+// filament within 5 %, max Z within 0.05 mm. Byte parity against a CLI built from the same commit is
+// the job of a parity suite (docs/WASM_ENGINE_SPEC.md §8). Exits 1 when a plate is outside the
+// tolerances or either side fails.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { GcodeStats } from '../../shared/types.ts';
-import { runSlice } from '../../web/src/engine/worker.ts';
-import { M1, benchy, benchyAvailable, cube, engineBuilt, engineModulePath, m1Presets, ms, outDir, sliceJob, startEngine, type Presets } from './fixtures.ts';
+import { runSlice } from '../host/src/worker.ts';
+import type { GcodeStats } from '../packages/protocol/src/v1.ts';
+import { M1, benchy, benchyAvailable, cube, engineBuilt, engineModulePath, m1Presets, ms, outDir, presetNames, sliceJob, startEngine, type Presets } from './fixtures.ts';
+import { parseStatsText } from './helpers/gcodeStats.ts';
+import { pinProcessToPrinterName } from './helpers/overrides.ts';
+import { writeStl } from './helpers/stl.ts';
 
 interface Plate {
   name: string;
@@ -38,32 +42,50 @@ const TOLERANCES: Tolerance[] = [
   { field: 'filamentG', relative: 0.05 },
 ];
 
-async function sliceWithCli(plate: Plate, presets: Presets): Promise<{ stats: GcodeStats; wallMs: number }> {
-  // Imported late: server/config.ts reads the environment once, after fixtures.ts has set it up.
-  const { config } = await import('../../server/config.ts');
-  const { buildOrcaArgs, ORCA_FILES, normalizeExitCode } = await import('../../server/orca.ts');
-  const { writeBinaryStl } = await import('../../server/meshio.ts');
-  const { pinProcessToPrinter } = await import('../../server/profiles.ts');
-  const { parseGcodeStats } = await import('../../server/gcodeStats.ts');
+const FILES = { machine: 'cfg/machine.json', process: 'cfg/process.json', filament: 'cfg/filament.json', log: 'orca.log', out: 'out', gcode: 'out/plate_1.gcode' };
 
+/** Orca's exit codes are small negative numbers; Windows reports them as large unsigned ones. */
+const signedExitCode = (code: number) => (code > 0x7fffffff ? code - 2 ** 32 : code);
+
+/** The stats of a G-code file, from its first 16 KB and last 512 KB. */
+function statsOfFile(file: string): GcodeStats {
+  const text = readFileSync(file, 'utf8');
+  return parseStatsText(text.slice(0, 16 * 1024), text.slice(Math.max(0, text.length - 512 * 1024)));
+}
+
+function sliceWithCli(plate: Plate, presets: Presets): { stats: GcodeStats; wallMs: number } {
+  const exe = process.env.ORCA_EXE;
+  if (!exe) throw new Error('set ORCA_EXE to an OrcaSlicer executable (the CLI to compare with)');
   const dir = path.join(outDir, 'compare', plate.name);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(path.join(dir, 'cfg'), { recursive: true });
-  mkdirSync(path.join(dir, ORCA_FILES.outDir), { recursive: true });
-  const processPreset = await pinProcessToPrinter(presets.process, { vendor: M1.vendor, name: M1.machine });
-  writeFileSync(path.join(dir, ORCA_FILES.machineCfg), JSON.stringify(presets.machine, null, 2));
-  writeFileSync(path.join(dir, ORCA_FILES.processCfg), JSON.stringify(processPreset, null, 2));
-  writeFileSync(path.join(dir, ORCA_FILES.filamentCfg), JSON.stringify(presets.filaments[0], null, 2));
-  for (const object of plate.objects) writeFileSync(path.join(dir, object.name), writeBinaryStl(object.positions));
+  mkdirSync(path.join(dir, FILES.out), { recursive: true });
+  const processPreset = pinProcessToPrinterName(presets.process, presetNames(M1).machine);
+  writeFileSync(path.join(dir, FILES.machine), JSON.stringify(presets.machine, null, 2));
+  writeFileSync(path.join(dir, FILES.process), JSON.stringify(processPreset, null, 2));
+  writeFileSync(path.join(dir, FILES.filament), JSON.stringify(presets.filaments[0], null, 2));
+  for (const object of plate.objects) writeFileSync(path.join(dir, object.name), writeStl(object.positions));
 
-  const args = buildOrcaArgs({ datadir: path.join(dir, 'datadir'), inputs: plate.objects.map((o) => o.name), exportProject: false });
+  const args = [
+    '--debug', '4',
+    '--logfile', FILES.log,
+    // A data folder of its own, so the CLI never reads or changes the user's Orca settings.
+    '--datadir', path.join(dir, 'datadir'),
+    '--load-settings', `${FILES.machine};${FILES.process}`,
+    '--load-filaments', FILES.filament,
+    // The objects arrive placed in bed coordinates; Orca's arranger would move them.
+    '--arrange', '0',
+    '--slice', '0',
+    '--outputdir', FILES.out,
+    ...plate.objects.map((o) => o.name),
+  ];
   const started = performance.now();
-  const run = spawnSync(config.orcaExe, args, { cwd: dir, windowsHide: true, timeout: 15 * 60_000, stdio: 'ignore' });
+  const run = spawnSync(exe, args, { cwd: dir, windowsHide: true, timeout: 15 * 60_000, stdio: 'ignore' });
   const wallMs = performance.now() - started;
-  if (run.error) throw new Error(`${config.orcaExe} could not be run: ${run.error.message}`);
-  const code = run.status === null ? null : normalizeExitCode(run.status);
-  if (code !== 0) throw new Error(`the CLI exited with ${code ?? run.signal} (log: ${path.join(dir, ORCA_FILES.log)})`);
-  return { stats: await parseGcodeStats(path.join(dir, ORCA_FILES.gcode)), wallMs };
+  if (run.error) throw new Error(`${exe} could not be run: ${run.error.message}`);
+  const code = run.status === null ? null : signedExitCode(run.status);
+  if (code !== 0) throw new Error(`the CLI exited with ${code ?? run.signal} (log: ${path.join(dir, FILES.log)})`);
+  return { stats: statsOfFile(path.join(dir, FILES.gcode)), wallMs };
 }
 
 function withinTolerance(tolerance: Tolerance, engine: number | null, cli: number | null): boolean {
@@ -76,7 +98,7 @@ function withinTolerance(tolerance: Tolerance, engine: number | null, cli: numbe
 async function plates(): Promise<Plate[]> {
   const list: Plate[] = [{ name: 'cube', objects: [{ name: 'Cube.stl', positions: cube([100, 90]) }] }];
   if (benchyAvailable) list.push({ name: 'benchy', objects: [{ name: 'Benchy.stl', positions: await benchy([100, 90]) }] });
-  else console.log('# data/samples/benchy-raw.stl not found: comparing the cube only.');
+  else console.log('# No Benchy STL (ENGINE_TEST_BENCHY): comparing the cube only.');
   return list;
 }
 
@@ -84,7 +106,7 @@ async function plates(): Promise<Plate[]> {
 async function cliOnly(): Promise<number> {
   const presets = await m1Presets();
   for (const plate of await plates()) {
-    const cli = await sliceWithCli(plate, presets);
+    const cli = sliceWithCli(plate, presets);
     console.log(`${plate.name}: CLI ${ms(cli.wallMs)}`, cli.stats);
   }
   return 0;
@@ -106,11 +128,10 @@ async function main(): Promise<number> {
     const started = performance.now();
     const output = runSlice(engine, sliceJob(presets, plate.objects, false));
     const engineMs = performance.now() - started;
-    mkdirSync(path.join(outDir, 'compare', plate.name), { recursive: true });
 
     let cli: { stats: GcodeStats; wallMs: number };
     try {
-      cli = await sliceWithCli(plate, presets);
+      cli = sliceWithCli(plate, presets);
     } catch (err) {
       console.error(`CLI failed: ${(err as Error).message}`);
       ok = false;

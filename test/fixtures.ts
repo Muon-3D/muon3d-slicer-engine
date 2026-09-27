@@ -1,39 +1,34 @@
-// Shared set-up for the engine tests (engine.test.ts) and the CLI comparison (compare.ts): where the
-// built engine is, the Muon3D M1 presets flattened from the Orca branch the engine is built from,
-// and the test plates.
+// Shared set-up for the engine tests (engine.test.ts, settingsOverrides.e2e.test.ts) and the CLI
+// comparison (compare.ts): where the built engine is, the flattened presets they slice with, and the
+// test plates.
 //
 // Environment:
-//   ENGINE_DIR      folder with engine-<variant>.mjs/.wasm   (default web/public/engine)
-//   ENGINE_VARIANT  st | mt                                  (default st)
-//   ORCA_WASM_ROOT  the engine workspace, as in engine/scripts (default ~/OrcaWasm)
-//   ORCA_SRC        the Orca checkout                        (default $ORCA_WASM_ROOT/orca)
-//   ORCA_RESOURCES  Orca resources the presets come from     (default $ORCA_SRC/resources, the
-//                   muon3d-wasm branch: M1 collision volumes are in bed_exclude_volumes)
-//   ENGINE_TEST_OUT where G-code and CLI runs are written     (default $ORCA_WASM_ROOT/test-out)
+//   ENGINE_DIR          folder with engine-<variant>.mjs/.wasm          (default dist/)
+//   ENGINE_VARIANT      st | mt                                         (default st)
+//   ENGINE_TEST_OUT     where G-code and CLI runs are written           (default test-out/)
+//   ENGINE_TEST_BENCHY  an STL of 3DBenchy for the Benchy tests         (default test/fixtures/local/benchy.stl;
+//                       skipped without it: 3DBenchy is not redistributed here)
+//   ENGINE_TEST_REQUIRE 1: fail instead of skipping when the engine is not built (npm run test:engine)
 import { existsSync, readFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { FlatConfig } from '../../shared/types.ts';
-import type { CheckJob, EngineObject, EngineVariant, SliceJob } from '../../web/src/engine/protocol.ts';
-import { loadEngine, type OrcaEngineModule } from '../../web/src/engine/worker.ts';
+import type { CheckJob, EngineObject, EngineVariant, FlatConfig, SliceJob } from '../packages/protocol/src/v1.ts';
+import { loadEngine, type OrcaEngineModule } from '../host/src/worker.ts';
+import { parseStl } from './helpers/stl.ts';
 
-export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repoRoot, 'web/public/engine'));
+export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repoRoot, 'dist'));
 export const variant = (process.env.ENGINE_VARIANT ?? 'st') as EngineVariant;
-const orcaWasmRoot = process.env.ORCA_WASM_ROOT ?? (path.join(os.homedir(), 'OrcaWasm'));
-export const outDir = path.resolve(process.env.ENGINE_TEST_OUT ?? path.join(orcaWasmRoot, 'test-out'));
-// Must be set before server/config.ts is first imported (it reads the environment once).
-const orcaResources = (process.env.ORCA_RESOURCES ??= path.join(process.env.ORCA_SRC ?? path.join(orcaWasmRoot, 'orca'), 'resources'));
-
-/** The M1 profiles the tests slice with (only the muon3d-wasm branch of Orca has them). */
-export const m1ResourcesAvailable = existsSync(path.join(orcaResources, 'profiles/Muon3D.json'));
+export const outDir = path.resolve(process.env.ENGINE_TEST_OUT ?? path.join(repoRoot, 'test-out'));
 
 export const engineModulePath = path.join(engineDir, `engine-${variant}.mjs`);
 export const engineBuilt = existsSync(engineModulePath);
+/** Why the engine suites do not run, or false when they do (npm run test:engine fails them instead). */
+export const engineSkip: string | false =
+  engineBuilt || process.env.ENGINE_TEST_REQUIRE === '1' ? false : `${engineModulePath} not found: build the engine first (npm run build:engine)`;
 
 export async function startEngine(): Promise<{ engine: OrcaEngineModule; initMs: number }> {
-  // The same loader the browser worker uses.
+  // The same loader the worker host uses in a browser.
   return loadEngine(pathToFileURL(engineDir + path.sep).href, variant);
 }
 
@@ -41,40 +36,40 @@ export async function startEngine(): Promise<{ engine: OrcaEngineModule; initMs:
 // Presets
 // ---------------------------------------------------------------------------
 
-export const M1 = {
-  vendor: 'Muon3D',
-  machine: 'Muon3D M1 0.4 nozzle',
-  process: '0.20mm Standard @Muon3D M1',
-  filament: 'Generic PLA @Muon3D M1',
-};
-
 export interface Presets {
   machine: FlatConfig;
   process: FlatConfig;
   filaments: FlatConfig[];
 }
 
-/** A Bambu Lab printer: Orca writes a different G-code dialect for those (object label ids, M624). */
-export const X1C = {
-  vendor: 'BBL',
-  machine: 'Bambu Lab X1 Carbon 0.4 nozzle',
-  process: '0.20mm Standard @BBL X1C',
-  filament: 'Bambu PLA Basic @BBL X1C',
-};
-
-/** Presets flattened exactly as the server flattens them for the CLI (server/profiles.ts). */
-export async function flatPresets(names: typeof M1): Promise<Presets> {
-  const { resolvePreset } = await import('../../server/profiles.ts');
-  const [machine, processPreset, filament] = await Promise.all([
-    resolvePreset('machine', { vendor: names.vendor, name: names.machine }),
-    resolvePreset('process', { vendor: names.vendor, name: names.process }),
-    resolvePreset('filament', { vendor: names.vendor, name: names.filament }),
-  ]);
-  return { machine, process: processPreset, filaments: [filament] };
+interface PresetFixture extends Presets {
+  names: { vendor: string; machine: string; process: string; filament: string };
 }
 
-/** The M1 presets flattened exactly as the server flattens them for the CLI (server/profiles.ts). */
+/**
+ * Committed presets (test/fixtures/presets), flattened from the Orca profiles of the pinned commit
+ * (orca/resources/profiles) the way Orca's CLI takes them: inheritance resolved, `from: "system"`, a
+ * `type`, `instantiation: "true"`, no `inherits`. Regenerate them when the pin moves and a profile the
+ * tests use has changed.
+ */
+function presetFixture(id: string): PresetFixture {
+  return JSON.parse(readFileSync(path.join(repoRoot, 'test/fixtures/presets', `${id}.json`), 'utf8')) as PresetFixture;
+}
+
+/** Muon3D M1 0.4 nozzle, 0.20mm Standard, Generic PLA: the printer with exclusion volumes. */
+export const M1 = 'muon3d-m1-0.4';
+/** A Bambu Lab printer: Orca writes a different G-code dialect for those (object label ids, M624). */
+export const X1C = 'bbl-x1c-0.4';
+
+export async function flatPresets(id: string): Promise<Presets> {
+  const { machine, process, filaments } = presetFixture(id);
+  return { machine, process, filaments };
+}
+
 export const m1Presets = (): Promise<Presets> => flatPresets(M1);
+
+/** The preset names of a fixture (the CLI comparison pins the process to the printer by name). */
+export const presetNames = (id: string) => presetFixture(id).names;
 
 // ---------------------------------------------------------------------------
 // Meshes (bed coordinates, resting on z = 0)
@@ -119,23 +114,26 @@ export function cylinder(center: [number, number], radius: number, height: numbe
 
 let benchyCache: Float32Array | null = null;
 
-/** 3DBenchy (data/ is git-ignored, so a fresh clone has no Benchy and its tests are skipped). */
-export const benchyPath = path.join(repoRoot, 'data/samples/benchy-raw.stl');
+/** 3DBenchy, when an STL of it is on this machine (it is not redistributed with the tests). */
+export const benchyPath = path.resolve(process.env.ENGINE_TEST_BENCHY ?? path.join(repoRoot, 'test/fixtures/local/benchy.stl'));
 export const benchyAvailable = existsSync(benchyPath);
 
-/** 3DBenchy from data/samples, normalised like an upload (centred, on the bed) and moved to `center`. */
+/**
+ * 3DBenchy centred on the origin in X and Y, resting on z = 0 (in place, in float32 steps, as an app
+ * normalises an upload), then moved to `center`.
+ */
 export async function benchy(center: [number, number]): Promise<Float32Array> {
   if (!benchyCache) {
-    const { parseStl, normalizeInPlace } = await import('../../server/meshio.ts');
     benchyCache = parseStl(readFileSync(benchyPath));
-    normalizeInPlace(benchyCache);
+    const { min, max } = bounds(benchyCache);
+    const [dx, dy, dz] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, min[2]];
+    for (let i = 0; i < benchyCache.length; i += 3) {
+      benchyCache[i] -= dx;
+      benchyCache[i + 1] -= dy;
+      benchyCache[i + 2] -= dz;
+    }
   }
-  const placed = new Float32Array(benchyCache);
-  for (let i = 0; i < placed.length; i += 3) {
-    placed[i] += center[0];
-    placed[i + 1] += center[1];
-  }
-  return placed;
+  return translate(benchyCache, center[0], center[1]);
 }
 
 export function translate(positions: Float32Array, dx: number, dy: number): Float32Array {
@@ -148,9 +146,9 @@ export function translate(positions: Float32Array, dx: number, dy: number): Floa
 }
 
 /**
- * The plate of the per-object settings experiment on the server's CLI (architecture.md §2.3,
- * Appendix B): two 20 mm cubes, "CubeA.stl" at (60, 60) with `settings` as its own settings and
- * "CubeB.stl" at (130, 60) with none.
+ * Two 20 mm cubes: "CubeA.stl" at (60, 60) with `settings` as its own settings, and "CubeB.stl" at
+ * (130, 60) with none. The same plate was sliced with Orca's CLI from a 3MF with those object
+ * settings; the per-object tests compare against what it printed.
  */
 export function objectSettingsPlate(settings: Record<string, string> = { layer_height: '0.1', wall_loops: '5' }): EngineObject[] {
   return [

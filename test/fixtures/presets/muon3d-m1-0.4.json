@@ -1,0 +1,525 @@
+{
+  "names": {
+    "vendor": "Muon3D",
+    "machine": "Muon3D M1 0.4 nozzle",
+    "process": "0.20mm Standard @Muon3D M1",
+    "filament": "Generic PLA @Muon3D M1"
+  },
+  "machine": {
+    "type": "machine",
+    "name": "Muon3D M1 0.4 nozzle",
+    "from": "system",
+    "instantiation": "true",
+    "printer_technology": "FFF",
+    "deretraction_speed": [
+      "30"
+    ],
+    "extruder_colour": [
+      "#FCE94F"
+    ],
+    "extruder_offset": [
+      "0x0"
+    ],
+    "gcode_flavor": "klipper",
+    "silent_mode": "0",
+    "machine_max_acceleration_e": [
+      "20000",
+      "10000"
+    ],
+    "machine_max_acceleration_extruding": [
+      "20000",
+      "10000"
+    ],
+    "machine_max_acceleration_retracting": [
+      "20000",
+      "7000"
+    ],
+    "machine_max_acceleration_x": [
+      "20000",
+      "14000"
+    ],
+    "machine_max_acceleration_y": [
+      "20000",
+      "14000"
+    ],
+    "machine_max_acceleration_z": [
+      "1000",
+      "1000"
+    ],
+    "machine_max_speed_e": [
+      "30",
+      "30"
+    ],
+    "machine_max_speed_x": [
+      "800",
+      "800"
+    ],
+    "machine_max_speed_y": [
+      "800",
+      "800"
+    ],
+    "machine_max_speed_z": [
+      "15",
+      "15"
+    ],
+    "machine_max_jerk_e": [
+      "4",
+      "2.5"
+    ],
+    "machine_max_jerk_x": [
+      "25",
+      "12"
+    ],
+    "machine_max_jerk_y": [
+      "25",
+      "12"
+    ],
+    "machine_max_jerk_z": [
+      "0.2",
+      "0.2"
+    ],
+    "machine_min_extruding_rate": [
+      "0",
+      "0"
+    ],
+    "machine_min_travel_rate": [
+      "0",
+      "0"
+    ],
+    "max_layer_height": [
+      "0.32"
+    ],
+    "min_layer_height": [
+      "0.08"
+    ],
+    "printable_height": "165",
+    "extruder_clearance_radius": "120",
+    "extruder_clearance_height_to_rod": "4",
+    "extruder_clearance_height_to_lid": "4",
+    "nozzle_diameter": [
+      "0.4"
+    ],
+    "printer_settings_id": "",
+    "printer_variant": "0.4",
+    "retraction_minimum_travel": [
+      "1"
+    ],
+    "retract_before_wipe": [
+      "70%"
+    ],
+    "retract_when_changing_layer": [
+      "0"
+    ],
+    "retraction_length": [
+      "0.4"
+    ],
+    "retract_length_toolchange": [
+      "2"
+    ],
+    "z_hop": [
+      "0.4"
+    ],
+    "retract_restart_extra": [
+      "0"
+    ],
+    "retract_restart_extra_toolchange": [
+      "0"
+    ],
+    "retraction_speed": [
+      "30"
+    ],
+    "single_extruder_multi_material": "1",
+    "change_filament_gcode": "",
+    "wipe": [
+      "0"
+    ],
+    "default_print_profile": "0.20mm Standard @Muon3D M1",
+    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] MATERIAL=[filament_type[initial_extruder]] MESH_MIN={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} MESH_MAX={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ALGORITHM=[bed_mesh_algo]\n\nG90               ; absolute XYZ mode\nM83               ; relative E mode\n\nG0 X130.0 Y-1.5 F8000    ; move to (130,2) at Z=0.8 mm\n\nSPEED_SLOW_PRE_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\n; --- Drop to first-layer height and prime a little\nG0 Z0.15\nG1 X134 E5 F300\n\n; --- Begin modified L-shaped wipe ---\n\n; 1) Horizontal long wipe from (130, 2) to (198, 2)\nG1 X200 Y-1.5 E20 F800\n\n; 2) Vertical move up from (200, -1.5) to (200, 4.5)\nG1 Y4.5 E1 F800\n\n; 3) Small back move to relieve pressure\nG1 X199.5 E-0.2\n\n; 4) Vertical move down from (199.5, 4.5)\nG1 Y-0.5 E0.7 F600\n\n; 5) Horizontal return wipe from (199.5, -0.5) back to (130, 2.5)\nG1 X130 E7.5 F600\n\nSPEED_NORMAL__POST_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\nG1 Z0.1 F800\nG1 Y1 F1200\n\n; --- End modified L-shaped wipe ---\n\nM400                           ; wait for all moves to finish before continuing",
+    "machine_end_gcode": "PRINT_END",
+    "layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]",
+    "before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+    "machine_pause_gcode": "PAUSE",
+    "machine_max_acceleration_travel": [
+      "20000",
+      "14000"
+    ],
+    "z_hop_types": [
+      "Auto Lift"
+    ],
+    "fan_speedup_time": "4",
+    "fan_speedup_overhangs": "0",
+    "default_filament_profile": [
+      "Generic PLA @Muon3D M1"
+    ],
+    "bed_mesh_max": "190,170",
+    "bed_mesh_min": "10,7",
+    "bed_mesh_probe_distance": "37.5,40",
+    "bed_exclude_area": [],
+    "bed_exclude_volumes": "0..5;119.5x0,80.5x0,80.5x2.629,80.5x4.695,80.5x10.509,80.504x15.089,80.567x16.955,80.85x19.014,81.467x21.098,82.447x23.045,83.753x24.748,85.351x26.17,87.1x27.227,89.021x27.972,90.993x28.395,92.874x28.56,94.499x28.584,105.501x28.584,107.235x28.555,109.244x28.36,111.336x27.861,113.344x26.998,115.134x25.794,116.651x24.289,118.052x22.166,118.972x19.764,119.403x17.314,119.496x15.089,119.5x9.263,119.5x4.695,119.5x2.066|0..0.01;0x0,10x0,9.128x0.038,8.264x0.152,7.412x0.341,6.58x0.603,5.774x0.937,5x1.34,4.264x1.808,3.572x2.34,2.929x2.929,2.34x3.572,1.808x4.264,1.34x5,0.937x5.774,0.603x6.58,0.341x7.412,0.152x8.264,0.038x9.128,0x10|0..0.01;200x0,200x10,199.962x9.128,199.848x8.264,199.659x7.412,199.397x6.58,199.063x5.774,198.66x5,198.192x4.264,197.66x3.572,197.071x2.929,196.428x2.34,195.736x1.808,195x1.34,194.226x0.937,193.42x0.603,192.588x0.341,191.736x0.152,190.872x0.038,190x0|0..0.01;200x180,190x180,190.872x179.962,191.736x179.848,192.588x179.659,193.42x179.397,194.226x179.063,195x178.66,195.736x178.192,196.428x177.66,197.071x177.071,197.66x176.428,198.192x175.736,198.66x175,199.063x174.226,199.397x173.42,199.659x172.588,199.848x171.736,199.962x170.872,200x170|0..0.01;0x180,0x170,0.038x170.872,0.152x171.736,0.341x172.588,0.603x173.42,0.937x174.226,1.34x175,1.808x175.736,2.34x176.428,2.929x177.071,3.572x177.66,4.264x178.192,5x178.66,5.774x179.063,6.58x179.397,7.412x179.659,8.264x179.848,9.128x179.962,10x180",
+    "printable_area": [
+      "0x0",
+      "200x0",
+      "200x180",
+      "0x180"
+    ],
+    "scan_first_layer": "0",
+    "nozzle_type": "brass",
+    "print_host": "Muon-M1-SERIALNUMBERHERE.local",
+    "auxiliary_fan": "0",
+    "setting_id": "GM001",
+    "printer_model": "Muon3D M1"
+  },
+  "process": {
+    "type": "process",
+    "name": "0.20mm Standard @Muon3D M1",
+    "from": "system",
+    "instantiation": "true",
+    "adaptive_layer_height": "0",
+    "reduce_crossing_wall": "0",
+    "max_travel_detour_distance": "0",
+    "bottom_surface_pattern": "monotonic",
+    "bottom_shell_thickness": "0",
+    "bridge_speed": "30",
+    "brim_width": "5",
+    "brim_object_gap": "0.1",
+    "compatible_printers": [
+      "Muon3D M1 0.4 nozzle",
+      "Muon3D M1 0.6 nozzle",
+      "Muon3D M1 0.8 nozzle"
+    ],
+    "compatible_printers_condition": "",
+    "print_sequence": "by layer",
+    "default_acceleration": "12000",
+    "initial_layer_acceleration": "1000",
+    "top_surface_acceleration": "6000",
+    "travel_acceleration": "12000",
+    "inner_wall_acceleration": "12000",
+    "outer_wall_acceleration": "6000",
+    "bridge_no_support": "0",
+    "draft_shield": "disabled",
+    "elefant_foot_compensation": "0",
+    "enable_arc_fitting": "0",
+    "wall_infill_order": "inner wall/outer wall/infill",
+    "infill_direction": "45",
+    "sparse_infill_density": "15%",
+    "sparse_infill_pattern": "crosshatch",
+    "initial_layer_print_height": "0.2",
+    "infill_combination": "0",
+    "infill_wall_overlap": "25%",
+    "interface_shells": "0",
+    "ironing_flow": "10%",
+    "ironing_spacing": "0.15",
+    "ironing_speed": "30",
+    "ironing_type": "no ironing",
+    "reduce_infill_retraction": "1",
+    "filename_format": "{input_filename_base}_{layer_height}mm_{filament_type[initial_tool]}_{printer_model}_{print_time}.gcode",
+    "detect_overhang_wall": "1",
+    "slowdown_for_curled_perimeters": "1",
+    "overhang_1_4_speed": "0",
+    "overhang_2_4_speed": "50",
+    "overhang_3_4_speed": "30",
+    "overhang_4_4_speed": "10",
+    "line_width": "110%",
+    "inner_wall_line_width": "110%",
+    "outer_wall_line_width": "100%",
+    "top_surface_line_width": "93.75%",
+    "sparse_infill_line_width": "110%",
+    "initial_layer_line_width": "120%",
+    "internal_solid_infill_line_width": "120%",
+    "support_line_width": "96%",
+    "wall_loops": "3",
+    "print_settings_id": "",
+    "raft_layers": "0",
+    "seam_position": "aligned",
+    "skirt_distance": "2",
+    "skirt_height": "1",
+    "min_skirt_length": "4",
+    "skirt_loops": "2",
+    "minimum_sparse_infill_area": "15",
+    "spiral_mode": "0",
+    "standby_temperature_delta": "-5",
+    "enable_support": "0",
+    "resolution": "0.012",
+    "support_type": "tree(auto)",
+    "support_on_build_plate_only": "0",
+    "support_top_z_distance": "0.2",
+    "support_bottom_z_distance": "0.2",
+    "support_filament": "0",
+    "support_interface_loop_pattern": "0",
+    "support_interface_filament": "0",
+    "support_interface_top_layers": "2",
+    "support_interface_bottom_layers": "2",
+    "support_interface_spacing": "0.5",
+    "support_interface_speed": "80",
+    "support_base_pattern": "default",
+    "support_base_pattern_spacing": "2.5",
+    "support_speed": "150",
+    "support_threshold_angle": "30",
+    "support_object_xy_distance": "0.35",
+    "tree_support_branch_angle": "30",
+    "tree_support_wall_count": "0",
+    "tree_support_with_infill": "0",
+    "detect_thin_wall": "0",
+    "top_surface_pattern": "monotonicline",
+    "top_shell_thickness": "0.8",
+    "enable_prime_tower": "0",
+    "wipe_tower_no_sparse_layers": "0",
+    "prime_tower_width": "60",
+    "xy_hole_compensation": "0",
+    "xy_contour_compensation": "0",
+    "layer_height": "0.2",
+    "bottom_shell_layers": "3",
+    "top_shell_layers": "4",
+    "bridge_flow": "2",
+    "initial_layer_speed": "80",
+    "initial_layer_infill_speed": "105",
+    "outer_wall_speed": "150",
+    "inner_wall_speed": "250",
+    "sparse_infill_speed": "250",
+    "internal_solid_infill_speed": "250",
+    "top_surface_speed": "200",
+    "gap_infill_speed": "200",
+    "travel_speed": "600",
+    "internal_bridge_speed": "75",
+    "internal_bridge_flow": "1",
+    "travel_jerk": "12",
+    "outer_wall_jerk": "7",
+    "inner_wall_jerk": "7",
+    "default_jerk": "9",
+    "infill_jerk": "12",
+    "top_surface_jerk": "7",
+    "initial_layer_jerk": "7",
+    "exclude_object": "1",
+    "counterbore_hole_bridging": "partiallybridge",
+    "hole_to_polyhole": "1",
+    "skirt_speed": "100",
+    "support_critical_regions_only": "1",
+    "wipe_before_external_loop": "1",
+    "setting_id": "GP004",
+    "gap_fill_target": "nowhere"
+  },
+  "filaments": [
+    {
+      "type": "filament",
+      "name": "Generic PLA @Muon3D M1",
+      "from": "system",
+      "instantiation": "true",
+      "activate_air_filtration": [
+        "0"
+      ],
+      "chamber_temperatures": [
+        "0"
+      ],
+      "close_fan_the_first_x_layers": [
+        "1"
+      ],
+      "complete_print_exhaust_fan_speed": [
+        "70"
+      ],
+      "cool_plate_temp": [
+        "35"
+      ],
+      "cool_plate_temp_initial_layer": [
+        "35"
+      ],
+      "during_print_exhaust_fan_speed": [
+        "70"
+      ],
+      "eng_plate_temp": [
+        "0"
+      ],
+      "eng_plate_temp_initial_layer": [
+        "0"
+      ],
+      "fan_cooling_layer_time": [
+        "45"
+      ],
+      "fan_max_speed": [
+        "30"
+      ],
+      "fan_min_speed": [
+        "8"
+      ],
+      "filament_cost": [
+        "20"
+      ],
+      "filament_density": [
+        "1.24"
+      ],
+      "filament_deretraction_speed": [
+        "nil"
+      ],
+      "filament_diameter": [
+        "1.75"
+      ],
+      "filament_flow_ratio": [
+        "0.98"
+      ],
+      "filament_is_support": [
+        "0"
+      ],
+      "filament_long_retractions_when_cut": [
+        "nil"
+      ],
+      "filament_max_volumetric_speed": [
+        "20"
+      ],
+      "filament_minimal_purge_on_wipe_tower": [
+        "15"
+      ],
+      "filament_multitool_ramming": [
+        "1"
+      ],
+      "filament_multitool_ramming_volume": [
+        "5"
+      ],
+      "filament_retract_before_wipe": [
+        "nil"
+      ],
+      "filament_retract_restart_extra": [
+        "nil"
+      ],
+      "filament_retract_when_changing_layer": [
+        "nil"
+      ],
+      "filament_retraction_distances_when_cut": [
+        "nil"
+      ],
+      "filament_retraction_length": [
+        "nil"
+      ],
+      "filament_retraction_minimum_travel": [
+        "nil"
+      ],
+      "filament_retraction_speed": [
+        "nil"
+      ],
+      "filament_settings_id": [
+        ""
+      ],
+      "filament_soluble": [
+        "0"
+      ],
+      "filament_type": [
+        "PLA"
+      ],
+      "filament_vendor": [
+        "Generic"
+      ],
+      "filament_wipe": [
+        "nil"
+      ],
+      "filament_wipe_distance": [
+        "nil"
+      ],
+      "filament_z_hop": [
+        "nil"
+      ],
+      "filament_z_hop_types": [
+        "nil"
+      ],
+      "full_fan_speed_layer": [
+        "0"
+      ],
+      "filament_scarf_seam_type": [
+        "none"
+      ],
+      "filament_scarf_height": [
+        "10%"
+      ],
+      "filament_scarf_gap": [
+        "15%"
+      ],
+      "filament_scarf_length": [
+        "10"
+      ],
+      "filament_shrink": [
+        "100%"
+      ],
+      "hot_plate_temp": [
+        "50"
+      ],
+      "hot_plate_temp_initial_layer": [
+        "55"
+      ],
+      "nozzle_temperature": [
+        "215"
+      ],
+      "nozzle_temperature_initial_layer": [
+        "215"
+      ],
+      "overhang_fan_speed": [
+        "30"
+      ],
+      "overhang_fan_threshold": [
+        "50%"
+      ],
+      "reduce_fan_stop_start_freq": [
+        "1"
+      ],
+      "required_nozzle_HRC": [
+        "3"
+      ],
+      "supertack_plate_temp": [
+        "45"
+      ],
+      "supertack_plate_temp_initial_layer": [
+        "45"
+      ],
+      "slow_down_for_layer_cooling": [
+        "1"
+      ],
+      "slow_down_layer_time": [
+        "5"
+      ],
+      "slow_down_min_speed": [
+        "5"
+      ],
+      "temperature_vitrification": [
+        "45"
+      ],
+      "textured_plate_temp": [
+        "55"
+      ],
+      "textured_plate_temp_initial_layer": [
+        "55"
+      ],
+      "filament_start_gcode": [
+        "; Filament gcode\n"
+      ],
+      "filament_end_gcode": [
+        "; filament end gcode\n"
+      ],
+      "compatible_printers": [
+        "Muon3D M1 0.2 nozzle",
+        "Muon3D M1 0.4 nozzle",
+        "Muon3D M1 0.6 nozzle",
+        "Muon3D M1 0.8 nozzle"
+      ],
+      "additional_cooling_fan_speed": [
+        "70"
+      ],
+      "filament_multitool_ramming_flow": [
+        "20"
+      ],
+      "nozzle_temperature_range_low": [
+        "190"
+      ],
+      "nozzle_temperature_range_high": [
+        "240"
+      ],
+      "renamed_from": "My Generic PLA",
+      "setting_id": "Muon_M1_PLA_01",
+      "filament_id": "OFDSrzZ8",
+      "dont_slow_down_outer_wall": [
+        "0"
+      ],
+      "enable_pressure_advance": [
+        "1"
+      ],
+      "pressure_advance": [
+        "0.02"
+      ]
+    }
+  ]
+}
