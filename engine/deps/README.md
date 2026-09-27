@@ -97,7 +97,9 @@ The script aborts if the pattern stops matching.
   - ST adds `-DBOOST_HAS_PTHREADS`, so that Boost.Thread and Boost.Log build with threads against
     Emscripten's pthread stubs. `BOOST_LOG_NO_THREADS` is not an option: Orca 2.5's `utils.cpp`
     includes `async_frontend.hpp`, which `#error`s under it.
-- **libjpeg-turbo:** `WITH_JPEG8=ON` (as Orca's Linux build), `WITH_SIMD=OFF`, `WITH_TURBOJPEG=OFF`.
+- **libjpeg-turbo:** `WITH_JPEG8=ON` (as Orca's Linux build), `WITH_SIMD=OFF`, `WITH_TURBOJPEG=OFF`, and
+  `BUILD=20231011`: its build string reaches the engine and defaulted to the day of the build, so prefixes built on
+  different days differed.
 - **oneTBB:** tests off, `TBB_STRICT=OFF`, `TBBMALLOC_BUILD=ON`, `TBBMALLOC_PROXY_BUILD=OFF`, hwloc
   search off.
 - **CGAL** is installed header-only. The GMP-free mode (Boost.Multiprecision exact types) is chosen

@@ -232,8 +232,12 @@ step_qhull() {    # Qhull 8.0.2 (Orca pin for Linux/macOS; the reference Linux C
 # in_color_space = JCS_EXT_RGBA, a libjpeg-turbo extension that IJG libjpeg 9f (the port) lacks.
 # WITH_JPEG8 as in Orca's Linux build (deps/JPEG/JPEG.cmake); no SIMD (x86 NASM/intrinsics only), no
 # TurboJPEG API (libslic3r uses the libjpeg API only). find_package(JPEG) finds it via CMake's FindJPEG.
+# BUILD: the build string in its version message ("libjpeg-turbo version 3.0.1 (build ...)"), which reaches the
+# engine's wasm. It defaults to the day of the configure run, which made prefixes built on different days differ;
+# it is fixed to the release's date (the 3.0.1 tag, 2023-10-11) instead.
 step_jpeg() {
   cmake_dep libjpeg-turbo-3.0.1 "$SRC/libjpeg-turbo-3.0.1" \
+    -DBUILD=20231011 \
     -DENABLE_SHARED=OFF -DENABLE_STATIC=ON -DWITH_JPEG8=ON -DWITH_SIMD=OFF -DREQUIRE_SIMD=OFF \
     -DWITH_TURBOJPEG=OFF -DWITH_JAVA=OFF -DWITH_FUZZ=OFF
 }

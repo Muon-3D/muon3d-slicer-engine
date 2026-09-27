@@ -111,12 +111,16 @@ To rebuild into a separate tree without publishing:
 
 One difference remains between operating systems: clang on Windows joins some header paths with a backslash
 (`/orcawasm/prefix-st/include\boost/...`), so a Linux build differs from a Windows build in those few strings.
-Compare builds made on the same OS.
+Compared on 2026-09-27 (st, same commits): the `.mjs` files are identical, and the `.wasm` files have the same size
+and differ only in nine such path strings (Boost.Multiprecision, Boost.Log, libc++abi's demangler) and in the
+libjpeg-turbo build date, which was then fixed (`deps/README.md`), plus the data addresses that move with those
+strings. Linux is the canonical build (`docs/BUILD.md`):
+compare a build with a release on Linux.
 
 ## Other systems
 
 `toolchain.sh` only uses `cygpath` and `pwd -W` where they exist, uses `bsdtar` (package `libarchive-tools`) and the
-Linux emsdk's `node/*/bin/node` elsewhere, and defaults `ORCA_WASM_ROOT` to `~/OrcaWasm`. The scripts have not been
-run on Linux yet, and there is no container recipe or CI workflow yet. A starting point would be the
-`emscripten/emsdk:6.0.10` image plus `cmake`, `ninja-build`, `libarchive-tools` and `git`, running the sequence
-above with `ORCA_EMSDK=/emsdk`.
+Linux emsdk's `node/*/bin/node` elsewhere, and defaults `ORCA_WASM_ROOT` to `~/OrcaWasm`. On Linux the same
+sequence runs as it is; it is what CI runs (`.github/workflows`), and a Linux build is the canonical one:
+`docs/BUILD.md` has the Linux setup (`tools/ci/setup-toolchain.sh`), the rebuild from a release's source assets in
+the `emscripten/emsdk:6.0.10` container, and the CI caches and timings.
