@@ -1,0 +1,18 @@
+{
+	"type": "filament",
+	"name": "Generic PLA Matte @Muon3D M1",
+	"inherits": "Generic PLA @Muon3D M1",
+	"from": "system",
+	"setting_id": "2vGGtCPUZg1NqzPQ",
+	"filament_id": "OFmY0l6t",
+	"instantiation": "true",
+	"compatible_printers": [
+		"Muon3D M1 0.2 nozzle",
+		"Muon3D M1 0.4 nozzle",
+		"Muon3D M1 0.6 nozzle",
+		"Muon3D M1 0.8 nozzle"
+	],
+	"filament_max_volumetric_speed": [
+		"14"
+	]
+}

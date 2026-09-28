@@ -1,0 +1,19 @@
+{
+	"type": "machine",
+	"name": "Muon3D M1 0.6 nozzle",
+	"inherits": "fdm_common_muon_m1",
+	"from": "system",
+	"setting_id": "2xJ9Fs8Toh633YJg",
+	"instantiation": "true",
+	"printer_model": "Muon3D M1",
+	"nozzle_diameter": [
+		"0.6"
+	],
+	"max_layer_height": [
+		"0.4"
+	],
+	"min_layer_height": [
+		"0.12"
+	],
+	"printer_variant": "0.6"
+}

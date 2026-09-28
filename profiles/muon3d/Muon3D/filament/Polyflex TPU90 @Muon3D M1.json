@@ -1,0 +1,21 @@
+{
+	"type": "filament",
+	"name": "Polyflex TPU90 @Muon3D M1",
+	"inherits": "Generic TPU @Muon3D M1",
+	"from": "system",
+	"setting_id": "H7n454NyjKQDpLez",
+	"filament_id": "OFvLnhnZ",
+	"instantiation": "true",
+	"compatible_printers": [
+		"Muon3D M1 0.4 nozzle"
+	],
+	"filament_max_volumetric_speed": [
+		"2.5"
+	],
+	"nozzle_temperature": [
+		"215"
+	],
+	"nozzle_temperature_initial_layer": [
+		"220"
+	]
+}

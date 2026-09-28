@@ -1,0 +1,12 @@
+{
+	"type": "machine_model",
+	"name": "Muon3D M1",
+	"model_id": "muon_M1_1",
+	"nozzle_diameter": "0.4;0.2;0.6;0.8",
+	"machine_tech": "FFF",
+	"family": "Muon3D",
+	"bed_model": "Muon_M1_bed_model.stl",
+	"bed_texture": "Muon_M1_bed_texture.svg",
+	"hotend_model": "",
+	"default_materials": "Generic PLA @Muon3D M1;Generic PLA-CF @System;Generic PETG @Muon3D M1;Generic TPU @Muon3D M1;Generic ASA @Muon3D M1;Generic PC @System;Generic PVA @System;Generic PA @System;Generic PA-CF @System"
+}

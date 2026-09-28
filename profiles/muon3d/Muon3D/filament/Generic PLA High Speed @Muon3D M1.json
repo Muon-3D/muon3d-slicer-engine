@@ -1,0 +1,54 @@
+{
+	"type": "filament",
+	"name": "Generic PLA High Speed @Muon3D M1",
+	"inherits": "Generic PLA @Muon3D M1",
+	"from": "system",
+	"setting_id": "PCZW7xUr4AFHtNLt",
+	"filament_id": "OFmpMwxS",
+	"instantiation": "true",
+	"compatible_printers": [
+		"Muon3D M1 0.4 nozzle"
+	],
+	"close_fan_the_first_x_layers": [
+		"2"
+	],
+	"fan_cooling_layer_time": [
+		"60"
+	],
+	"fan_min_speed": [
+		"6"
+	],
+	"filament_max_volumetric_speed": [
+		"46"
+	],
+	"filament_z_hop": [
+		"0"
+	],
+	"full_fan_speed_layer": [
+		"3"
+	],
+	"nozzle_temperature": [
+		"250"
+	],
+	"nozzle_temperature_range_high": [
+		"250"
+	],
+	"overhang_fan_threshold": [
+		"50%"
+	],
+	"pressure_advance": [
+		"0.014"
+	],
+	"slow_down_for_layer_cooling": [
+		"0"
+	],
+	"slow_down_layer_time": [
+		"3"
+	],
+	"fan_max_speed": [
+		"100"
+	],
+	"overhang_fan_speed": [
+		"100"
+	]
+}
