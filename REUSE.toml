@@ -21,8 +21,9 @@ SPDX-FileCopyrightText = ["Hiosdra/OrcaWasm contributors", "2026 Muon 3D Technol
 SPDX-License-Identifier = "AGPL-3.0-only"
 
 [[annotations]]
-# Generated from OrcaSlicer's option definitions and settings tabs, and flattened from its printer profiles.
-path = ["data/settings-catalogue.json", "test/fixtures/presets/**"]
+# Generated from OrcaSlicer's option definitions and settings tabs, flattened from its printer profiles, or
+# recorded from the settings logic ported from it (the settings goldens).
+path = ["data/settings-catalogue.json", "test/fixtures/presets/**", "test/goldens/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = ["OrcaSlicer, Bambu Studio and PrusaSlicer authors", "2026 Muon 3D Technologies Limited"]
 SPDX-License-Identifier = "AGPL-3.0-only"

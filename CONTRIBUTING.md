@@ -7,7 +7,7 @@ Thank you for helping. A few rules keep the engine's licensing clear.
 | Path | Licence |
 |---|---|
 | everything, unless listed below | AGPL-3.0-only (`LICENSE`) |
-| `packages/protocol/` | Apache-2.0 (`packages/protocol/LICENSE`) |
+| `packages/protocol/` | Apache-2.0 (`packages/protocol/LICENSE`); it imports nothing outside itself (`npm run check`) |
 | `orca/` | a submodule: OrcaSlicer's own licence (AGPL-3.0) and file headers |
 
 `REUSE.toml` records the same per path. Keep every existing copyright header, and keep upstream headers on any

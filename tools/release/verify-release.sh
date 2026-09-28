@@ -2,7 +2,8 @@
 # =====================================================================================================
 # verify-release.sh: checks a release as a user receives it. Downloads every asset (drafts too, with a token
 # that can see them), checks SHA256SUMS, unpacks the runtime, checks every file against manifest.json, and
-# slices a 20 mm cube with examples/node-cli on both variants from the unpacked runtime.
+# validates the M1 presets with examples/settings-cli (the settings service, no wasm) and slices a 20 mm cube with
+# examples/node-cli on both variants from the unpacked runtime.
 #
 #   bash tools/release/verify-release.sh v0.1.0 [<folder>]      # default folder: release-<tag>/
 #
@@ -54,6 +55,7 @@ for (const [v, e] of Object.entries(m.variants)) {
   if (sha(path.join(dir, e.wasm)) !== e.sha256.wasm || sha(path.join(dir, e.mjs)) !== e.sha256.mjs) problems.push(`${v}: variant sha256 differs`);
 }
 if (sha(path.join(dir, m.host.file)) !== m.host.sha256) problems.push('host sha256 differs');
+for (const c of m.host.chunks ?? []) if (!fs.existsSync(path.join(dir, c.file)) || sha(path.join(dir, c.file)) !== c.sha256) problems.push(`host chunk ${c.file}: missing or sha256 differs`);
 for (const key of ['bundle', 'orca', 'thirdParty']) {
   const s = m.source?.[key];
   if (!s) { problems.push(`manifest.source.${key} missing`); continue; }
@@ -66,6 +68,10 @@ if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
 console.log(`OK: runtime ${m.version}: ${Object.keys(m.files).length} files match manifest.json; Orca ${m.orca.version} @ ${m.orca.commit}; engine @ ${m.build.engineCommit}`);
 EOF
 
+# ---- The settings service from the unpacked runtime (no wasm) --------------------------------------------------------
+node "$HERE/examples/settings-cli/settings.mjs" --validate --dist "$RT" > "$DIR/settings-validate.txt" || die "settings-cli --validate failed on the runtime"
+grep -q '^OK: Orca raises no error or warning' "$DIR/settings-validate.txt" || die "settings-cli: unexpected output: $(cat "$DIR/settings-validate.txt")"
+
 # ---- Slice the cube from the unpacked runtime ------------------------------------------------------------------------
 for variant in st mt; do
   node "$HERE/examples/node-cli/slice.mjs" --cube 20 --variant "$variant" --dist "$RT" -o "$DIR/cube-$variant.gcode"
@@ -73,4 +79,4 @@ for variant in st mt; do
   (( lines > 1000 )) || die "cube-$variant.gcode has only $lines lines"
   grep -q '^; total layer number: 100$' "$DIR/cube-$variant.gcode" || die "cube-$variant.gcode: not the 100 layers of a 20 mm cube"
 done
-echo "OK: $TAG verified in $DIR (checksums, manifest, cube sliced on st and mt)"
+echo "OK: $TAG verified in $DIR (checksums, manifest, settings service, cube sliced on st and mt)"

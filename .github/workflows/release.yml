@@ -138,6 +138,8 @@ jobs:
             file=$(node -p "require('./artifacts/release-sources/sources.json').$key.file")
             mv "artifacts/release-sources/$file" assets/
           done
+          # The protocol package (Apache-2.0): its npm tarball, until it is on npmjs.
+          npm run pack:protocol -- assets
           (cd assets && sha256sum * > ../SHA256SUMS) && mv SHA256SUMS assets/
           cat assets/SHA256SUMS
       - name: Slice a cube from the runtime tarball (st and mt)
@@ -160,8 +162,8 @@ jobs:
           orca_tag=$(node -p "require('./$manifest').orca.tag")
           title="Muon3D Slicer Engine $version (OrcaSlicer $orca_version @ ${orca_commit:0:10})"
           {
-            echo "The Muon3D Slicer Engine $version: OrcaSlicer's libslic3r compiled to WebAssembly, with the Web Worker host"
-            echo "(protocol v$(node -p "require('./$manifest').protocol.major")). Built from OrcaSlicer $orca_version at"
+            echo "The Muon3D Slicer Engine $version: OrcaSlicer's libslic3r compiled to WebAssembly, with its host"
+            echo "(protocol v$(node -p "require('./$manifest').protocol.major"), docs/PROTOCOL.md). Built from OrcaSlicer $orca_version at"
             echo "[\`$orca_commit\`](https://github.com/Muon-3D/OrcaSlicer/commit/$orca_commit) (tag \`$orca_tag\` of Muon-3D/OrcaSlicer)."
             echo
             echo "## Assets"
@@ -174,6 +176,7 @@ jobs:
                 muon3d-slicer-engine-$version-source.tar.gz) what='Source: this repository at the tag' ;;
                 orcaslicer-*-source.tar.xz) what='Source: OrcaSlicer at the pinned commit (extract into the folder above)' ;;
                 third-party-sources-*.tar) what='Source: every third-party archive the build uses, mirrored' ;;
+                muon3d-slicer-engine-protocol-*.tgz) what='The protocol package @muon3d/slicer-engine-protocol (Apache-2.0): `npm install <its URL>`' ;;
                 *) what='' ;;
               esac
               echo "| \`$file\` | $what | \`$sum\` |"
@@ -251,10 +254,10 @@ jobs:
           npm ci --no-audit --no-fund
           ENGINE_DIST=$PWD/out node host/build.mjs
           manifest=../../rel/runtime/muon3d-slicer-engine-$version/manifest.json
-          want=$(node -p "require('$manifest').host.sha256")
-          got=$(node -p "require('./out/manifest.json').host.sha256")
+          want=$(node -p "JSON.stringify([require('$manifest').host.sha256, ...(require('$manifest').host.chunks ?? []).map((c) => c.sha256)])")
+          got=$(node -p "JSON.stringify([require('./out/manifest.json').host.sha256, ...(require('./out/manifest.json').host.chunks ?? []).map((c) => c.sha256)])")
           [[ $want == "$got" ]] || { echo "::error::host rebuilt from the source bundle: $got, released $want"; exit 1; }
-          echo "- \`$(node -p "require('$manifest').host.file")\` rebuilt byte for byte from the source bundle (with its locked npm dependencies)." > ../../result/host.md
+          echo "- \`$(node -p "require('$manifest').host.file")\` and the chunks it loads rebuilt byte for byte from the source bundle (with its locked npm dependencies)." > ../../result/host.md
       - uses: actions/upload-artifact@v7
         with:
           name: verify-${{ matrix.variant }}

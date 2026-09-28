@@ -13,7 +13,8 @@ then publishes. Between releases, every push to `main` updates the rolling `edge
 - The version is `version` in `package.json`; the tag is `v` + that version, and the workflow stops if they differ.
 - The release title names the Orca version and commit: "Muon3D Slicer Engine 0.1.0 (OrcaSlicer 2.5.0-dev @
   2d1163eb6f)". `manifest.json` carries both, and more (below).
-- `packages/protocol` has its own version, which follows the protocol (`1.0.x` = protocol 1.0).
+- `packages/protocol` has its own version, which follows the protocol (`2.0.x` = protocol 2.0). Each release carries
+  it as an npm tarball (below) until it is published to npm.
 
 ## Cutting a release
 
@@ -36,7 +37,8 @@ then publishes. Between releases, every push to `main` updates the rolling `edge
 5. **Watch `Release`** (`gh run watch`). It takes about 35 minutes: the two clean engine builds, the source assets,
    the draft, then the offline rebuilds of both variants in parallel.
 6. **Check the result:** `bash tools/release/verify-release.sh v0.1.0` downloads every asset, checks
-   `SHA256SUMS` and the runtime's `manifest.json`, and slices a cube on both variants from the runtime tarball.
+   `SHA256SUMS` and the runtime's `manifest.json` (the host's chunks too), validates the M1 presets through the
+   runtime's settings service (`examples/settings-cli`), and slices a cube on both variants from the runtime tarball.
 
 If a job fails before `publish`, nothing is public but the tag and possibly a **draft** release. Fix the cause on
 `main` and release the next patch version; a draft left behind can be deleted. (Re-running the workflow for the same
@@ -46,10 +48,11 @@ tag replaces its draft; it refuses to touch a published release.)
 
 | Asset | What |
 |---|---|
-| `muon3d-slicer-engine-<v>.tgz` | The runtime, in a folder `muon3d-slicer-engine-<v>/`: `host.<hash>.js`, `engine-st.{mjs,wasm}`, `engine-mt.{mjs,wasm}`, each with `.br` and `.gz` copies; `manifest.json`; `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES.md` and `SOURCE.md`. Serve the folder as it is |
+| `muon3d-slicer-engine-<v>.tgz` | The runtime, in a folder `muon3d-slicer-engine-<v>/`: `host.<hash>.js` and the scripts it loads on demand (`host-*.<hash>.js`, `manifest.host.chunks`), `engine-st.{mjs,wasm}`, `engine-mt.{mjs,wasm}`, each with `.br` and `.gz` copies; `manifest.json`; `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES.md` and `SOURCE.md`. Serve the folder as it is |
 | `muon3d-slicer-engine-<v>-source.tar.gz` | This repository at the tag (`git archive`), plus `SOURCE_COMMITS`, which names the commit, the Orca commit and its tag, so that the scripts build from it without git |
 | `orcaslicer-<commit>-source.tar.xz` | The OrcaSlicer tree at the pinned commit, under `orca/`: extract it into the folder above |
 | `third-party-sources-<key>.tar` | Every third-party source archive the build uses: the archives of `engine/deps/SHA256SUMS` (GMP and MPFR aside, which the default build does not use), the Emscripten ports zlib and libpng as emcc downloads them, and any npm package bundled into the host (none today). `<key>` is a hash of its contents |
+| `muon3d-slicer-engine-protocol-<p>.tgz` | The protocol package `@muon3d/slicer-engine-protocol` (Apache-2.0; `npm pack` of `packages/protocol`, built): `npm install <its URL>` |
 | `SHA256SUMS` | sha256 of every asset above |
 
 Each asset also has a **build-provenance attestation** (Sigstore, stored by GitHub):
@@ -71,7 +74,7 @@ Emscripten runtime and system libraries (musl, libc++, libc++abi, libunwind, com
 libraries OrcaSlicer carries in `deps_src/` that the engine compiles, and whatever the host bundles. A dependency
 added to `fetch-deps.sh` without an entry in the generator stops it.
 
-**Licence banners:** `host.<hash>.js` and both `engine-<variant>.mjs` start with a `/*! @license AGPL-3.0-only …
+**Licence banners:** `host.<hash>.js`, its chunks and both `engine-<variant>.mjs` start with a `/*! @license AGPL-3.0-only …
 @source … */` comment, which minifiers keep.
 
 ## The release workflow
@@ -80,8 +83,8 @@ added to `fetch-deps.sh` without an entry in the generator stops it.
 |---|---|
 | `engine` (st, mt) | Checks that the tag is `v` + `package.json`'s version; builds the engine in a fresh tree without ccache (the dependency prefixes come from the toolchain cache, keyed on their recipe); `SOURCE_DATE_EPOCH` is the commit time; runs the engine tests |
 | `sources` | `THIRD-PARTY-NOTICES.md` is current; the three source assets (`tools/release/source-bundles.sh`) |
-| `draft` | Merges the two builds, builds the host, assembles the runtime (`tools/release/assemble.mjs`), packs it reproducibly, writes `SHA256SUMS`, slices a cube on both variants from the tarball, attests every asset, and creates a **draft** release |
-| `verify` (st, mt) | Downloads the draft's assets and checks them (`tools/release/verify-release.sh`); rebuilds its variant from the three source assets alone in `emscripten/emsdk:6.0.10` (plus CMake, Ninja, bsdtar), **with the network off and an empty Emscripten cache** (`tools/release/rebuild-offline.sh`), and requires the same sha256 for the `.wasm` and the `.mjs`; the st job also rebuilds the host from the source bundle (`npm ci` needs the network) and requires the same sha256 |
+| `draft` | Merges the two builds, builds the host, assembles the runtime (`tools/release/assemble.mjs`), packs it reproducibly, packs the protocol package, writes `SHA256SUMS`, slices a cube on both variants from the tarball, attests every asset, and creates a **draft** release |
+| `verify` (st, mt) | Downloads the draft's assets and checks them (`tools/release/verify-release.sh`); rebuilds its variant from the three source assets alone in `emscripten/emsdk:6.0.10` (plus CMake, Ninja, bsdtar), **with the network off and an empty Emscripten cache** (`tools/release/rebuild-offline.sh`), and requires the same sha256 for the `.wasm` and the `.mjs`; the st job also rebuilds the host and its chunks from the source bundle (`npm ci` needs the network) and requires the same sha256 |
 | `publish` | Adds the verification to the notes and publishes the release |
 
 ## The `edge` prerelease

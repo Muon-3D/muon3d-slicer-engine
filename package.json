@@ -1,8 +1,8 @@
 {
   "name": "muon3d-slicer-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, driven through a Web Worker protocol.",
+  "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, with a host that serves protocol v2 (slicing, placement checks, OrcaSlicer's settings forms) over a Web Worker, Node worker_threads or a byte stream.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
@@ -16,17 +16,22 @@
     "build": "npm run build:engine && npm run build:host",
     "build:engine": "node engine/scripts/build-engine.mjs",
     "build:host": "node host/build.mjs",
+    "build:protocol": "tsc -p packages/protocol/tsconfig.json",
+    "pack:protocol": "npm run build:protocol && npm pack ./packages/protocol --pack-destination",
     "test": "node --test \"host/test/**/*.test.ts\" \"tools/**/*.test.ts\" \"test/**/*.test.ts\"",
     "test:engine": "node engine/scripts/test-engine.mjs",
     "test:engine:st": "node engine/scripts/test-engine.mjs st",
     "test:engine:mt": "node engine/scripts/test-engine.mjs mt",
+    "test:conformance": "node --test test/conformance/conformance.test.ts",
     "check": "npm run check:imports && npm run typecheck",
     "check:imports": "node tools/check-imports.mjs",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/protocol/tsconfig.json --noEmit",
     "gen:settings": "node tools/settings-catalogue/generate.ts",
+    "goldens:settings": "node tools/goldens/record-rules.ts && node tools/goldens/record-views.ts",
     "notices": "node tools/release/third-party-notices.mjs",
     "notices:check": "node tools/release/third-party-notices.mjs --check",
-    "slice": "node examples/node-cli/slice.mjs"
+    "slice": "node examples/node-cli/slice.mjs",
+    "settings": "node examples/settings-cli/settings.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.0",

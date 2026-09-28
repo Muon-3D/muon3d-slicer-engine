@@ -26,11 +26,13 @@ Around it, in this repository:
 
 ```
 orca/                        OrcaSlicer, the submodule the engine is built from (read only)
-host/src/worker.ts           the worker host: loads the engine module, runs slice and check jobs (protocol v1)
-host/src/configDefinitions.ts  the shape of configDefinitions() (below)
-host/build.mjs               bundles the host into dist/host.<hash>.js
-packages/protocol/           the protocol v1 types (Apache-2.0): see there first; change it only additively
+host/src/bridge.ts           the engine module: loads it, runs slice and check jobs, classifies failures
+host/src/core.ts             the host core (protocol v2, docs/PROTOCOL.md); worker.ts serves it in a worker
+host/src/configDefinitions.ts  reads configDefinitions() (below)
+host/build.mjs               bundles the host into dist/host.<hash>.js (and the chunks it loads on demand)
+packages/protocol/           protocol v2's types (Apache-2.0): see there first; change it only additively
 test/                        engine.test.ts: Node tests that load the built engine and slice real plates;
+                             conformance/: the protocol through the host, every transport;
                              compare.ts: the same plates through the engine and a native Orca CLI
 examples/node-cli/           slicing from the command line through the host
 ```
@@ -71,20 +73,21 @@ npm run test:engine                                   # st, then mt
 What `build.sh` publishes into `dist/`:
 - `engine-<variant>.mjs` (the Emscripten module factory) and `engine-<variant>.wasm`, with precompressed `.br` and
   `.gz` copies;
-- `manifest.json` (`EngineManifest` in `packages/protocol/src/v1.ts`): Orca version and commit, build time, and
+- `manifest.json` (`EngineManifest` in `packages/protocol/src/manifest.ts`): Orca version and commit, build time, and
   each variant's file names, sizes, sha256 and `engineCommit`. An entry for the other variant is kept only if it
   was built from the same Orca commit, so after moving the pin rebuild **both** variants. `npm run build:host` adds
-  the `host` entry (file, sha256, protocol, canary).
+  the `host` entry (file, sha256, protocol, canary, the chunks it loads).
 
 `dist/` is git-ignored. A page serves the whole folder as it is and starts the host by URL:
-`new Worker(base + manifest.host.file, { type: 'module' })`, then `{ type: 'init', baseUrl: base, variant }`.
+`new Worker(base + manifest.host.file, { type: 'module' })`, then protocol v2 (`docs/PROTOCOL.md`): `hello`, `load`
+(optional: the first op that needs the engine loads it), `slice`.
 
 `ORCA_EXE=<orca-slicer> node test/compare.ts` slices the same plates with the engine and with a native Orca CLI
 (see the next sections for why its tolerances are loose).
 
 ## Per-object settings and the option table
 
-- **Per-object settings.** `EngineObject.config` (optional) carries an object's own settings as Orca text values,
+- **Per-object settings.** `PlateObject.config` (optional; the bridge's `EngineObject.config`) carries an object's own settings as Orca text values,
   in the order given, keyed by Orca's per-object keys (`objectKeys` and `regionKeys` of `configDefinitions()`).
   Before any mesh loads, `check_object_config` (`bridge/model_input.cpp`) applies them over the plate's config and
   runs Orca's `validate()`, the check the presets pass; `load_object` then sets them on the `ModelObject` with
@@ -98,7 +101,8 @@ What `build.sh` publishes into `dist/`:
   per-extruder and variant keys, per-object keys). It is deterministic (everything sorted) and needs no job. The
   settings catalogue generator (`npm run gen:settings`, `tools/settings-catalogue/generate.ts`) loads the built `st`
   engine in Node to read it, so after an engine rebuild run `npm run gen:settings -- --check` and regenerate if it
-  reports drift. The shape is `ConfigDefinitions` in `host/src/configDefinitions.ts` (`format: 1`).
+  reports drift. The shape is `ConfigDefinitions` in `packages/protocol/src/definitions.ts` (`format: 1`); the op
+  `config.definitions` returns it.
 
 ## Parity with a native CLI
 

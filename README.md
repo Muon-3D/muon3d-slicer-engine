@@ -1,34 +1,44 @@
 # Muon3D Slicer Engine (based on OrcaSlicer)
 
-The Muon3D Slicer Engine is OrcaSlicer's slicing core (libslic3r) compiled to WebAssembly, with a Web Worker host
-that any web page can drive through a documented message protocol. It is a derivative of
+The Muon3D Slicer Engine is OrcaSlicer's slicing core (libslic3r) compiled to WebAssembly, with a host that any
+client can drive through a documented message protocol: a web page through a Web Worker, a Node program through a
+worker thread, a server or an app runtime through a byte stream. It is a derivative of
 [OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer) and is licensed under the AGPL-3.0. The Muon3D Slicer web
-app uses it; so can anything else that speaks the protocol in [`packages/protocol`](packages/protocol).
+app uses it; so can anything else that speaks the protocol ([`docs/PROTOCOL.md`](docs/PROTOCOL.md),
+[`packages/protocol`](packages/protocol)).
 
 Nothing is re-implemented: the engine runs Orca's own C++ (walls, infill, supports, seams, G-code, time estimates,
 exclusion volumes), built out of tree from an unmodified Orca checkout, and follows the path Orca's command-line
 slicer takes for one plate. It takes Orca presets and placed meshes, and returns the G-code, Orca's print
-statistics, toolpaths for a preview, and Orca's warnings and error codes.
+statistics, toolpaths for a preview, and Orca's warnings and error codes. Its settings service gives Orca's
+settings forms as documents: the tabs' layout for the mode and the printer, which settings Orca hides or greys out
+for the current values, Orca's checks and questions, and what an edit changes along with it.
 
-**Status:** pre-release. The host speaks protocol v1; protocol v2 (a documented envelope, handshake and
-capabilities, and a settings service) is next. Releases, each with its complete source, are on
+**Status:** pre-release (`0.x`). The host speaks **protocol v2**: a handshake with capabilities, the licence and
+the source; slicing, placement checks, Orca's option table and settings catalogue; the settings service
+(`settings.view`, `settings.edit`). Releases, each with its complete source, are on
 [GitHub Releases](https://github.com/Muon-3D/muon3d-slicer-engine/releases); the rolling `edge` prerelease follows
 `main`. Or build it from source as below.
 
 ## What is here
 
 ```
-engine/              the C++ bridge, the out-of-tree CMake build of libslic3r, shims, stubs, dependency scripts
-orca/                submodule: OrcaSlicer, branch muon3d-wasm of github.com/Muon-3D/OrcaSlicer, at a tagged pin
-host/                the Web Worker host (TypeScript) and its build; host/src/settings: Orca's settings rules
-packages/protocol/   @muon3d/slicer-engine-protocol: the protocol types (Apache-2.0)
-tools/               settings-catalogue/ (the settings catalogue generator), check-imports.mjs, release/ (release
-                     assets, notices, offline rebuild), ci/ (the Linux toolchain)
-data/                settings-catalogue.json: every Orca option, laid out as Orca's settings tabs
-test/                engine tests (Node), preset fixtures, test helpers
-examples/node-cli/   slice from the command line through the host
-docs/                BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original engine spec, research notes
-.github/             workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
+engine/               the C++ bridge, the out-of-tree CMake build of libslic3r, shims, stubs, dependency scripts
+orca/                 submodule: OrcaSlicer, branch muon3d-wasm of github.com/Muon-3D/OrcaSlicer, at a tagged pin
+host/                 the host (TypeScript) and its build: core.ts (ops, lifecycle, queues, cancel, progress),
+                      worker.ts (the Web Worker and worker_threads entry), bridge.ts (the engine module),
+                      settings/ (the settings service: Orca's rules, the tabs' layout, object and plate settings)
+packages/protocol/    @muon3d/slicer-engine-protocol: protocol v2's types, transports and client (Apache-2.0)
+docs/PROTOCOL.md      the protocol, normative
+tools/                settings-catalogue/ (the catalogue generator), goldens/ (the settings goldens' recorders),
+                      check-imports.mjs, release/ (release assets, notices, offline rebuild), ci/ (the toolchain)
+data/                 settings-catalogue.json: every Orca option, laid out as Orca's settings tabs
+test/                 engine tests, protocol conformance (test/conformance), settings and slice goldens
+                      (test/goldens), preset fixtures, test helpers
+examples/node-cli/    slice from the command line through the host
+examples/settings-cli/ validate presets and print Orca's settings forms, through the settings service
+docs/                 PROTOCOL.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original engine spec
+.github/              workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
 ```
 
 ## Build and test
@@ -45,40 +55,50 @@ bash engine/deps/fetch-deps.sh
 VARIANT=st bash "$PWD/engine/deps/build-deps.sh"
 VARIANT=mt bash "$PWD/engine/deps/build-deps.sh"
 npm run build                        # engine (st, then mt) and host, into dist/
-npm test                             # host, settings rules and catalogue, engine (st)
-npm run test:engine                  # engine tests on both variants
-npm run check                        # nothing imported from outside the repository; type check
+npm test                             # protocol, host, settings service and goldens, conformance (no engine needed)
+npm run test:engine                  # engine tests and the conformance suite's engine part, on both variants
+npm run check                        # nothing imported from outside the repository (or the protocol package); types
 node examples/node-cli/slice.mjs --cube 20 -o cube.gcode
+node examples/settings-cli/settings.mjs --validate
 ```
 
-## Using it from a web page
+The host alone (`npm run build:host`) needs no Emscripten: the settings service, and the whole protocol suite but
+slicing, run without the engine.
 
-`dist/` is the runtime, served as it is:
+## Using it
+
+A release's runtime tarball (or `dist/` of a build) is served as it is:
 
 | File | What |
 |---|---|
-| `manifest.json` | Orca version and commit, per variant the files, sizes and sha256, and the host (`EngineManifest`) |
-| `host.<hash>.js` | the worker host, an ES module worker script |
+| `manifest.json` | the host to start, the engine files with sizes and sha256, Orca version and commit, the source (`EngineManifest`) |
+| `host.<hash>.js` | the host: an ES module a Web Worker or a Node worker thread runs |
+| `host-*.<hash>.js` | scripts the host loads on demand (the settings service): `manifest.host.chunks` |
 | `engine-st.mjs`, `engine-st.wasm` | the single-threaded engine: works in every current browser |
 | `engine-mt.mjs`, `engine-mt.wasm` | the multithreaded engine: needs a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`) |
 | `*.br`, `*.gz` | precompressed copies a server can send as they are |
 | `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES.md`, `SOURCE.md` | the licence, the notices (ours and the third-party components'), and where the source of this build is |
 
 ```js
-const base = '/engine/';                                   // wherever dist/ is served
-const manifest = await (await fetch(base + 'manifest.json')).json();
-const worker = new Worker(base + manifest.host.file, { type: 'module' });
-worker.postMessage({ type: 'init', baseUrl: new URL(base, location.href).href, variant: crossOriginIsolated ? 'mt' : 'st' });
-// on { type: 'ready' }:
-worker.postMessage({ type: 'slice', id: '1', job: { machine, process, filaments: [filament], objects: [{ name: 'Cube.stl', positions }] } });
-// then 'progress' and 'warning' messages, and 'sliced' (G-code, stats, toolpaths) or 'failed' (Orca's code and message)
+import { EngineConnection, workerTransport } from '@muon3d/slicer-engine-protocol';
+
+const base = new URL('/engine/', location.href);                      // wherever the runtime is served
+const manifest = await (await fetch(new URL('manifest.json', base))).json();
+const worker = new Worker(new URL(manifest.host.file, base), { type: 'module' });
+const engine = new EngineConnection(workerTransport(worker));
+const hello = await engine.open({ name: 'my-app', version: '1.0.0' });   // protocol, engine, licence, source
+const { gcode, stats, toolpaths } = await engine.request('slice', {
+  configs: { machine, process, filaments: [filament] },
+  objects: [{ name: 'Cube.stl', mesh: { positions } }],
+});
 ```
 
-The page starts the host by URL and talks to it only with messages; it never imports or bundles engine code. The
-types of every message are in [`packages/protocol/src/v1.ts`](packages/protocol/src/v1.ts), and
-[`examples/node-cli`](examples/node-cli) is a complete client in one short file. A project that serves a
-local build of this repository points at the `dist/` folder of its clone (for example through an `ENGINE_DIR`
-setting of its own) after `npm run build` here.
+The client starts the host by URL and talks to it only with messages; it never imports or bundles engine code. The
+protocol package (a release asset, `muon3d-slicer-engine-protocol-<v>.tgz`, until it is on npm) has the types, the
+transports and the client; [`docs/PROTOCOL.md`](docs/PROTOCOL.md) is enough to write a client without it.
+[`examples/node-cli`](examples/node-cli) and [`examples/settings-cli`](examples/settings-cli) are complete
+clients. A project that serves a local build of this repository points at the `dist/` folder of its clone (for
+example through an `ENGINE_DIR` setting of its own) after `npm run build` here.
 
 ## Licence
 

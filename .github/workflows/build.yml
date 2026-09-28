@@ -75,10 +75,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: npm run check (imports, types)
+      - name: npm run check (imports, types; the protocol package on its own)
         run: npm run check
-      - name: npm test (host, settings rules and catalogue)
+      - name: Build the host (the conformance suite runs it too)
+        run: npm run build:host
+      - name: npm test (protocol, host, settings service and goldens, conformance without the engine)
         run: npm test
+      - name: The protocol package packs
+        run: mkdir -p out && npm run pack:protocol -- out && tar -tzf out/muon3d-slicer-engine-protocol-*.tgz | grep -q package/dist/index.d.ts
 
   engine:
     needs: changes

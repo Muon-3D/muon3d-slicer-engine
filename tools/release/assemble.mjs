@@ -1,4 +1,5 @@
-// Assembles the runtime of a release (or of the rolling `edge` prerelease) from a built dist/ folder: the host,
+// Assembles the runtime of a release (or of the rolling `edge` prerelease) from a built dist/ folder: the host
+// and the chunks it loads on demand,
 // both engine variants with their .br/.gz copies, the notices, a SOURCE.md that names this build's sources, and
 // manifest.json with the release fields (EngineManifest in packages/protocol: version, protocol, Orca, build,
 // source, and the sha256 of every file). docs/RELEASING.md describes the whole release.
@@ -81,6 +82,8 @@ fs.mkdirSync(out, { recursive: true });
 const precompressed = (file) => [file, `${file}.br`, `${file}.gz`];
 const files = [
   ...precompressed(manifest.host.file),
+  // The scripts the host loads on demand (protocol 2: the settings service).
+  ...(manifest.host.chunks ?? []).flatMap((c) => precompressed(c.file)),
   ...Object.values(manifest.variants).flatMap((v) => [...precompressed(v.mjs), ...precompressed(v.wasm)]),
 ];
 for (const name of files) {
