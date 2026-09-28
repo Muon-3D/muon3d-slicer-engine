@@ -124,7 +124,9 @@ describe('settings catalogue', () => {
     assert.ok(Object.values(catalogue.sources).every((h) => /^sha256:[0-9a-f]{64}$/.test(h)));
   });
 
-  it('comes from the Orca build the engine was built from', { skip: !existsSync(MANIFEST) && `no built engine (${MANIFEST})` }, () => {
+  // A manifest with no engine in it (npm run build:host alone) names no Orca build.
+  const built = existsSync(MANIFEST) && (JSON.parse(readFileSync(MANIFEST, 'utf8')) as { orcaCommit?: string }).orcaCommit !== undefined;
+  it('comes from the Orca build the engine was built from', { skip: !built && `no built engine (${MANIFEST})` }, () => {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8')) as { orcaCommit: string; orcaVersion: string };
     assert.equal(catalogue.orca.commit, manifest.orcaCommit, 'the engine was rebuilt from another Orca: run npm run gen:settings');
     assert.equal(catalogue.orca.version, manifest.orcaVersion);

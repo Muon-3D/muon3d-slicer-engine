@@ -27,6 +27,8 @@ export interface Target {
   name: string;
   /** Why this target cannot run here, or false. */
   skip: string | false;
+  /** settings.view's time budget applies (a host in a thread of its own, as a settings worker is). */
+  settingsBudget: boolean;
   connect(): Promise<Connected>;
 }
 
@@ -71,6 +73,7 @@ export const TARGETS: readonly Target[] = [
   {
     name: 'in-process',
     skip: false,
+    settingsBudget: false,
     async connect() {
       const [hostSide, clientSide] = clonePair();
       const host = createHost({ base: engineBase, environment: { kind: 'node' }, send: (m, t) => hostSide.send(m, t) });
@@ -81,6 +84,7 @@ export const TARGETS: readonly Target[] = [
   {
     name: 'byte-stream',
     skip: false,
+    settingsBudget: false,
     async connect() {
       const [hostSide, clientSide] = byteChannelPair();
       serve(byteStreamTransport(hostSide), { base: engineBase, environment: { kind: 'other' } });
@@ -90,6 +94,7 @@ export const TARGETS: readonly Target[] = [
   {
     name: 'node-worker',
     skip: false,
+    settingsBudget: true,
     async connect() {
       return worker(new URL(pathToFileURL(path.join(repoRoot, 'host/src/worker.ts'))), { engineBase });
     },
@@ -97,6 +102,7 @@ export const TARGETS: readonly Target[] = [
   {
     name: 'built-host',
     skip: manifest?.host?.protocol === 2 ? false : `${manifestPath} names no protocol 2 host: npm run build:host`,
+    settingsBudget: true,
     async connect() {
       return worker(new URL(pathToFileURL(path.join(engineDir, manifest!.host!.file))));
     },
