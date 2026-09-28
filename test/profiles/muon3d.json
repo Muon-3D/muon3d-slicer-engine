@@ -1,0 +1,68 @@
+{
+  "vendor": "Muon3D",
+  "version": "02.03.00.11",
+  "presets": {
+    "machine": {
+      "Muon3D M1 0.2 nozzle": "23b5a2b88c82142249a6cbd3912a22323ebb0fbeace9c82d76d3399c33e614b3",
+      "Muon3D M1 0.4 nozzle": "59533bdc68febc95e18a1e990f1afb2a3b007c8375fad789ea81d4ec978ee1a8",
+      "Muon3D M1 0.6 nozzle": "7ec1d4d369ceea9755db48b0a0ea623ac1a6413741a066733d7bcee1d5b416ce",
+      "Muon3D M1 0.8 nozzle": "f76a6bf4be83ae79d7c5d158dcac6906bead813c9383e64a8ca20908caf1a174"
+    },
+    "process": {
+      "0.08mm Extra Fine @Muon3D M1": "cf3410eb5851d18e293ce6383469c08ac62a80e6830b92d402957ae28e410f94",
+      "0.12mm Fine @Muon3D M1": "49e72f887cfc06b2fccf064092a026443227032b6572fb6f6cd74eef2a75691f",
+      "0.16mm Optimal @Muon3D M1": "1f83118ba86c184d2d7ef0b9dd86f2d33414ac7de05a6811fdee89c4eff2e44b",
+      "0.20mm Standard @Muon3D M1": "8c92e98619de52a7db87b1549614b3d76f19b76d5ca225e151b8069068624050",
+      "0.24mm Draft @Muon3D M1": "319a8dd21d384caa027024507181dae955d214cbda6e80ece364a40d875103ad",
+      "0.25mm Ultra High Speed @Muon3D M1": "be407eb91f5df234e7d10d2ded380d3c5697c12e31dd49d90546a2b3d2f30adf",
+      "0.28mm Extra Draft @Muon3D M1": "fd2c186ca79f595586249f360b9606dc9b217d056c411842d0f14e5935f011cd",
+      "0.32mm Extra Draft @Muon3D M1": "8c29173198f4105f5e83a188395b7e1dea650d6a28ca508ef0dc4256f6268746",
+      "0.40mm Extra Draft @Muon3D M1": "dbb65102791d789b45e3a2695f8e3b9dbc9b24888620fe91ec3419cf2a4b94c6",
+      "0.56mm Extra Draft @Muon3D M1": "0c6195379d09aa37758ce054e22a67c20b707dd54b953a5f3939ed492c4f41b9"
+    },
+    "filament": {
+      "Generic ASA @Muon3D M1": "bb2bba7dd268f12839d5062cdcaba2e58c5d7694138964fe891531407c2a3285",
+      "Generic PETG @Muon3D M1": "b1dc45c387e5a08939a062e5a3082eb01b31847046b85467d8a38182f3c200c2",
+      "Generic PLA @Muon3D M1": "8d3f870e290481ce2939c99f994d07113b04cada697e4de910c892161de6d3a9",
+      "Generic PLA High Speed @Muon3D M1": "98d57a5736583ff3d14d4d609a79d079c131529b899faa30141f6df0b08297e0",
+      "Generic PLA Matte @Muon3D M1": "26c08268512c3f6ad6619ea7527f8b854134547b8947d4519d5822aee888e41b",
+      "Generic PLA Silk @Muon3D M1": "04c511dfe965625e24f1cbca0675724542d2e63be29aee445758c26ca167bc69",
+      "Generic TPU @Muon3D M1": "7ac6346ede094e43dde91d3309ffbf66ff3326f1c40f7eca9df484941310d092",
+      "Polyflex TPU90 @Muon3D M1": "703ce0a5f8a223604863e93866631020b85834160f1409439c42c8b28eff23b5"
+    }
+  },
+  "compatibility": {
+    "Muon3D M1 0.2 nozzle": {
+      "processes": "c4d558aa062bb57b95956fdc03f993f22400a0f85ef3954c745d8a20368ed863",
+      "filaments": "bd772f032dff69036a56081f69d8e98d225b4ccfcc158cb87eb6584ed841deab",
+      "counts": [
+        3,
+        297
+      ]
+    },
+    "Muon3D M1 0.4 nozzle": {
+      "processes": "82ac5b5b698f22f580a44a15507e7671a8787c0881fd3142015ff6d6000ff8d9",
+      "filaments": "bfae3cc7506048ac898b65b6d72582856802363b959c706d66f3d3202c7645ee",
+      "counts": [
+        8,
+        298
+      ]
+    },
+    "Muon3D M1 0.6 nozzle": {
+      "processes": "9410c42bb4b2a2406feb9c1f1030bccdcef63452df423db89009657e00d1c0d1",
+      "filaments": "bd772f032dff69036a56081f69d8e98d225b4ccfcc158cb87eb6584ed841deab",
+      "counts": [
+        8,
+        297
+      ]
+    },
+    "Muon3D M1 0.8 nozzle": {
+      "processes": "b6041269d61ff9bb8bdb838feb829d164fa8ff526d1ae4b46cc1b1a826e102a4",
+      "filaments": "bd772f032dff69036a56081f69d8e98d225b4ccfcc158cb87eb6584ed841deab",
+      "counts": [
+        7,
+        297
+      ]
+    }
+  }
+}

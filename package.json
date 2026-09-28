@@ -2,7 +2,7 @@
   "name": "muon3d-slicer-engine",
   "version": "0.2.0",
   "private": true,
-  "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, with a host that serves protocol v2 (slicing, placement checks, OrcaSlicer's settings forms) over a Web Worker, Node worker_threads or a byte stream.",
+  "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, with a host that serves protocol v2 (slicing, placement checks, OrcaSlicer's settings forms and vendor profiles) over a Web Worker, Node worker_threads or a byte stream; and OrcaSlicer's printer profiles packed for a static site.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
@@ -30,12 +30,16 @@
     "goldens:settings": "node tools/goldens/record-rules.ts && node tools/goldens/record-views.ts",
     "notices": "node tools/release/third-party-notices.mjs",
     "notices:check": "node tools/release/third-party-notices.mjs --check",
+    "profiles:build": "node tools/profiles/build.ts",
+    "profiles:check": "node tools/profiles/check.ts",
+    "profiles:fixtures": "node tools/profiles/fixtures.ts",
     "slice": "node examples/node-cli/slice.mjs",
     "settings": "node examples/settings-cli/settings.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.0",
     "esbuild": "0.28.2",
+    "sharp": "0.35.5",
     "typescript": "~5.9.3"
   }
 }

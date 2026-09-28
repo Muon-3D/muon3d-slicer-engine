@@ -15,9 +15,12 @@ import { after, before, describe, test } from 'node:test';
 import { EngineRequestError, SettingsClient } from '../../packages/protocol/src/connection.ts';
 import { ErrorCode, PROTOCOL, type Progress } from '../../packages/protocol/src/envelope.ts';
 import { configHash } from '../../packages/protocol/src/helpers.ts';
-import { OPS, type SliceParams } from '../../packages/protocol/src/ops.ts';
+import { Capability, OPS, PROFILE_OPS, type SliceParams } from '../../packages/protocol/src/ops.ts';
+import type { NormalizedPreset, ProfileFolder } from '../../packages/protocol/src/profiles.ts';
 import { HOST_CANARY } from '../../host/src/canary.ts';
-import { cube, engineDir, engineSkip, m1Presets, variant as engineVariant, type Presets } from '../fixtures.ts';
+import type { LegacyProcessFixture } from '../../tools/profiles/fixtures.ts';
+import { readFolder } from '../../tools/profiles/tree.ts';
+import { cube, engineDir, engineSkip, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
 import { PLATES, comparable } from './plates.ts';
 import { TARGETS, type Connected } from './targets.ts';
 
@@ -44,6 +47,11 @@ async function rejection(promise: Promise<unknown>): Promise<EngineRequestError>
   assert.fail('expected the request to fail');
 }
 
+/** A profile fixture (test/fixtures/profiles, tools/profiles/fixtures.ts). */
+const profileFixture = <T>(file: string): T => JSON.parse(readFileSync(path.join(repoRoot, 'test/fixtures/profiles', file), 'utf8')) as T;
+/** The Muon3D overlay (profiles/muon3d) as a profile folder. */
+const muon3dFolder = (): ProfileFolder => readFolder(path.join(repoRoot, 'profiles/muon3d'), 'Muon3D');
+
 const percentile = (values: number[], p: number) => [...values].sort((a, b) => a - b)[Math.min(values.length - 1, Math.floor(values.length * p))];
 
 for (const target of TARGETS) {
@@ -58,10 +66,12 @@ for (const target of TARGETS) {
 
     const settingsPresets = () => ({ machine: presets.machine, process: presets.process, filament: presets.filaments[0] });
 
-    test('hello: protocol 2.0, every op, the engine and its licence', async () => {
-      const hello = await host.connection.open(client, { required: [...OPS] });
+    test('hello: protocol 2.1, every op, the engine and its licence', async () => {
+      const hello = await host.connection.open(client, { minMinor: 1, required: [...OPS, Capability.sliceLog] });
       assert.deepEqual(hello.protocol, { major: PROTOCOL.major, minor: PROTOCOL.minor });
+      assert.equal(PROTOCOL.minor, 1);
       for (const op of OPS) assert.ok(hello.capabilities.includes(op), op);
+      for (const op of PROFILE_OPS) assert.ok(OPS.includes(op), op);
       assert.equal(hello.engine.license, 'AGPL-3.0-only');
       assert.equal(hello.engine.canary, HOST_CANARY);
       assert.match(hello.engine.source, /^https:\/\/github\.com\/Muon-3D\/muon3d-slicer-engine/);
@@ -86,6 +96,18 @@ for (const target of TARGETS) {
       const err = await rejection(host.connection.request('slice', { configs: { machine: {}, process: {}, filaments: [{}] }, objects: [{ name: 'X', mesh: { positions: new Float32Array(10) } }] }));
       assert.equal(err.code, ErrorCode.BadRequest);
       assert.match(err.message, /9 floats per triangle/);
+    });
+
+    test('profile ops: malformed requests are refused before the engine loads', async () => {
+      const refused = [
+        host.connection.request('profiles.resolve', {} as never),
+        host.connection.request('profiles.resolve', { vendor: { id: '../x', index: {}, files: {} } }),
+        host.connection.request('profiles.resolve', { vendor: { id: 'X', index: {}, files: { '../escape.json': {} } } }),
+        host.connection.request('profiles.normalize', { presets: [{ type: 'printer', config: {} }] } as never),
+        host.connection.request('profiles.validate', { vendors: [] }),
+        host.connection.request('slice', { configs: presets, objects: [], output: { log: 'loud' } } as never),
+      ];
+      for (const request of refused) assert.equal((await rejection(request)).code, ErrorCode.BadRequest);
     });
 
     test('status: idle until an op needs the engine (settings never do)', async () => {
@@ -240,6 +262,84 @@ for (const target of TARGETS) {
         const defs = await host.connection.request('config.definitions', {});
         assert.equal(defs.format, 1);
         assert.ok(defs.options.layer_height && defs.objectKeys.includes('layer_height'));
+      });
+
+      test('slice.log: Orca\'s log with the result, and with a refusal', async () => {
+        const logged = await host.connection.request('slice', { ...sliceParams(), output: { toolpaths: false, log: 'info' } });
+        assert.equal(typeof logged.log, 'string');
+        assert.match(logged.log!, /^(info|warning|error): /m);
+        const quiet = await host.connection.request('slice', { ...sliceParams(), output: { toolpaths: false } });
+        assert.equal(quiet.log, undefined, 'no log unless asked');
+        const err = await rejection(host.connection.request('slice', { configs: presets, objects: [{ name: 'Far.stl', mesh: { positions: cube([400, 400]) } }], output: { log: 'warning' } }));
+        assert.ok(err.code < 0);
+        assert.equal(typeof err.log, 'string');
+      });
+
+      test('profiles.normalize: each file as OrcaSlicer reads it', async () => {
+        const legacy = profileFixture<LegacyProcessFixture>('legacy-process.json');
+        const [read, synthetic] = (
+          await host.connection.request('profiles.normalize', {
+            presets: [
+              { type: 'process', config: legacy.config },
+              { type: 'process', config: { name: 'x', inherits: 'y', layer_height: '0.20', nozzle_temperature: ['200'], silent_mode: '0', wall_infill_order: 'outer wall/inner wall/infill' } },
+            ],
+          })
+        ).presets as NormalizedPreset[];
+        // The Kobra Neo preset: Orca's wall order, under its current key only.
+        assert.equal(read.config.wall_sequence, legacy.orca.wall_sequence);
+        assert.ok(!('wall_infill_order' in read.config));
+        assert.ok(read.renamed.some(([from, to]) => from === 'wall_infill_order' && to === 'wall_sequence'));
+        assert.equal(read.config.name, legacy.config.name);
+        assert.equal(read.config.inherits, legacy.config.inherits);
+        // A file with a legacy key, a retired one, one of another preset type, and a number in a form Orca rewrites.
+        assert.deepEqual(synthetic.config, { name: 'x', inherits: 'y', layer_height: '0.2', wall_sequence: 'outer wall/inner wall' });
+        assert.deepEqual(synthetic.renamed, [['wall_infill_order', 'wall_sequence']]);
+        assert.deepEqual(synthetic.dropped, ['silent_mode']);
+        assert.deepEqual(synthetic.misplaced, ['nozzle_temperature']);
+      });
+
+      test('profiles.resolve: the M1 presets as OrcaSlicer flattens them are the committed fixtures', async () => {
+        const fixture = JSON.parse(readFileSync(path.join(repoRoot, 'test/fixtures/presets/muon3d-m1-0.4.json'), 'utf8')) as Presets & { names: Record<string, string> };
+        const { names } = fixture;
+        const result = await host.connection.request('profiles.resolve', {
+          vendor: muon3dFolder(),
+          library: profileFixture<ProfileFolder>('OrcaFilamentLibrary-muon3d.json'),
+          presets: [
+            { type: 'machine', name: names.machine },
+            { type: 'process', name: names.process },
+            { type: 'filament', name: names.filament },
+            { type: 'process', name: 'no such process' },
+          ],
+          compatibility: [names.machine],
+        });
+        const get = (type: string, name: string) => result.presets.find((p) => p.type === type && p.name === name)?.config;
+        assert.deepEqual(get('machine', names.machine), fixture.machine);
+        assert.deepEqual(get('process', names.process), fixture.process);
+        assert.deepEqual(get('filament', names.filament), fixture.filaments[0]);
+        assert.deepEqual(result.missing, [{ type: 'process', name: 'no such process' }]);
+        assert.deepEqual(result.errors, []);
+        assert.ok(Object.keys(result.defaults.process).length > 300 && !('name' in result.defaults.process));
+        const [compat] = result.compatibility!;
+        assert.equal(compat.printer, names.machine);
+        assert.equal(compat.processes.length, 8);
+        // The M1's own PLA replaces the library's generic PLA of the same alias; the library's PC stays.
+        assert.ok(compat.filaments.includes('Generic PLA @Muon3D M1') && !compat.filaments.includes('Generic PLA @System'));
+        assert.ok(compat.filaments.includes('Generic PC @System'));
+      });
+
+      test("profiles.validate: OrcaSlicer's validator passes the Muon3D overlay and names a dangling reference", async () => {
+        const library = profileFixture<ProfileFolder>('OrcaFilamentLibrary-muon3d.json');
+        const muon = muon3dFolder();
+        const ok = await host.connection.request('profiles.validate', { vendors: [library, muon] });
+        assert.deepEqual(ok.errors, []);
+        assert.equal(ok.ok, true);
+        assert.deepEqual(ok.counts.Muon3D, { machine: 4, process: 10, filament: 8 });
+        const broken = structuredClone(muon);
+        const pla = broken.files['filament/Generic PLA @Muon3D M1.json'] as { compatible_printers: string[] };
+        pla.compatible_printers = [...pla.compatible_printers, 'Muon3D M9 0.4 nozzle'];
+        const bad = await host.connection.request('profiles.validate', { vendors: [library, broken] });
+        assert.equal(bad.ok, false);
+        assert.ok(bad.errors.some((e) => e.includes('Muon3D M9 0.4 nozzle')), bad.errors.join('\n'));
       });
 
       test('cancel: a queued request ends with Cancelled; a finished one cannot be', async () => {

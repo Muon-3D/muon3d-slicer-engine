@@ -72,8 +72,8 @@ configured from another copy of `engine/` is configured afresh, which also means
 The pin is the `orca/` submodule. To build from a newer Orca: push the new commit to branch `muon3d-wasm` of
 <https://github.com/Muon-3D/OrcaSlicer> and tag it `muon3d-wasm/<date>` (the tag keeps the source reachable), then
 `git -C orca fetch origin tag <tag> && git -C orca checkout <tag>`, set `ORCA_TAG` in `orca/pin.sh`, rebuild and test
-both variants, regenerate the settings catalogue (`npm run gen:settings`) and the preset fixtures if the profiles the
-tests use changed, and commit the submodule change with them.
+both variants, regenerate the settings catalogue (`npm run gen:settings`) and the preset and profile fixtures (`npm run
+profiles:fixtures`), check the profile set (`docs/PROFILES.md`), and commit the submodule change with them.
 
 ## What a build publishes
 

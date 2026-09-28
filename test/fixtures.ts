@@ -47,10 +47,10 @@ interface PresetFixture extends Presets {
 }
 
 /**
- * Committed presets (test/fixtures/presets), flattened from the Orca profiles of the pinned commit
- * (orca/resources/profiles) the way Orca's CLI takes them: inheritance resolved, `from: "system"`, a
- * `type`, `instantiation: "true"`, no `inherits`. Regenerate them when the pin moves and a profile the
- * tests use has changed.
+ * Committed presets (test/fixtures/presets), flattened by OrcaSlicer's own loader (the op profiles.resolve) from
+ * the Orca profiles of the pinned commit (orca/resources/profiles) with the Muon3D overlay (profiles/muon3d): every
+ * setting of the type, `from: "system"`, a `type`, `inherits: ""`. `npm run profiles:fixtures` regenerates them
+ * (CI checks they are current); do so when the pin or the overlay moves.
  */
 function presetFixture(id: string): PresetFixture {
   return JSON.parse(readFileSync(path.join(repoRoot, 'test/fixtures/presets', `${id}.json`), 'utf8')) as PresetFixture;
