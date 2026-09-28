@@ -67,8 +67,8 @@ for (const target of TARGETS) {
       assert.match(hello.engine.source, /^https:\/\/github\.com\/Muon-3D\/muon3d-slicer-engine/);
       assert.match(hello.engine.notice, /NOTICE$/);
       assert.ok(hello.engine.name.includes('OrcaSlicer'));
-      // What can run here: nothing before the engine is built (npm run build:host alone).
-      if (!engineSkip) assert.ok(hello.variants.includes('st'));
+      // What can run here: the variants built (the CI builds one per job; none for npm run build:host alone).
+      if (!engineSkip) assert.ok(hello.variants.includes(engineVariant), `${engineVariant} in ${hello.variants.join(', ')}`);
       assert.ok(hello.variants.every((v) => v === 'st' || v === 'mt'));
       assert.ok(hello.limits.maxThreads >= 1 && hello.limits.maxHeapBytes > 0);
       assert.deepEqual(hello.formats, { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 });
