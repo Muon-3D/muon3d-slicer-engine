@@ -94,7 +94,7 @@ embedded with LF line ends. Checked:
 
 | Workflow | When | Does |
 |---|---|---|
-| `build.yml` | every pull request, every push to `main` | `checks` (`npm run check`, `npm test`) always. `engine` (st and mt in parallel: toolchain, engine build, engine tests, the `THIRD-PARTY-NOTICES.md` check) only when `engine/` (docs aside), the `orca` pin, `tools/ci/` or the workflow changed; otherwise the next job reuses the `edge` engine. `runtime`: the host, the engine tests on a reused engine, the runtime assembled and a cube sliced on both variants. On `main`, `edge`: the rolling prerelease. A newer push to the same branch cancels the older run |
+| `build.yml` | every pull request, every push to `main` | `checks` (`npm run check`, the host build, `npm test` with the protocol conformance suite on the host without the engine, the protocol package packed) always. `engine` (st and mt in parallel: toolchain, engine build, engine tests with the conformance suite's engine part, the `THIRD-PARTY-NOTICES.md` check) only when `engine/` (docs aside), the `orca` pin, `tools/ci/` or the workflow changed; otherwise the next job reuses the `edge` engine. `runtime`: the host, the engine tests on a reused engine, the runtime assembled and a cube sliced on both variants. On `main`, `edge`: the rolling prerelease. A newer push to the same branch cancels the older run |
 | `toolchain.yml` | the dependency recipe changes on `main` | warms the toolchain cache for both variants |
 | `release.yml` | a tag `v*` | the release (docs/RELEASING.md) |
 | `upstream-canary.yml` | Mondays, or by hand | builds and tests both variants against upstream OrcaSlicer (the head of PR #13777, and `main`) instead of the pin; opens or updates an `upstream-canary` issue when that fails |
