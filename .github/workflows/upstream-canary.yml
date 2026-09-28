@@ -34,7 +34,14 @@ jobs:
       - name: OrcaSlicer at upstream ${{ matrix.upstream }}
         run: |
           bash engine/scripts/get-orca.sh
-          git -C orca fetch --quiet --depth 1 https://github.com/OrcaSlicer/OrcaSlicer.git "$UPSTREAM_REF"
+          # Retried, and with git's background maintenance off: one run failed with "shallow file has changed
+          # since we read it" (the PR head is the parent of the shallow pin).
+          for attempt in 1 2 3; do
+            git -C orca -c gc.auto=0 -c maintenance.auto=false fetch --quiet --depth 1 \
+              https://github.com/OrcaSlicer/OrcaSlicer.git "$UPSTREAM_REF" && break
+            [[ $attempt == 3 ]] && exit 1
+            sleep 10
+          done
           git -C orca checkout --quiet --detach FETCH_HEAD
           commit=$(git -C orca rev-parse HEAD)
           echo "Upstream ${{ matrix.upstream }} ($UPSTREAM_REF): [\`${commit:0:10}\`](https://github.com/OrcaSlicer/OrcaSlicer/commit/$commit) $(git -C orca log -1 --format='%cs %s')" >> "$GITHUB_STEP_SUMMARY"
