@@ -2,8 +2,9 @@
 #
 #   engine    st and mt built from clean (no ccache, fresh build trees), engine tests
 #   sources   the source assets (tools/release/source-bundles.sh) and the THIRD-PARTY-NOTICES.md check
-#   draft     the runtime (tools/release/assemble.mjs), SHA256SUMS, the build-provenance attestation, a cube
-#             sliced from the runtime tarball; a draft GitHub release with every asset
+#   draft     the runtime (tools/release/assemble.mjs), the profile set (tools/profiles), SHA256SUMS, the
+#             build-provenance attestation, a cube sliced from the runtime tarball; a draft GitHub release with
+#             every asset
 #   verify    downloads the draft's assets, checks them (tools/release/verify-release.sh), and rebuilds each
 #             variant from the source assets alone in the emsdk container with the network off and an empty
 #             Emscripten cache (tools/release/rebuild-offline.sh): the sha256 must match
@@ -123,7 +124,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-      - name: Assemble the runtime
+      - name: OrcaSlicer at the pin (the profile tree)
+        run: bash engine/scripts/get-orca.sh
+      - name: Assemble the runtime and the profile set
         run: |
           version=${TAG#v}
           node tools/release/merge-dist.mjs dist artifacts/release-engine-st artifacts/release-engine-mt
@@ -134,6 +137,14 @@ jobs:
           epoch=$(git log -1 --format=%ct)
           tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
             -cf - "muon3d-slicer-engine-$version" | gzip -n -9 > "assets/muon3d-slicer-engine-$version.tgz"
+          # The profile set (docs/PROFILES.md), built with this release's engine from the pinned Orca tree and the
+          # Muon3D overlay, then checked: every preset against OrcaSlicer's loader, and the Muon3D record.
+          node tools/profiles/fixtures.ts --check
+          node tools/profiles/build.ts --out "out/muon3d-slicer-profiles-$version" --set "$version"
+          node tools/profiles/check.ts "out/muon3d-slicer-profiles-$version" --expect test/profiles/muon3d.json
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
+            -cf - "muon3d-slicer-profiles-$version" | gzip -n -9 > "assets/muon3d-slicer-profiles-$version.tgz"
+          jq -r '.sizes | to_entries[] | "- profiles \(.key): \(.value)"' "out/muon3d-slicer-profiles-$version/report.json" >> "$GITHUB_STEP_SUMMARY"
           for key in bundle orca thirdParty; do
             file=$(node -p "require('./artifacts/release-sources/sources.json').$key.file")
             mv "artifacts/release-sources/$file" assets/
@@ -173,6 +184,7 @@ jobs:
             while read -r sum file; do
               case $file in
                 muon3d-slicer-engine-$version.tgz) what='The runtime: serve its folder as it is (README, "Using it from a web page")' ;;
+                muon3d-slicer-profiles-$version.tgz) what='The profile set: OrcaSlicer'"'"'s printer, process and filament presets for this engine, for a static site (docs/PROFILES.md)' ;;
                 muon3d-slicer-engine-$version-source.tar.gz) what='Source: this repository at the tag' ;;
                 orcaslicer-*-source.tar.xz) what='Source: OrcaSlicer at the pinned commit (extract into the folder above)' ;;
                 third-party-sources-*.tar) what='Source: every third-party archive the build uses, mirrored' ;;

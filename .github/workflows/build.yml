@@ -5,7 +5,9 @@
 #   checks   npm run check (imports, types) and npm test, on every run
 #   engine   st and mt in parallel: toolchain (cached), engine build (ccache), the Node engine tests
 #   runtime  the host build, the engine tests if the engine was reused, a cube sliced on both variants from
-#            the assembled runtime (tools/release/assemble.mjs), uploaded as an artifact
+#            the assembled runtime (tools/release/assemble.mjs); the profile set (tools/profiles) with the public
+#            profile checks (OrcaSlicer's validator and profile tool, the fixtures, the Muon3D record); both
+#            uploaded as an artifact
 #   edge     on main only: the runtime as the rolling `edge` prerelease
 name: Build
 
@@ -218,19 +220,40 @@ jobs:
             node examples/node-cli/slice.mjs --cube 20 --variant "$variant" --dist out/muon3d-slicer-engine-*/ -o "out/cube-$variant.gcode"
             grep -q '^; total layer number: 100$' "out/cube-$variant.gcode"
           done
-      - name: Runtime tarball
+      - name: OrcaSlicer at the pin (the profile tree)
+        run: bash engine/scripts/get-orca.sh
+      - name: Profile set, and the public profile checks (docs/PROFILES.md)
         run: |
           version=${{ steps.assemble.outputs.version }}
-          tarball=muon3d-slicer-engine-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'edge' }}.tgz
+          # The engine tests' preset fixtures are what profiles.resolve makes of the tree.
+          node tools/profiles/fixtures.ts --check
+          # The set (it runs OrcaSlicer's profile validator on the whole tree, and refuses an overlay key the engine does
+          # not read as it is), then every preset flattened from it against OrcaSlicer's loader, and the Muon3D record.
+          node tools/profiles/build.ts --out "out/muon3d-slicer-profiles-$version" --set "$version"
+          node tools/profiles/check.ts "out/muon3d-slicer-profiles-$version" --expect test/profiles/muon3d.json
+          # OrcaSlicer's own static checks, on its tree with the Muon3D overlay in place of its Muon3D folder.
+          tree=$RUNNER_TEMP/profiles
+          cp -r orca/resources/profiles "$tree"
+          rm -rf "$tree/Muon3D" "$tree/Muon3D.json"
+          cp -r profiles/muon3d/Muon3D profiles/muon3d/Muon3D.json "$tree/"
+          python3 orca/scripts/orca_profile_tool.py check --profiles "$tree"
+          jq -r '.sizes | to_entries[] | "- \(.key): \(.value)"' "out/muon3d-slicer-profiles-$version/report.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Runtime and profile tarballs
+        run: |
+          version=${{ steps.assemble.outputs.version }}
+          suffix=${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'edge' }}
           epoch=$(git log -1 --format=%ct)
-          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
-            -cf - "muon3d-slicer-engine-$version" | gzip -n -9 > "$tarball"
-          sha256sum "$tarball" | tee SHA256SUMS
+          for name in engine profiles; do
+            tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
+              -cf - "muon3d-slicer-$name-$version" | gzip -n -9 > "muon3d-slicer-$name-$suffix.tgz"
+          done
+          sha256sum muon3d-slicer-engine-$suffix.tgz muon3d-slicer-profiles-$suffix.tgz | tee SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
           name: runtime
           path: |
             muon3d-slicer-engine-*.tgz
+            muon3d-slicer-profiles-*.tgz
             SHA256SUMS
           retention-days: 14
           if-no-files-found: error
@@ -275,9 +298,9 @@ jobs:
           repository at that commit, the OrcaSlicer tag, and the third-party source archives mirrored on the releases.
           EOF
           if gh release view edge --repo "$repo" > /dev/null 2>&1; then
-            gh release upload edge muon3d-slicer-engine-edge.tgz SHA256SUMS --repo "$repo" --clobber
+            gh release upload edge muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$repo" --clobber
             gh release edit edge --repo "$repo" --prerelease --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
           else
-            gh release create edge muon3d-slicer-engine-edge.tgz SHA256SUMS --repo "$repo" --prerelease --latest=false \
+            gh release create edge muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$repo" --prerelease --latest=false \
               --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
           fi
