@@ -31,7 +31,7 @@
 // patch with the edit.
 //
 // Pure (types-only imports) so it runs under plain Node in tests.
-import type { ConfigValue } from '../../../packages/protocol/src/v1.ts';
+import type { ConfigValue } from '../../../packages/protocol/src/data.ts';
 import { extruderVariantString, indexForExtruder } from './variants.ts';
 
 // ---------------------------------------------------------------------------------------------

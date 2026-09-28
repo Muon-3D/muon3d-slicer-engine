@@ -254,8 +254,9 @@ export const OBJECT_SCRIPTS: ObjectScript[] = [
   {
     id: 'object-spiral',
     case: M1,
+    plate: { spiral_mode: '1' },
     settings: { wall_loops: '3' },
-    steps: [{ set: 'spiral_mode', value: '1' }, { set: 'sparse_infill_density', value: '15%' }, { set: 'top_shell_layers', value: '0' }, { remove: 'wall_loops' }],
+    steps: [{ set: 'wall_loops', value: '2' }, { set: 'sparse_infill_density', value: '15%' }, { set: 'top_shell_layers', value: '0' }, { remove: 'wall_loops' }],
   },
   {
     id: 'object-overhangs',
@@ -294,6 +295,21 @@ export const PLATE_SCRIPTS: PlateScript[] = [
     objects: [],
     steps: [{ key: 'print_sequence', value: 'by layer' }, { key: 'print_sequence', value: 'by object' }, { key: 'spiral_mode', value: '0' }],
   },
+];
+
+/**
+ * Cases whose settings forms the view goldens record in every mode, for every nozzle, with values: one
+ * nozzle, nozzle variants (H2D), several nozzles (XL, IDEX, dual), Marlin-like firmware, Bambu Lab.
+ */
+export const VIEW_CASES: readonly string[] = [
+  M1,
+  M1_FINE,
+  H2D,
+  'Prusa: Prusa XL 5T 0.4 nozzle',
+  'Anycubic: Anycubic i3 Mega S 0.4 nozzle',
+  'BBL: Bambu Lab X1E 0.2 nozzle',
+  'Snapmaker: Snapmaker A350 Dual QS+B Kit (0.8 nozzle)',
+  'Ratrig: RatRig V-Core 4 IDEX 400 MIRROR MODE 0.4 nozzle',
 ];
 
 /** The case a script names: its exact id, or the only case whose id starts with it. */

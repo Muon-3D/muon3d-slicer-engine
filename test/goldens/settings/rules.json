@@ -1749,16 +1749,15 @@
  "object-spiral": [
   {
    "step": {
-    "set": "spiral_mode",
-    "value": "1"
+    "set": "wall_loops",
+    "value": "2"
    },
    "effects": {
     "patch": {},
     "prompts": []
    },
    "settings": {
-    "wall_loops": "3",
-    "spiral_mode": "1"
+    "wall_loops": "2"
    },
    "after": "5b0d5cc81d91"
   },
@@ -1772,8 +1771,7 @@
     "prompts": []
    },
    "settings": {
-    "wall_loops": "3",
-    "spiral_mode": "1",
+    "wall_loops": "2",
     "sparse_infill_density": "15%"
    },
    "after": "5b0d5cc81d91"
@@ -1788,8 +1786,7 @@
     "prompts": []
    },
    "settings": {
-    "wall_loops": "3",
-    "spiral_mode": "1",
+    "wall_loops": "2",
     "sparse_infill_density": "15%",
     "top_shell_layers": "0"
    },
@@ -1801,7 +1798,6 @@
    },
    "effects": null,
    "settings": {
-    "spiral_mode": "1",
     "sparse_infill_density": "15%",
     "top_shell_layers": "0"
    },
