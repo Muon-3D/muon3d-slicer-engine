@@ -27,3 +27,11 @@ path = ["data/settings-catalogue.json", "test/fixtures/presets/**", "test/fixtur
 precedence = "closest"
 SPDX-FileCopyrightText = ["OrcaSlicer, Bambu Studio and PrusaSlicer authors", "2026 Muon 3D Technologies Limited"]
 SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+# The Muon3D printer profiles are also offered under the MIT licence, so they can be used anywhere,
+# including other slicers.
+path = "profiles/muon3d/**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Muon 3D Technologies Limited"
+SPDX-License-Identifier = "AGPL-3.0-only OR MIT"

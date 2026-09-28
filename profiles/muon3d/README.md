@@ -50,3 +50,8 @@ engine does not read as it is. When the M1's settings or offered presets are mea
 with the profile change.
 
 Licence: AGPL-3.0-only, as the rest of this repository.
+
+## Licence
+
+The files in this folder are available under the AGPL-3.0 (like the rest of this repository) or, at your
+option, the MIT licence (`LICENSES/MIT.txt`). SPDX: `AGPL-3.0-only OR MIT`.
