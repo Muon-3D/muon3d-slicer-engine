@@ -79,13 +79,16 @@ The same Orca commit, the same engine commit and Emscripten 6.0.10 give byte-ide
 `.mjs`, wherever the folders are: every compile maps its paths with `-ffile-prefix-map`, and Orca's resources are
 embedded with LF line ends. Checked:
 
-- **Linux**: CI builds (with ccache), the clean builds of a release, and the offline rebuilds from the source
-  assets in the emsdk container (other folders, an empty Emscripten cache) give the same sha256 for both variants.
+- **Linux**: the CI builds of `main` (with ccache), the clean builds of the release workflow, and the offline
+  rebuilds from the source assets in the emsdk container (other folders, a fresh Emscripten cache, no network)
+  gave the same sha256 for both variants (release candidate `v0.1.0-rc.3`, 2026-09-27: st `da459bb4…`, mt
+  `a642334c…`). The offline st rebuild ran past midnight UTC, so the build date plays no part either.
 - **Windows**: builds from two Orca checkouts (CRLF and LF) and from the source bundles are identical to each
   other.
 - **Windows against Linux**: they differ. Clang on Windows joins some header paths with a backslash
   (`/orcawasm/prefix-st/include\boost/...`), and those strings reach the wasm. Compare a build with a release on
-  Linux; the Windows build is for development.
+  Linux; the Windows build is for development. Apart from those nine strings (and the data addresses that move
+  with them), a Windows and a Linux build of the same commits are the same (`engine/scripts/README.md`).
 
 ## Continuous integration
 
@@ -118,3 +121,8 @@ embedded with LF line ends. Checked:
 Measured on the first runs, 2026-09-27. A warm engine build is mostly the link, `wasm-opt` and the brotli-11
 compression (ccache hits 263 of 265 compiles). The `runtime` job adds about 25 s, and on a run without an engine
 build it also runs the engine tests on the reused engine.
+
+**A release** (`release.yml`, measured on release candidate `v0.1.0-rc.3`) takes about 35 minutes: the clean engine
+builds 7.8 min (st) and 13.0 min (mt) with the toolchain from the cache, the source assets 1.7 min, the draft
+0.6 min, then the checks and offline rebuilds, 20 min per variant in parallel (in the container: dependencies
+6 min, engine 12-13 min, starting from an empty Emscripten cache).
