@@ -14,12 +14,14 @@ export class EngineRequestError extends Error implements EngineError {
   readonly code: number;
   readonly objects?: string[];
   readonly detail?: string;
+  readonly log?: string;
   constructor(error: EngineError) {
     super(error.message);
     this.name = 'EngineRequestError';
     this.code = error.code;
     if (error.objects) this.objects = error.objects;
     if (error.detail !== undefined) this.detail = error.detail;
+    if (error.log !== undefined) this.log = error.log;
   }
 }
 

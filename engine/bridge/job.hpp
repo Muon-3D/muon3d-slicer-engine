@@ -19,6 +19,7 @@ namespace muon {
 constexpr int ENGINE_INTERNAL_ERROR = 1;
 constexpr int ENGINE_OUT_OF_MEMORY  = 2;
 constexpr int ENGINE_CANCELLED      = 3;
+constexpr int ENGINE_BAD_REQUEST    = 5;
 
 struct EngineError {
     int                      code = 0;

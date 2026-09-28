@@ -11,6 +11,12 @@
 //   setLogLevel(level)                Orca/Boost.Log verbosity: 0 off, 1 error (default) … 5 trace
 //   configDefinitions()            -> JSON text: Orca's option definitions and key sets
 //                                     (config_def.hpp; host/src/configDefinitions.ts)
+//   profilesNormalize(json)        -> JSON text, or { error }  (profiles.hpp; host/src/profiles.ts)
+//   profilesResolve(json)          -> JSON text, or { error }
+//   profilesValidate(json)         -> JSON text, or { error }
+//
+// slice's last argument is the level of Orca's log to return with the result (`log`, text): 0 none,
+// 1 errors … 5 trace, on the scale of setLogLevel.
 //
 // `objects` is [{ name, positions: Float32Array, config?: { key: value } }] (the check ignores
 // `config`); presets are JSON text. Large arrays cross the
@@ -23,16 +29,14 @@
 // code 1 (or 2 for out of memory) and the engine instance is gone.
 #include "config_def.hpp"
 #include "job.hpp"
+#include "log_capture.hpp"
 #include "model_input.hpp"
 #include "placement.hpp"
+#include "profiles.hpp"
 #include "slice_job.hpp"
 
 #include <libslic3r/libslic3r.h> // also brings libslic3r_version.h (SoftFever_VERSION)
 #include <libslic3r/Utils.hpp>
-
-#include <boost/log/core.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/trivial.hpp>
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
@@ -47,6 +51,7 @@
 #include <cstdio>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,22 +74,6 @@ std::atomic<bool> g_cancel_requested{false};
 // Setup
 // ---------------------------------------------------------------------------------------------
 
-void set_log_level(int level)
-{
-    namespace logging = boost::log;
-    auto core = logging::core::get();
-    if (level <= 0) {
-        core->set_logging_enabled(false);
-        return;
-    }
-    core->set_logging_enabled(true);
-    // Orca's --debug scale (utils.cpp level_to_boost). Orca's own set_logging_level() forces
-    // "info" for -dev versions, which floods the console and slows slicing, so it is bypassed.
-    static const logging::trivial::severity_level levels[] = {logging::trivial::fatal, logging::trivial::error, logging::trivial::warning,
-                                                              logging::trivial::info, logging::trivial::debug, logging::trivial::trace};
-    core->set_filter(logging::trivial::severity >= levels[std::min(level, 5)]);
-}
-
 void ensure_initialised()
 {
     static bool initialised = false;
@@ -103,7 +92,7 @@ void ensure_initialised()
 
     Slic3r::set_resources_dir(ORCA_ENGINE_RESOURCES_DIR);
     Slic3r::set_temporary_dir("/tmp");
-    set_log_level(1);
+    muon::set_engine_log_level(1);
     // Without these, Orca silently falls back to built-in defaults (e.g. nozzle hardness).
     if (std::FILE *probe = std::fopen(ORCA_ENGINE_RESOURCES_DIR "/info/nozzle_info.json", "rb"))
         std::fclose(probe);
@@ -454,11 +443,14 @@ val js_version()
 }
 
 val js_slice(const std::string &machine_json, const std::string &process_json, const val &filaments, const val &objects, bool want_toolpaths,
-             const val &on_progress, const val &on_warning)
+             const val &on_progress, const val &on_warning, int log_level)
 {
     ensure_initialised();
     g_cancel_requested = false;
     JsReporter reporter(on_progress, on_warning);
+    std::optional<muon::LogCapture> log;
+    if (log_level > 0)
+        log.emplace(log_level);
     try {
         muon::SliceRequest request;
         request.machine_json   = machine_json;
@@ -492,12 +484,17 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
         }
         out.set("warnings", warnings);
         out.set("timings", timings);
+        if (log)
+            out.set("log", log->text());
         // Everything reported must reach the worker before it posts the result.
         reporter.flush(true);
         return out;
     } catch (const muon::JobFailure &failure) {
         reporter.flush(true);
-        return failure_to_js(failure.error());
+        val out = failure_to_js(failure.error());
+        if (log)
+            out.set("log", log->text());
+        return out;
     } catch (const std::bad_alloc &) {
         return failure_to_js({muon::ENGINE_OUT_OF_MEMORY, "The slicing engine ran out of memory.", {}});
     } catch (const std::exception &ex) {
@@ -555,7 +552,24 @@ void js_request_cancel() { g_cancel_requested = true; }
 void js_set_log_level(int level)
 {
     ensure_initialised();
-    set_log_level(level);
+    muon::set_engine_log_level(level);
+}
+
+// The profile operations take and return JSON text (profiles.hpp); a failure is { error }.
+template<std::string (*Op)(const std::string &)> val js_profiles(const std::string &request)
+{
+    ensure_initialised();
+    try {
+        return val(Op(request));
+    } catch (const muon::JobFailure &failure) {
+        return failure_to_js(failure.error());
+    } catch (const std::bad_alloc &) {
+        return failure_to_js({muon::ENGINE_OUT_OF_MEMORY, "The slicing engine ran out of memory.", {}});
+    } catch (const std::exception &ex) {
+        return failure_to_js({muon::ENGINE_INTERNAL_ERROR, std::string("Internal engine error: ") + ex.what(), {}});
+    } catch (...) {
+        return failure_to_js({muon::ENGINE_INTERNAL_ERROR, "Internal engine error.", {}});
+    }
 }
 
 } // namespace
@@ -568,4 +582,7 @@ EMSCRIPTEN_BINDINGS(orca_engine)
     emscripten::function("requestCancel", &js_request_cancel);
     emscripten::function("setLogLevel", &js_set_log_level);
     emscripten::function("configDefinitions", &muon::config_definitions_json);
+    emscripten::function("profilesNormalize", &js_profiles<&muon::profiles_normalize>);
+    emscripten::function("profilesResolve", &js_profiles<&muon::profiles_resolve>);
+    emscripten::function("profilesValidate", &js_profiles<&muon::profiles_validate>);
 }

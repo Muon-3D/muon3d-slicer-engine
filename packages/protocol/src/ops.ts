@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
-// The operations of protocol v2.0: their params and results, and the capability names a host lists in
+// The operations of protocol v2 (2.1): their params and results, and the capability names a host lists in
 // `hello`. docs/PROTOCOL.md describes each.
 import type { SettingsCatalogue } from './catalogue.ts';
 import type { ConfigPatch, ConfigSet, Mesh, Vec3 } from './data.ts';
 import type { ConfigDefinitions } from './definitions.ts';
 import type { EngineWarning, HostState, Variant } from './envelope.ts';
+import type {
+  ProfilesNormalizeParams,
+  ProfilesNormalizeResult,
+  ProfilesResolveParams,
+  ProfilesResolveResult,
+  ProfilesValidateParams,
+  ProfilesValidateResult,
+} from './profiles.ts';
 import type { SettingsEditParams, SettingsEditResult, SettingsView, SettingsViewParams } from './settings.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -104,8 +112,16 @@ export interface SliceParams {
     toolpaths?: boolean;
     /** Return toolpathExtras with the toolpaths. Default true. */
     toolpathExtras?: boolean;
+    /**
+     * Return Orca's log of the slice down to this level ('slice.log'; 2.1): `SliceResult.log`, or `EngineError.log`
+     * when the slice fails. Default: none.
+     */
+    log?: LogLevel;
   };
 }
+
+/** Orca's log levels, most severe first. */
+export type LogLevel = 'error' | 'warning' | 'info' | 'debug' | 'trace';
 
 export interface SliceResult {
   /** The G-code, as Orca writes it. */
@@ -116,6 +132,8 @@ export interface SliceResult {
   warnings: EngineWarning[];
   /** Wall-clock milliseconds per stage. */
   timings: { load: number; slice: number; export: number; total: number };
+  /** With output.log: Orca's log of the slice, a line each ("<level>: <message>"). */
+  log?: string;
   /** The engine's heap after the job (it only grows). */
   heapBytes?: number;
 }
@@ -220,6 +238,9 @@ export interface Ops {
   'settings.catalogue': Op<{ locale?: string }, SettingsCatalogue>;
   'settings.view': Op<SettingsViewParams, SettingsView>;
   'settings.edit': Op<SettingsEditParams, SettingsEditResult>;
+  'profiles.normalize': Op<ProfilesNormalizeParams, ProfilesNormalizeResult>;
+  'profiles.resolve': Op<ProfilesResolveParams, ProfilesResolveResult>;
+  'profiles.validate': Op<ProfilesValidateParams, ProfilesValidateResult>;
 }
 
 export type OpName = keyof Ops;
@@ -227,12 +248,18 @@ export type OpParams<K extends OpName> = Ops[K]['params'];
 export type OpResult<K extends OpName> = Ops[K]['result'];
 
 /** The ops of protocol 2.0, in the order docs/PROTOCOL.md lists them. */
-export const OPS: readonly OpName[] = [
+export const OPS_2_0: readonly OpName[] = [
   'hello', 'load', 'status', 'cancel', 'slice', 'check', 'config.definitions', 'settings.catalogue', 'settings.view', 'settings.edit',
 ];
 
+/** The ops protocol 2.1 adds: a host that serves one lists it in `hello.capabilities`. */
+export const PROFILE_OPS: readonly OpName[] = ['profiles.normalize', 'profiles.resolve', 'profiles.validate'];
+
+/** Every op of protocol 2.1, in the order docs/PROTOCOL.md lists them. */
+export const OPS: readonly OpName[] = [...OPS_2_0, ...PROFILE_OPS];
+
 /** Ops that need the engine (wasm): the host loads it on the first of them ('auto' variant). */
-export const ENGINE_OPS: readonly OpName[] = ['load', 'slice', 'check', 'config.definitions'];
+export const ENGINE_OPS: readonly OpName[] = ['load', 'slice', 'check', 'config.definitions', ...PROFILE_OPS];
 
 /**
  * Capability names besides the op names. A client checks one before sending a request or a field that
@@ -249,5 +276,7 @@ export const Capability = {
   cooperativeCancel: 'cancel.cooperative',
   /** settings.view format 1. */
   settingsViewV1: 'settings.view.v1',
+  /** SliceParams.output.log, SliceResult.log and EngineError.log (2.1). */
+  sliceLog: 'slice.log',
 } as const;
 

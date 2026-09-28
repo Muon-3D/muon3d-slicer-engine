@@ -1,7 +1,7 @@
 // The engine ops' params and results: protocol v2's shapes checked and converted to the bridge's and back
 // (bridge.ts). A request the host cannot use fails with BadRequest, naming what is wrong.
 import type { Config, ConfigSet, Mesh } from '../../packages/protocol/src/data.ts';
-import type { CheckParams, CheckResult, PlateObject, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
+import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
 import type { CheckJob, CheckOutput, EngineObject, SliceJob, SliceOutput } from './bridge.ts';
 
 /** A request the host refuses (BadRequest). */
@@ -72,6 +72,8 @@ export function sliceJob(params: SliceParams): SliceJob {
   if (!isObject(params)) throw new BadRequest('slice needs { configs, objects }.');
   const { machine, process, filaments } = configSet(params.configs);
   const output = isObject(params.output) ? params.output : {};
+  const log = output.log === undefined ? 0 : LOG_LEVELS.indexOf(output.log as LogLevel) + 1;
+  if (log === 0 && output.log !== undefined) throw new BadRequest(`"output.log" must be one of ${LOG_LEVELS.join(', ')}.`);
   return {
     machine,
     process,
@@ -79,8 +81,12 @@ export function sliceJob(params: SliceParams): SliceJob {
     objects: objects(params.objects, true),
     toolpaths: output.toolpaths !== false,
     toolpathExtras: output.toolpathExtras !== false,
+    ...(log > 0 ? { log } : {}),
   };
 }
+
+/** Orca's levels, on the engine's scale: index + 1 (1 errors … 5 trace). */
+const LOG_LEVELS: readonly LogLevel[] = ['error', 'warning', 'info', 'debug', 'trace'];
 
 export function checkJob(params: CheckParams): CheckJob {
   if (!isObject(params)) throw new BadRequest('check needs { configs, objects }.');
@@ -107,6 +113,7 @@ export function sliceResult(output: SliceOutput, heapBytes: number | undefined):
     warnings: output.warnings,
     timings: output.timings,
   };
+  if (output.log !== undefined) result.log = output.log;
   if (heapBytes !== undefined) result.heapBytes = heapBytes;
   return result;
 }

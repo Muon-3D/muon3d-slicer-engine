@@ -8,7 +8,8 @@ The code of this document is [`packages/protocol`](../packages/protocol) (`@muon
 Apache-2.0): the TypeScript types of every message, and the helpers named below. The conformance suite
 ([`test/conformance`](../test/conformance)) runs every operation through every transport against those types.
 
-**Version: 2.0.** Words such as MUST, SHOULD and MAY are used as in RFC 2119.
+**Version: 2.1** (2.1 adds the profile ops and the slice log; a 2.0 client works unchanged). Words such as MUST,
+SHOULD and MAY are used as in RFC 2119.
 
 ## Contents
 
@@ -66,7 +67,7 @@ The client starts the host by URL, from the runtime folder of a release (or `dis
 `manifest.json`:
 
 ```js
-const base = new URL('/engine/0.2.0/', location.href);            // wherever the runtime folder is served
+const base = new URL('/engine/0.3.0/', location.href);            // wherever the runtime folder is served
 const manifest = await (await fetch(new URL('manifest.json', base))).json();
 const worker = new Worker(new URL(manifest.host.file, base), { type: 'module', name: 'muon3d-slicer-engine' });
 ```
@@ -143,7 +144,7 @@ type Response =
 
 | Lane | Ops |
 |---|---|
-| engine | `load`, `slice`, `check`, `config.definitions` |
+| engine | `load`, `slice`, `check`, `config.definitions`, `profiles.normalize`, `profiles.resolve`, `profiles.validate` |
 | settings | `settings.catalogue`, `settings.view`, `settings.edit` |
 
 `hello`, `status` and `cancel` are answered at once, outside the lanes. Results of different lanes may interleave. A
@@ -183,7 +184,7 @@ type HostState =
 ## 5. Errors
 
 ```ts
-interface EngineError { code: number; message: string; objects?: string[]; detail?: string }
+interface EngineError { code: number; message: string; objects?: string[]; detail?: string; log?: string }
 ```
 
 | Code | Name | Meaning |
@@ -202,7 +203,8 @@ Negative codes are Orca refusing a job; the engine stays loaded. `message` is Or
 names the objects it concerns. Codes seen today: -5 bad config, -17 incompatible process, -18 invalid values, -50
 nothing on the plate, -51 validation error, -52 partly outside the plate, -63/-64 collisions (also exclusion
 volumes), -100 slicing error, -102 unprintable area. New codes may appear: a client SHOULD treat an unknown negative
-code as "Orca refused the job" and show `message`.
+code as "Orca refused the job" and show `message`. A failed `slice` that asked for a log (`output.log`, 2.1) carries it
+in `log`.
 
 ## 6. Operations
 
@@ -218,16 +220,19 @@ code as "Orca refused the job" and show `message`.
 | `settings.catalogue` | settings | no | Every option's text and Orca's tab layout (format 2) |
 | `settings.view` | settings | no | A settings form for the current values (format 1) |
 | `settings.edit` | settings | no | What an edit writes, with Orca's edit handlers, questions and notices |
+| `profiles.normalize` (2.1) | engine | yes | Preset files as Orca reads them: legacy keys translated, values in Orca's text |
+| `profiles.resolve` (2.1) | engine | yes | A vendor's presets flattened by Orca's own loader, and which suit each printer |
+| `profiles.validate` (2.1) | engine | yes | Orca's profile validator on a set of vendor folders |
 
 ### 6.1 `hello`
 
 ```ts
 params: { protocol: { major: 2, minMinor?: number }, client: { name: string, version: string } }
 result: {
-  protocol: { major: 2, minor: 0 },
+  protocol: { major: 2, minor: 1 },
   engine: {
     name: string,                // "Muon3D Slicer Engine (based on OrcaSlicer)"
-    version: string,             // this release, e.g. "0.2.0"
+    version: string,             // this release, e.g. "0.3.0"
     orca: { version: string, commit: string, repository: string },
     license: 'AGPL-3.0-only',
     source: string,              // this build's source: the repository at the commit the host was built from
@@ -246,7 +251,7 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 `protocol.major` fails with `ProtocolMismatch`. An About or licences screen can show `engine.name`, `version`,
 `license`, `source` and `notice`.
 
-**Capabilities** (2.0): the ten op names, plus
+**Capabilities**: every op's name (the ten of 2.0; 2.1 adds the three `profiles.*`), plus
 
 | Capability | Means |
 |---|---|
@@ -254,7 +259,8 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 | `slice.toolpathExtras` | `SliceParams.output.toolpathExtras` and `SliceResult.toolpathExtras` |
 | `mesh.indexed` | `Mesh.indices` (indexed meshes) in `slice` and `check` |
 | `settings.view.v1` | `settings.view` format 1 |
-| `cancel.cooperative` | (not in 2.0) a running request can be cancelled and the engine stays loaded |
+| `slice.log` | (2.1) `SliceParams.output.log`, `SliceResult.log` and `EngineError.log` |
+| `cancel.cooperative` | (not yet served) a running request can be cancelled and the engine stays loaded |
 
 A client MUST send an op, or a field, only when `hello` lists its capability (the 2.0 ops and fields above are
 always there). Unknown capability strings MUST be ignored.
@@ -294,7 +300,10 @@ cache.
 params: {
   configs: { machine: Config, process: Config, filaments: Config[] },   // flattened presets (section 8)
   objects: PlateObject[],
-  output?: { toolpaths?: boolean, toolpathExtras?: boolean },          // both default true
+  output?: {
+    toolpaths?: boolean, toolpathExtras?: boolean,                   // both default true
+    log?: 'error' | 'warning' | 'info' | 'debug' | 'trace',          // 2.1, 'slice.log': Orca's log down to this level
+  },
 }
 PlateObject = { name: string, mesh: Mesh, config?: ConfigPatch }
 result: {
@@ -305,6 +314,7 @@ result: {
   warnings: EngineWarning[],
   timings: { load: number, slice: number, export: number, total: number },   // ms
   heapBytes?: number,
+  log?: string,                      // with output.log: a line per record, "<level>: <message>"
 }
 ```
 
@@ -320,6 +330,9 @@ result: {
 - Progress comes as `progress` messages, Orca's warnings as `warning` messages (and in `warnings`).
 - The same request gives the same G-code bytes on every host of one release, `st` and `mt` alike, the
   `; generated by` header line (which holds the time) aside.
+- `output.log` (2.1) returns Orca's log of the slice down to that level: its records go to the result instead of the
+  host's console. `info` and below are long (Orca logs every step). A slice Orca refuses carries the log in the
+  error's `log`.
 
 ### 6.6 `check`
 
@@ -358,6 +371,107 @@ Needs no wasm.
 ### 6.9 `settings.view` and `settings.edit`
 
 Section 7.
+
+### 6.10 Profiles (2.1): `profiles.normalize`, `profiles.resolve`, `profiles.validate`
+
+OrcaSlicer's vendor profiles, handled by OrcaSlicer's own preset code in the engine. The engine carries no profile
+tree: the files come with the request. `docs/PROFILES.md` describes the profile sets a release publishes, which are
+built with these ops; a client that uses a set does not need them, but can use them to check its own reading of a
+preset, or to read a preset file a user imports.
+
+A vendor's files travel as a **profile folder**, the shape OrcaSlicer's `resources/profiles` holds them in:
+
+```ts
+ProfileFolder = {
+  id: string,                            // the folder's name, which is the vendor's id: "Muon3D", "BBL", "OrcaFilamentLibrary"
+  index: object,                         // <id>.json: name, version, and machine_model_list, machine_list, process_list,
+                                         //   filament_list, each of { name, sub_path }; presets load in list order
+  files: Record<string, object>,         // each sub_path ('/'-separated, relative, no "..") -> that file's JSON
+}
+```
+
+#### `profiles.normalize`
+
+```ts
+params: { presets: Array<{ type: 'machine' | 'process' | 'filament', config: Config }> }   // preset files as a vendor holds them
+result: { presets: Array<NormalizedPreset | { error: string }> }                             // in the order of the request
+NormalizedPreset = {
+  config: Config,           // the file's metadata as given, then its settings as Orca stores them
+  renamed: [string, string][],   // legacy keys Orca reads under another name: [the file's key, the key it becomes]
+  dropped: string[],        // keys Orca ignores: unknown or retired, or a value that is not a string or a list of strings
+  misplaced: string[],      // settings of another preset type, which Orca removes from a vendor preset
+  substituted: { key: string, value: string, replacement: string }[],   // values Orca could not read and replaced
+  added: string[],          // settings a legacy value sets that the file does not name
+}
+```
+
+Each file is read exactly as OrcaSlicer's vendor loader reads it (`ConfigBase::load_from_json`: legacy keys through
+`handle_legacy`, the values parsed), then the settings of another preset type are removed (`Preset::remove_invalid_keys`)
+and the settings are written back as OrcaSlicer saves presets: a vector option as a list of strings, numbers in Orca's
+form (`"0.20"` becomes `"0.2"`). Metadata keys (`name`, `inherits`, `from`, `type`, `instantiation`, `setting_id`,
+`filament_id`, `renamed_from`, `description`, `version`, `url`) pass through as given. A file Orca cannot read at all
+comes back as `{ error }`.
+
+Merging normalised files parent first gives the values OrcaSlicer loads, which merging the raw files does not always:
+Orca translates legacy keys per file, before it merges, so a parent's legacy key never overrides a child's current
+one; and a settings panel reading merged raw files misses a value set only through a legacy key.
+
+#### `profiles.resolve`
+
+```ts
+params: {
+  vendor: ProfileFolder,
+  library?: ProfileFolder | null,        // OrcaFilamentLibrary, which every vendor's filaments may inherit from
+  presets?: Array<{ type, name }>,       // absent: every selectable preset of `vendor`
+  compatibility?: boolean | string[],    // also Orca's compatibility, for every printer of `vendor` or for these
+}
+result: {
+  presets: Array<{
+    type, name, vendor: string,          // vendor: the folder the preset came from
+    config: Config,                      // the flattened preset: every setting of its type, name, from: "system", type,
+                                         //   version, inherits: ""; a filament also its filament_id
+    alias: string, renamedFrom: string[], settingId: string, filamentId?: string,
+  }>,
+  missing: Array<{ type, name }>,        // named in `presets` but not a selectable preset of the folders
+  defaults: { machine: Config, process: Config, filament: Config },   // each type's default preset: where chains start
+  compatibility?: Array<{ printer: string, processes: string[], filaments: string[] }>,
+  printRestricted?: Array<{ filament: string, processes: string[] }>,
+  errors: string[],                      // what Orca's loader logged as errors
+}
+```
+
+The folders are loaded the way the desktop app loads its system presets (`PresetBundle::load_presets`): the library
+first, then the vendor against it. A preset's `config` is what the app holds for it: its type's defaults, its
+inheritance chain merged file by file, and the adjustments Orca makes while loading (vectors sized to the printer's
+nozzles and variants, unset slots filled, renamed printers in `compatible_printers` rewritten). It is ready for
+`slice` and `settings.*` as it is. Only selectable presets (`instantiation: "true"`) are returned.
+
+With `compatibility`, each printer lists the selectable processes and filaments of both folders that Orca offers with
+it (`is_compatible_with_printer`: `compatible_printers`, else `compatible_printers_condition`, and a library filament
+left out where the printer has its own filament of the same alias), in Orca's order; `printRestricted` lists the
+filaments limited to some processes (`compatible_prints`, `compatible_prints_condition`) and the vendor's processes each
+suits.
+
+#### `profiles.validate`
+
+```ts
+params: {
+  vendors: ProfileFolder[],              // every vendor to load, OrcaFilamentLibrary among them
+  vendor?: string,                       // validate this one (and the library) only, as the validator's -v does
+  checkFilamentSubtypes?: boolean,       // default true
+}
+result: { ok: boolean, errors: string[], warnings: string[], counts: Record<vendor, { machine, process, filament }> }
+```
+
+OrcaSlicer's profile validator (`OrcaSlicer_profile_validator` of its `src/dev-utils`, without its slicing mode): the
+folders loaded in validation mode, then `PresetBundle::has_errors` (missing parents and printer models, filaments
+without `compatible_printers`, dangling or renamed references, printer models whose default materials do not exist,
+and, with `checkFilamentSubtypes`, printers with two compatible filaments sharing a `filament_id`). `ok` is the
+validator's verdict; `errors` are its messages. Its reference checks look across every vendor given, so the library
+validates only together with the vendors its filaments name.
+
+The three ops run in the engine lane and load the engine like `slice`. Their requests are checked before it loads: a
+malformed one fails with `BadRequest` at once.
 
 ## 7. Settings
 
@@ -733,14 +847,14 @@ keys and missing ones.
    client sends a new op or field only when `hello` lists its capability.
 3. **Responses:** new fields may appear; clients ignore unknown ones. String enums (warning kinds, stages, roles,
    issue and prompt ids) are open sets. Unknown error codes are handled generically.
-4. **Data formats** carry their own `format` number (definitions 1, catalogue 2, toolpaths 1, settings view 1). A new
-   format ships as a new capability the client opts into.
+4. **Data formats** carry their own `format` number (definitions 1, catalogue 2, toolpaths 1, settings view 1; the
+   profile sets of `docs/PROFILES.md` 1). A new format ships as a new capability the client opts into.
 5. **Deprecation:** an op or field is marked deprecated for at least one minor before a major removes it.
 6. **Conformance:** the engine repository runs every op through every transport against `packages/protocol`
    (`npm run test:conformance`; the engine part with `npm run test:engine`). A client's fake engine type-checks
    against the same package.
 
-The package's version follows the protocol: 2.0.x is protocol 2.0.
+The package's version follows the protocol: 2.1.x is protocol 2.1.
 
 ## 10. A client in brief
 

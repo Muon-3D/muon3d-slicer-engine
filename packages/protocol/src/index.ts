@@ -8,6 +8,8 @@ export * from './envelope.ts';
 export * from './data.ts';
 export * from './ops.ts';
 export * from './settings.ts';
+export * from './profiles.ts';
+export * from './profileSet.ts';
 export * from './catalogue.ts';
 export * from './definitions.ts';
 export * from './manifest.ts';

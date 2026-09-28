@@ -16,8 +16,9 @@ engine/
   shims/             replacement headers: serial TBB (st), openssl/md5.h, OCCT headers Model.hpp pulls in
   stubs/             replacement sources for desktop-only parts (STEP, SVG, DRC, assimp, Platform, …)
   bridge/            headless port of the Orca CLI's slicing path (cli_config, model_input, slice_job,
-                     placement, toolpaths), Orca's option table as JSON (config_def), and the embind
-                     API (engine.cpp)
+                     placement, toolpaths), Orca's option table as JSON (config_def), Orca's preset loading
+                     and profile validator on vendor folders (profiles), Orca's log for a job (log_capture),
+                     and the embind API (engine.cpp)
   scripts/           build.sh: builds one variant (st|mt) and publishes it into dist/; get-orca.sh, pin.sh
   PATCHES.md         every change needed inside Orca's src/ (none in the checkout, one out-of-tree patch)
 ```
@@ -103,6 +104,14 @@ What `build.sh` publishes into `dist/`:
   engine in Node to read it, so after an engine rebuild run `npm run gen:settings -- --check` and regenerate if it
   reports drift. The shape is `ConfigDefinitions` in `packages/protocol/src/definitions.ts` (`format: 1`); the op
   `config.definitions` returns it.
+- **`profilesNormalize()`, `profilesResolve()`, `profilesValidate()`** (`bridge/profiles.cpp`) take and return JSON
+  text: the ops `profiles.*` of protocol 2.1 (docs/PROTOCOL.md, 6.10). The vendor folders of a request are written
+  into a job folder of the virtual file system, and Orca's own code does the rest: `ConfigBase::load_from_json` and
+  `Preset::remove_invalid_keys` per file (normalize), `PresetBundle::load_presets` as the desktop app loads system
+  presets, with `data_dir()` pointed at the job folder for the call (resolve), and the same load in validation mode
+  followed by `PresetBundle::has_errors` (validate, OrcaSlicer_profile_validator without its slicing mode). The
+  loader's errors are collected from Orca's log (`bridge/log_capture.cpp`), which also gives `slice` its optional
+  log.
 
 ## Parity with a native CLI
 

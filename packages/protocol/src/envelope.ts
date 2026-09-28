@@ -4,7 +4,7 @@
 import type { OpName, OpParams } from './ops.ts';
 
 /** The protocol these types describe. */
-export const PROTOCOL = { major: 2, minor: 0 } as const;
+export const PROTOCOL = { major: 2, minor: 1 } as const;
 
 /** Client -> host. `id` is chosen by the client: an integer > 0, unique among its open requests on one connection. */
 export interface Request<K extends OpName = OpName> {
@@ -108,6 +108,8 @@ export interface EngineError {
   objects?: string[];
   /** Technical detail: the runtime's own error text, or what was wrong with a request. */
   detail?: string;
+  /** A slice that failed: Orca's log, when the request asked for one (SliceParams.output.log, capability 'slice.log'). */
+  log?: string;
 }
 
 /** `kind` is an open set: Orca's warning step names, 'object_outside', 'exclusion_volume_path', ... */

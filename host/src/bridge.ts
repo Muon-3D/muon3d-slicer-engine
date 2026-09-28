@@ -61,6 +61,8 @@ export interface SliceJob {
   toolpaths?: boolean;
   /** Default true. */
   toolpathExtras?: boolean;
+  /** Orca's log to return, down to this level: 0 none (default), 1 errors … 5 trace. */
+  log?: number;
 }
 
 export interface CheckJob {
@@ -77,6 +79,8 @@ export interface SliceOutput {
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
   timings: { load: number; slice: number; export: number; total: number };
+  /** With SliceJob.log: Orca's log, a line each ("<level>: <message>"). */
+  log?: string;
 }
 
 export interface CheckOutput {
@@ -95,7 +99,7 @@ export interface EngineMeshInput {
   config?: Record<string, string>;
 }
 
-type EngineResult<T> = T | { error: EngineError };
+type EngineResult<T> = T | { error: EngineError; log?: string };
 
 /** What `await createOrcaEngine()` resolves to. */
 export interface OrcaEngineModule {
@@ -108,6 +112,8 @@ export interface OrcaEngineModule {
     toolpaths: boolean,
     onProgress: (percent: number, message: string) => void,
     onWarning: (warning: EngineWarning) => void,
+    /** Orca's log to return with the result (`log`): 0 none, 1 errors … 5 trace. Builds before 0.3.0 ignore it. */
+    logLevel: number,
   ): EngineResult<SliceOutput>;
   check(machineJson: string, processJson: string, filamentJsons: string[], objects: EngineMeshInput[]): EngineResult<CheckOutput>;
   /** Makes a running slice stop at Orca's next cancellation point (needs a second thread to call it). */
@@ -121,6 +127,10 @@ export interface OrcaEngineModule {
    * ./configDefinitions.ts, which also reads it). Missing in builds before 2026-09-25.
    */
   configDefinitions?(): string;
+  /** The profile ops (engine/bridge/profiles.hpp; host/src/profiles.ts): JSON text in and out. Missing before 0.3.0. */
+  profilesNormalize?(request: string): string | { error: EngineError };
+  profilesResolve?(request: string): string | { error: EngineError };
+  profilesValidate?(request: string): string | { error: EngineError };
 }
 
 /**
@@ -390,8 +400,9 @@ export function runSlice(
     job.toolpaths ?? true,
     guarded(onProgress),
     guarded(onWarning),
+    job.log ?? 0,
   );
-  if ('error' in result) throw new EngineJobError(result.error);
+  if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
   return {
     ...result,
     // The engine builds them with the toolpaths whether asked or not; they are dropped here so

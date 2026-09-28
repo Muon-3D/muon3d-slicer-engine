@@ -4,7 +4,7 @@
 // packages/protocol (a Web Worker's global scope, a Node worker_threads port, a byte stream such as a
 // WebSocket), and worker.ts does that for the host file a page or a Node program starts.
 //
-// Requests run in two lanes, each in order, one at a time: the engine lane (load, slice, check,
+// Requests run in two lanes, each in order, one at a time: the engine lane (load, slice, check, profiles.*,
 // config.definitions) and the settings lane (settings.*, which never load the engine). hello, status and
 // cancel are answered at once. A slice blocks the host's thread while it runs, so nothing is answered
 // during it; a queued request can be cancelled, a running one cannot (the client ends the host instead).
@@ -28,6 +28,7 @@ import {
 import { readConfigDefinitions } from './configDefinitions.ts';
 import { BUILD, engineInfo, type BuildInfo } from './info.ts';
 import { BadRequest, checkJob, checkResult, sliceJob, sliceResult } from './ops.ts';
+import { profilesRequest, runProfiles, type ProfileOp } from './profiles.ts';
 
 export interface HostEnvironment {
   kind: 'browser' | 'node' | 'other';
@@ -103,9 +104,10 @@ class Lane {
   }
 }
 
-const ENGINE_OPS: ReadonlySet<string> = new Set(['load', 'slice', 'check', 'config.definitions']);
+const PROFILE_OPS: ReadonlySet<string> = new Set(['profiles.normalize', 'profiles.resolve', 'profiles.validate']);
+const ENGINE_OPS: ReadonlySet<string> = new Set(['load', 'slice', 'check', 'config.definitions', ...PROFILE_OPS]);
 const SETTINGS_OPS: ReadonlySet<string> = new Set(['settings.catalogue', 'settings.view', 'settings.edit']);
-const CAPABILITIES = [...OPS, Capability.toolpathsV1, Capability.toolpathExtras, Capability.indexedMeshes, Capability.settingsViewV1];
+const CAPABILITIES = [...OPS, Capability.toolpathsV1, Capability.toolpathExtras, Capability.indexedMeshes, Capability.settingsViewV1, Capability.sliceLog];
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -262,6 +264,12 @@ export function createHost(options: HostOptions): Host {
       return;
     }
     // Checked before the engine loads: a bad request should not cost a download.
+    if (PROFILE_OPS.has(op)) {
+      const request = profilesRequest(op as ProfileOp, params);
+      await ensureEngine();
+      result(id, engineJob((e) => runProfiles(e, op as ProfileOp, request)));
+      return;
+    }
     const job = op === 'slice' ? sliceJob(params as never) : op === 'check' ? checkJob(params as never) : null;
     await ensureEngine();
     if (op === 'config.definitions') {
