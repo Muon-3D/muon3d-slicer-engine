@@ -136,9 +136,35 @@ function removeOldHosts(keep) {
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+/**
+ * Names every file after its content, as `<name>.<first 16 hex digits of its sha256>.js` (esbuild's own [hash]
+ * is base32): each file's references to the others are rewritten first, dependencies before the files that
+ * import them (esbuild's chunks never import the entry), so a name covers everything the file loads.
+ */
+function contentNames(files) {
+  const decoder = new TextDecoder();
+  const texts = new Map(files.map((f) => [f.name, decoder.decode(f.contents)]));
+  const renamed = new Map();
+  const refersTo = (text, name) => text.includes(`./${name}`);
+  const pending = new Set(texts.keys());
+  while (pending.size > 0) {
+    const ready = [...pending].find((name) => [...pending].every((other) => other === name || !refersTo(texts.get(name), other)));
+    if (!ready) throw new Error(`host files import each other in a cycle: ${[...pending].join(', ')}`);
+    let text = texts.get(ready);
+    for (const [from, to] of renamed) text = text.split(`./${from}`).join(`./${to}`);
+    const stem = ready.replace(/\.[A-Z0-9]+\.js$/, '');
+    renamed.set(ready, `${stem}.${sha256(text).slice(0, 16)}.js`);
+    texts.set(ready, text);
+    pending.delete(ready);
+  }
+  const encoder = new TextEncoder();
+  return files.map((f) => ({ name: renamed.get(f.name), contents: encoder.encode(texts.get(f.name)) }));
+}
+
 /** Writes the build's files and returns the manifest entry: the entry script and its chunks. */
 function writeOutputs(outputFiles, commit, compress) {
-  const files = outputFiles.map((f) => ({ name: path.basename(f.path), contents: f.contents }));
+  let files = outputFiles.map((f) => ({ name: path.basename(f.path), contents: f.contents }));
+  if (!watch) files = contentNames(files);
   const entry = files.find((f) => /^host\.[^-]*\.js$/.test(f.name) || f.name === 'host.dev.js');
   if (!entry) throw new Error(`no host entry among ${files.map((f) => f.name).join(', ')}`);
   removeOldHosts(files.map((f) => f.name));
