@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { describe, it } from 'node:test';
-import type { ConfigValue } from '../../../packages/protocol/src/v1.ts';
+import type { ConfigValue } from '../../../packages/protocol/src/data.ts';
 import {
   MATERIAL_TYPES,
   ORCA_RULES_COMMIT,

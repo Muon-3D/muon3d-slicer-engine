@@ -1,5 +1,5 @@
 // End-to-end tests of the built engine under plain Node, through the same loader and marshalling
-// code the worker host uses in a browser (host/src/worker.ts). Skipped until the engine is built
+// code the worker host uses in a browser (host/src/bridge.ts). Skipped until the engine is built
 // (npm run test:engine fails instead).
 //
 //   node --test test/engine.test.ts                           # dist/engine-st.mjs
@@ -15,8 +15,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, test, type TestContext } from 'node:test';
 import { readConfigDefinitions } from '../host/src/configDefinitions.ts';
-import { EngineJobError, runCheck, runSlice, type OrcaEngineModule } from '../host/src/worker.ts';
-import type { CheckOutput, EngineObject, EngineWarning, GcodeStats, ParsedGcode, SliceOutput } from '../packages/protocol/src/v1.ts';
+import { EngineJobError, runCheck, runSlice, type BridgeToolpaths as ParsedGcode, type CheckOutput, type EngineObject, type OrcaEngineModule, type SliceOutput } from '../host/src/bridge.ts';
+import type { EngineWarning, GcodeStats } from '../packages/protocol/src/index.ts';
 import { parseStatsText } from './helpers/gcodeStats.ts';
 import { parseGcode, sizeCode } from './helpers/parseGcode.ts';
 import {

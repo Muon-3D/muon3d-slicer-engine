@@ -142,7 +142,7 @@ export function sourcesAvailable(paths: GeneratorPaths): boolean {
 /** The engine's option definitions (its configDefinitions() export). */
 export async function readEngineDefinitions(engineDir: string): Promise<EngineDefinitions> {
   // Imported by URL so the type checker does not pull the browser worker into Node-only code.
-  const worker = pathToFileURL(path.join(repoRoot, 'host/src/worker.ts')).href;
+  const worker = pathToFileURL(path.join(repoRoot, 'host/src/bridge.ts')).href;
   const { loadEngine } = (await import(worker)) as {
     loadEngine(dir: string, variant: 'st'): Promise<{ engine: { configDefinitions?: () => string } }>;
   };

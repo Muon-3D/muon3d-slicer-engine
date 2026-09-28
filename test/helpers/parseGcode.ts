@@ -52,7 +52,7 @@
 //     GCodeProcessor writes as they tick over) marks a point in time, and the footer's
 //     '; estimated printing time (normal mode) = 1h 2m 3s' gives the total. Between those points
 //     the times follow the moves; without any, they are the raw sums.
-import type { ToolpathExtras, Vec3 } from '../../packages/protocol/src/v1.ts';
+import type { ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
 
 export interface SegmentSet {
   /** Segment endpoints, 6 floats each (x0, y0, z0, x1, y1, z1) in mm, in file (= layer) order. */

@@ -1,0 +1,94 @@
+{
+ "format": 1,
+ "reference": {
+  "version": "0.1.0",
+  "orcaCommit": "2d1163eb6f5228de605150e3b4800081947070eb",
+  "host": "259a6b63a879e531e051b9acff72b545cb6093d327313923e0381693a7a2beb9",
+  "wasm": {
+   "st": "da459bb42f338192c6714f6a3f02488e7b9e3558c15220da017944e9fba8ed1f",
+   "mt": "a642334c958f9c8d981aec983d2ceb3b0432f636e53faf0fda0f0a08739cb69c"
+  }
+ },
+ "plates": {
+  "m1-cube": {
+   "st": {
+    "sha256": "3cde1b379d656f5d9c8a9bb762c91f5fa842e7a41b434aa682bfea9be2e9448a",
+    "bytes": 319093,
+    "layers": 100,
+    "printTimeText": "9m 38s",
+    "filamentMm": 1400.16
+   },
+   "mt": {
+    "sha256": "3cde1b379d656f5d9c8a9bb762c91f5fa842e7a41b434aa682bfea9be2e9448a",
+    "bytes": 319093,
+    "layers": 100,
+    "printTimeText": "9m 38s",
+    "filamentMm": 1400.16
+   }
+  },
+  "m1-object-settings": {
+   "st": {
+    "sha256": "24ee8bdc16130efb136d1cc7d32a6844f5141b2086b5ea9e32fe4ff2ace1d333",
+    "bytes": 892162,
+    "layers": 199,
+    "printTimeText": "22m 10s",
+    "filamentMm": 3130.52
+   },
+   "mt": {
+    "sha256": "24ee8bdc16130efb136d1cc7d32a6844f5141b2086b5ea9e32fe4ff2ace1d333",
+    "bytes": 892162,
+    "layers": 199,
+    "printTimeText": "22m 10s",
+    "filamentMm": 3130.52
+   }
+  },
+  "m1-two-cubes": {
+   "st": {
+    "sha256": "b85172460d5bee94356568bd51a2e445753f2d7f6fa5b61cd9e656efb6c2da24",
+    "bytes": 389199,
+    "layers": 75,
+    "printTimeText": "8m 25s",
+    "filamentMm": 1404.97
+   },
+   "mt": {
+    "sha256": "b85172460d5bee94356568bd51a2e445753f2d7f6fa5b61cd9e656efb6c2da24",
+    "bytes": 389199,
+    "layers": 75,
+    "printTimeText": "8m 25s",
+    "filamentMm": 1404.97
+   }
+  },
+  "m1-cylinder-arcs": {
+   "st": {
+    "sha256": "430c9ca03476db245791aa234e0c31109fe56522b77ce322425219b22481aaae",
+    "bytes": 609326,
+    "layers": 50,
+    "printTimeText": "5m 47s",
+    "filamentMm": 1202.19
+   },
+   "mt": {
+    "sha256": "430c9ca03476db245791aa234e0c31109fe56522b77ce322425219b22481aaae",
+    "bytes": 609326,
+    "layers": 50,
+    "printTimeText": "5m 47s",
+    "filamentMm": 1202.19
+   }
+  },
+  "x1c-box": {
+   "st": {
+    "sha256": "ac5358e2df328410d0a76ff44e641937ea2c95c64717fc00333e0abb1f86fe33",
+    "bytes": 299721,
+    "layers": 60,
+    "printTimeText": "13m 54s",
+    "filamentMm": 1224.56
+   },
+   "mt": {
+    "sha256": "ac5358e2df328410d0a76ff44e641937ea2c95c64717fc00333e0abb1f86fe33",
+    "bytes": 299721,
+    "layers": 60,
+    "printTimeText": "13m 54s",
+    "filamentMm": 1224.56
+   }
+  }
+ }
+}

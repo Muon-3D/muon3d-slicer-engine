@@ -8,7 +8,7 @@
 // so the tests do not need the Orca checkout.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FlatConfig as Config } from '../../packages/protocol/src/v1.ts';
+import type { Config } from '../../packages/protocol/src/data.ts';
 
 export type PresetType = 'machine' | 'process' | 'filament';
 

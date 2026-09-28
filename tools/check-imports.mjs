@@ -63,6 +63,14 @@ for (const file of sourceFiles(repo)) {
       references++;
       const line = text.slice(0, match.index).split('\n').length;
       const where = `${rel}:${line}`;
+      if (rel.startsWith('packages/protocol/')) {
+        // The protocol package is a separate work (Apache-2.0) that others install on its own: it imports
+        // nothing outside its folder, not even Node's modules (it runs in browsers).
+        const target = path.resolve(path.dirname(file), spec);
+        const inPackage = !path.relative(path.join(repo, 'packages/protocol'), target).startsWith('..');
+        if (!(spec.startsWith('.') && inPackage)) problems.push(`${where}: "${spec}" is outside packages/protocol (the package imports only its own files)`);
+        continue;
+      }
       if (spec.startsWith('.') || spec.startsWith('/')) {
         const target = path.resolve(path.dirname(file), spec);
         const inside = path.relative(repo, target);

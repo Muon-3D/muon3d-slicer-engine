@@ -28,13 +28,18 @@ export interface Transport {
 // postMessage
 // ---------------------------------------------------------------------------------------------
 
+/** What the endpoints' events carry (a MessageEvent, an ErrorEvent): structural, so no DOM types are needed. */
+export interface EndpointEvent {
+  readonly type: string;
+  readonly data?: unknown;
+  readonly message?: string;
+}
+
 /** A Web Worker, a MessagePort, or a DedicatedWorkerGlobalScope. */
 export interface PostMessageEndpoint {
-  postMessage(message: unknown, transfer: Transferable[]): void;
-  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  addEventListener(type: 'error' | 'messageerror', listener: (event: Event) => void): void;
-  removeEventListener(type: 'error' | 'messageerror', listener: (event: Event) => void): void;
+  postMessage(message: unknown, transfer: ArrayBuffer[]): void;
+  addEventListener(type: string, listener: (event: EndpointEvent) => void): void;
+  removeEventListener(type: string, listener: (event: EndpointEvent) => void): void;
   terminate?(): void;
   close?(): void;
   start?(): void;
@@ -42,12 +47,11 @@ export interface PostMessageEndpoint {
 
 export function workerTransport(endpoint: PostMessageEndpoint): Transport {
   return {
-    send: (message, transfer = []) => endpoint.postMessage(message, transfer as Transferable[]),
+    send: (message, transfer = []) => endpoint.postMessage(message, [...transfer]),
     listen(onMessage, onClose) {
-      const message = (event: MessageEvent) => onMessage(event.data);
-      const error = (event: Event) => {
-        const e = event as ErrorEvent;
-        onClose?.(new Error(e.message || (event.type === 'messageerror' ? 'a message could not be read' : 'the worker failed')));
+      const message = (event: EndpointEvent) => onMessage(event.data);
+      const error = (event: EndpointEvent) => {
+        onClose?.(new Error(event.message || (event.type === 'messageerror' ? 'a message could not be read' : 'the worker failed')));
       };
       endpoint.addEventListener('message', message);
       endpoint.addEventListener('error', error);
@@ -140,20 +144,30 @@ export function byteStreamTransport(channel: ByteChannel): Transport {
   };
 }
 
-/** A WebSocket (browser or Node >= 22) as a byte channel: binary messages, each one or more frames. */
-export function webSocketChannel(socket: WebSocket): ByteChannel {
+/** A WebSocket (browser, or Node >= 22), structurally. */
+export interface WebSocketLike {
+  binaryType: string;
+  send(data: Uint8Array): void;
+  addEventListener(type: string, listener: (event: { readonly data?: unknown; readonly code?: number; readonly reason?: string }) => void): void;
+  removeEventListener(type: string, listener: (event: { readonly data?: unknown; readonly code?: number; readonly reason?: string }) => void): void;
+  close(code?: number): void;
+}
+
+/** A WebSocket as a byte channel: binary messages, each one or more frames. */
+export function webSocketChannel(socket: WebSocketLike): ByteChannel {
   socket.binaryType = 'arraybuffer';
   return {
     write: (bytes) => socket.send(bytes),
     onBytes(listener) {
-      const message = (event: MessageEvent) => {
+      const message = (event: { readonly data?: unknown }) => {
         if (event.data instanceof ArrayBuffer) listener(new Uint8Array(event.data));
       };
       socket.addEventListener('message', message);
       return () => socket.removeEventListener('message', message);
     },
     onClose(listener) {
-      const close = (event: CloseEvent) => listener(event.code === 1000 ? undefined : new Error(`the connection closed (${event.code} ${event.reason})`));
+      const close = (event: { readonly code?: number; readonly reason?: string }) =>
+        listener(event.code === 1000 ? undefined : new Error(`the connection closed (${event.code} ${event.reason})`));
       const error = () => listener(new Error('the connection failed'));
       socket.addEventListener('close', close);
       socket.addEventListener('error', error);

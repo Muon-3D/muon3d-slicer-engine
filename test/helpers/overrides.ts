@@ -21,8 +21,8 @@
 //   - bools are written "1"/"0" ("true"/"false" are read too), and "nil" leaves a slot of a
 //     nullable option unset (the filament "Setting Overrides" then use the printer's value).
 import { readFileSync } from 'node:fs';
-import type { ConfigValue, FlatConfig } from '../../packages/protocol/src/v1.ts';
-import type { OrcaOptionType, SettingsCatalogue } from '../../tools/settings-catalogue/types.ts';
+import type { Config as FlatConfig, ConfigValue } from '../../packages/protocol/src/data.ts';
+import type { OrcaOptionType, SettingsCatalogue } from '../../packages/protocol/src/catalogue.ts';
 
 const catalogue = JSON.parse(readFileSync(new URL('../../data/settings-catalogue.json', import.meta.url), 'utf8')) as SettingsCatalogue;
 const REAL_OPTIONS = Object.entries(catalogue.options).filter(([, def]) => !def.synthetic);

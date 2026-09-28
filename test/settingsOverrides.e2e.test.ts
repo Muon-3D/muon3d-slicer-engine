@@ -4,7 +4,7 @@
 // Skipped until the engine is built (npm run test:engine fails instead).
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { runSlice } from '../host/src/worker.ts';
+import { runSlice } from '../host/src/bridge.ts';
 import { cube, engineSkip, m1Presets, startEngine, variant } from './fixtures.ts';
 import { applyOverrides, presetValueText } from './helpers/overrides.ts';
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Slices a model from the command line with the Muon3D Slicer Engine: the built engine and worker
-// host in dist/, started in a Node worker thread and driven through the worker protocol (v1), exactly
-// as a web page drives them. No web app involved.
+// Slices a model from the command line with the Muon3D Slicer Engine: the built engine and host in dist/,
+// started in a Node worker thread and driven through protocol v2 (packages/protocol's EngineConnection),
+// exactly as a web page drives them. No web app involved.
 //
 //   node examples/node-cli/slice.mjs model.stl                      # M1 presets, centre of the bed
 //   node examples/node-cli/slice.mjs --cube 20 --at 100,90 -o cube.gcode
@@ -15,12 +15,13 @@
 //   --name <name>      the object's name in the G-code (default: the STL's file name, or Cube.stl)
 //   -o, --out <file>   where to write the G-code (default: the model's name with .gcode, in the current folder)
 //   --variant st|mt    engine variant (default st)
-//   --dist <folder>    the built engine and host (default dist/ of this repository)
+//   --dist <folder>    the built engine and host, or a release's runtime folder (default dist/ of this repository)
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { Worker } from 'node:worker_threads';
+import { EngineRequestError } from '../../packages/protocol/src/index.ts';
+import { startHost } from '../start-host.mjs';
 import { box, parseStl, placeOnBed } from './stl.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -66,58 +67,44 @@ if (opts.cube && !(size > 0)) usage('--cube must be a size in mm');
 const mesh = opts.cube ? box([size, size, size]) : parseStl(fs.readFileSync(positionals[0]));
 const name = opts.name ?? (opts.cube ? 'Cube.stl' : path.basename(positionals[0]));
 const out = path.resolve(opts.out ?? `${name.replace(/\.[^.]*$/, '')}.gcode`);
-const job = { ...presets, objects: [{ name, positions: placeOnBed(mesh, at) }], toolpaths: false };
 
 // ---- The engine: the host from dist/, in a worker thread --------------------------------------------
 const dist = path.resolve(opts.dist);
-const manifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'));
-if (!manifest.host) usage(`${dist}/manifest.json names no host: build it (npm run build:host)`);
-if (!manifest.variants?.[opts.variant]) usage(`${dist} has no ${opts.variant} engine: build it (npm run build:engine -- ${opts.variant})`);
-
-const worker = new Worker(new URL('./host-thread.mjs', import.meta.url), {
-  workerData: { hostUrl: pathToFileURL(path.join(dist, manifest.host.file)).href },
-});
+if (!fs.existsSync(path.join(dist, `engine-${opts.variant}.mjs`))) usage(`${dist} has no ${opts.variant} engine: build it (npm run build:engine -- ${opts.variant})`);
 const started = performance.now();
+const host = await startHost(dist);
 let lastPercent = -1;
-
-worker.on('error', (err) => {
-  console.error(`slice: the engine thread failed: ${err.message}`);
-  process.exit(1);
-});
-worker.on('message', (message) => {
-  switch (message.type) {
-    case 'loading':
-      break;
-    case 'ready':
-      console.log(`engine ${message.variant} ready in ${Math.round(message.initMs)} ms: OrcaSlicer ${message.orcaVersion} (${message.orcaCommit.slice(0, 10)})`);
-      worker.postMessage({ type: 'slice', id: '1', job });
-      break;
-    case 'progress':
-      if (Math.floor(message.percent / 10) !== Math.floor(lastPercent / 10)) console.log(`  ${String(Math.round(message.percent)).padStart(3)} % ${message.message}`);
-      lastPercent = message.percent;
-      break;
-    case 'warning':
-      console.warn(`  warning (${message.warning.kind}): ${message.warning.message}`);
-      break;
-    case 'sliced': {
-      const { gcode, stats } = message.output;
-      fs.mkdirSync(path.dirname(out), { recursive: true });
-      fs.writeFileSync(out, gcode);
-      console.log(`sliced ${name} in ${((performance.now() - started) / 1000).toFixed(1)} s: ${stats.layers} layers, ${stats.printTimeText}, ` +
-        `${stats.filamentMm} mm / ${stats.filamentG} g filament, max Z ${stats.maxZ}`);
-      console.log(`G-code: ${out} (${gcode.length.toLocaleString('en')} bytes)`);
-      void worker.terminate();
-      break;
-    }
-    case 'failed':
-      console.error(`slice: Orca refused the job (code ${message.error.code}): ${message.error.message}`);
-      void worker.terminate().then(() => process.exit(1));
-      break;
-    case 'fatal':
-      console.error(`slice: the engine could not start: ${message.message}${message.detail ? ` (${message.detail})` : ''}`);
-      void worker.terminate().then(() => process.exit(1));
-      break;
-  }
-});
-
-worker.postMessage({ type: 'init', baseUrl: pathToFileURL(dist + path.sep).href, variant: opts.variant, wasmBytes: manifest.variants[opts.variant].wasmBytes });
+try {
+  const loaded = await host.connection.request('load', { variant: opts.variant });
+  const { engine } = host.hello;
+  console.log(`engine ${loaded.variant} ready in ${Math.round(loaded.initMs)} ms: ${engine.name} ${engine.version}, OrcaSlicer ${engine.orca.version} (${engine.orca.commit.slice(0, 10)})`);
+  const result = await host.connection.request(
+    'slice',
+    {
+      configs: { machine: presets.machine, process: presets.process, filaments: presets.filaments },
+      objects: [{ name, mesh: { positions: placeOnBed(mesh, at) } }],
+      output: { toolpaths: false },
+    },
+    {
+      onProgress: ({ percent, message }) => {
+        if (Math.floor(percent / 10) !== Math.floor(lastPercent / 10)) console.log(`  ${String(Math.round(percent)).padStart(3)} % ${message}`);
+        lastPercent = percent;
+      },
+      onWarning: (warning) => console.warn(`  warning (${warning.kind}): ${warning.message}`),
+    },
+  );
+  const { gcode, stats } = result;
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, gcode);
+  console.log(
+    `sliced ${name} in ${((performance.now() - started) / 1000).toFixed(1)} s: ${stats.layers} layers, ${stats.printTimeText}, ` +
+      `${stats.filamentMm} mm / ${stats.filamentG} g filament, max Z ${stats.maxZ}`,
+  );
+  console.log(`G-code: ${out} (${gcode.length.toLocaleString('en')} bytes)`);
+} catch (err) {
+  if (err instanceof EngineRequestError && err.code < 0) console.error(`slice: Orca refused the job (code ${err.code}): ${err.message}`);
+  else console.error(`slice: ${err.message}${err.detail ? ` (${err.detail})` : ''}`);
+  process.exitCode = 1;
+} finally {
+  host.close();
+}

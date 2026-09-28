@@ -1,9 +1,11 @@
-// Run: node --test host/test/worker.test.ts
-// The worker's engine-facing functions against a fake engine module (the real one is exercised by
+// Run: node --test host/test/bridge.test.ts
+// The host's engine-facing functions (bridge.ts) against a fake engine module (the real one is exercised by
 // test/engine.test.ts once the engine is built).
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, test } from 'node:test';
-import type { CheckOutput, EngineWarning, SliceJob, SliceOutput } from '../../packages/protocol/src/v1.ts';
+import type { EngineWarning } from '../../packages/protocol/src/envelope.ts';
+import { transferablesOf } from '../../packages/protocol/src/helpers.ts';
+import type { CheckOutput, SliceJob, SliceOutput } from '../src/bridge.ts';
 import {
   EngineJobError,
   EngineStartError,
@@ -13,12 +15,11 @@ import {
   meshInputs,
   runCheck,
   runSlice,
-  sliceTransferables,
   startFailure,
   withoutAssertionsHint,
   type EngineMeshInput,
   type OrcaEngineModule,
-} from '../src/worker.ts';
+} from '../src/bridge.ts';
 
 const job: SliceJob = {
   machine: { name: 'Muon3D M1 0.4 nozzle', type: 'machine', from: 'system' },
@@ -192,12 +193,12 @@ test('engine failures are classified as out of memory (2) or crash (1)', () => {
   assert.equal(engineFailure('plain string').code, 1);
 });
 
-test('slice results transfer every buffer once and never a shared one', () => {
+test('transferablesOf lists every buffer of a slice result once and never a shared one', () => {
   const result = output();
   const shared = new Float32Array(new SharedArrayBuffer(8));
   result.toolpathExtras!.height = shared;
   result.toolpaths!.travels.positions = result.toolpaths!.extrusions.positions; // same buffer twice
-  const transfer = sliceTransferables(result);
+  const transfer = transferablesOf(result);
   assert.equal(new Set(transfer).size, transfer.length);
   assert.ok(transfer.includes(result.gcode.buffer as ArrayBuffer));
   assert.ok(!transfer.includes(shared.buffer as unknown as ArrayBuffer));
@@ -211,7 +212,7 @@ test('runSlice drops the toolpath extras when the job does not want them', () =>
   assert.equal(result.toolpathExtras, null);
   assert.notEqual(result.toolpaths, null);
   // gcode, layerZ, extrusion positions/layerStart/roleIndex/width/height, travel positions/layerStart.
-  assert.equal(sliceTransferables(result).length, 9);
+  assert.equal(transferablesOf(result).length, 9);
 });
 
 test("Emscripten's -sASSERTIONS hint is dropped from engine errors", () => {

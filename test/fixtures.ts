@@ -12,8 +12,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { CheckJob, EngineObject, EngineVariant, FlatConfig, SliceJob } from '../packages/protocol/src/v1.ts';
-import { loadEngine, type OrcaEngineModule } from '../host/src/worker.ts';
+import type { Variant as EngineVariant } from '../packages/protocol/src/envelope.ts';
+import { loadEngine, type CheckJob, type EngineObject, type FlatConfig, type OrcaEngineModule, type SliceJob } from '../host/src/bridge.ts';
 import { parseStl } from './helpers/stl.ts';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

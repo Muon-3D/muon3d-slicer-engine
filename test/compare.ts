@@ -15,8 +15,8 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { runSlice } from '../host/src/worker.ts';
-import type { GcodeStats } from '../packages/protocol/src/v1.ts';
+import { runSlice } from '../host/src/bridge.ts';
+import type { GcodeStats } from '../packages/protocol/src/index.ts';
 import { M1, benchy, benchyAvailable, cube, engineBuilt, engineModulePath, m1Presets, ms, outDir, presetNames, sliceJob, startEngine, type Presets } from './fixtures.ts';
 import { parseStatsText } from './helpers/gcodeStats.ts';
 import { pinProcessToPrinterName } from './helpers/overrides.ts';

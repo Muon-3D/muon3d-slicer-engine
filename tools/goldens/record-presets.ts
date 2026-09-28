@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { FlatConfig as Config } from '../../packages/protocol/src/v1.ts';
+import type { Config } from '../../packages/protocol/src/data.ts';
 import { ProfileTree, type PresetType } from './profiles.ts';
 import { presetCases } from './scenarios.ts';
 import { writeGoldens } from './write-json.ts';

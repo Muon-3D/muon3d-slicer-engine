@@ -9,8 +9,8 @@
 // the goldens describe the rules alone. The settings service's own planning (which override text an
 // edit writes) has goldens of its own (test/goldens/settings/views.json).
 import { createHash } from 'node:crypto';
-import type { ConfigValue, FlatConfig as Config } from '../../packages/protocol/src/v1.ts';
-type ConfigPatch = Record<string, string>;
+import type { Config, ConfigValue } from '../../packages/protocol/src/data.ts';
+import type { ConfigPatch } from '../../packages/protocol/src/data.ts';
 import {
   editEffects,
   evaluateRules,

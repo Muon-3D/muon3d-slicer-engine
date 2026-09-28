@@ -1,13 +1,33 @@
 # @muon3d/slicer-engine-protocol
 
-Types of the Web Worker protocol spoken by the [Muon3D Slicer Engine](../../README.md) host: the job and result
-types (`SliceJob`, `SliceOutput`, `CheckJob`, `CheckOutput`, `Toolpaths`, `GcodeStats`, `FlatConfig`, ...), the
-worker messages (`EngineRequest`, `EngineResponse`) and the build manifest (`EngineManifest`).
+Protocol **v2** of the [Muon3D Slicer Engine](https://github.com/Muon-3D/muon3d-slicer-engine): the messages a
+client exchanges with the engine host, and small helpers both sides share. The normative description is
+[`docs/PROTOCOL.md`](https://github.com/Muon-3D/muon3d-slicer-engine/blob/main/docs/PROTOCOL.md); this package is
+its code. Package 2.0.x is protocol 2.0.
 
-This is protocol **v1**, the one the first client used. It changes only additively; protocol v2 will replace it
-with a documented envelope, a handshake and capabilities.
+- **Types:** the envelope (`Request`, `Response`, `HostState`, `EngineError`, `ErrorCode`), every op's params and
+  result (`Ops`, `HelloResult`, `SliceParams`, `SliceResult`, `Toolpaths`, `CheckResult`, `ConfigDefinitions`,
+  `SettingsCatalogue`, `SettingsView`, `SettingsEditResult`, ...), capability names (`Capability`, `OPS`) and the
+  build manifest (`EngineManifest`).
+- **Helpers:** `negotiate()` (does a host's `hello` suit this client), `transferablesOf()` (the buffers of a
+  message, to transfer rather than copy), `configHash()` (the hash a settings request names a cached preset by).
+- **Transports:** `workerTransport()` (a Web Worker, a MessagePort, or a worker's own scope),
+  `nodeWorkerTransport()` (Node `worker_threads`), `byteStreamTransport()` (anything that carries bytes: a
+  WebSocket, an HTTP body, a pipe; messages framed by `encodeFrame()` / `FrameReader`).
+- **Client:** `EngineConnection` (request ids, promises, progress and warnings, state, cancel) over any transport,
+  and `SettingsClient` (sends presets once and then by hash, caches the settings forms).
 
-The package holds types only: importing it bundles no engine code. A page starts the engine by URL
-(`new Worker(base + manifest.host.file, { type: 'module' })`) and talks to it with `postMessage`.
+```ts
+import { EngineConnection, SettingsClient, workerTransport } from '@muon3d/slicer-engine-protocol';
+
+const worker = new Worker(new URL(manifest.host.file, engineBase), { type: 'module' });
+const engine = new EngineConnection(workerTransport(worker), { onState: (s) => console.log(s.state) });
+const hello = await engine.open({ name: 'my-app', version: '1.0.0' });
+const sliced = await engine.request('slice', { configs, objects }, { onProgress: (p) => console.log(p.percent) });
+```
+
+The package holds no engine code: importing it bundles none, and it imports nothing outside itself (CI checks).
+It has no dependencies and needs no DOM or Node types beyond `AbortSignal`.
 
 Licence: Apache-2.0 (`LICENSE`). The engine itself is AGPL-3.0-only; this package is a separate work.
+Contributions to this folder are under Apache-2.0.

@@ -1,14 +1,16 @@
 # node-cli: slice from the command line
 
-Slices a model with the built engine, with no web page involved. `slice.mjs` starts the worker host from `dist/`
-(the same `host.<hash>.js` a browser loads) in a Node worker thread (`host-thread.mjs`) and drives it with the
-protocol v1 messages: `init`, then `slice`, then it writes the G-code it gets back.
+Slices a model with the built engine, with no web page involved. `slice.mjs` starts the engine host from `dist/`
+(the same `host.<hash>.js` a browser starts) in a Node worker thread (`../start-host.mjs`) and drives it through
+protocol v2 with the protocol package's client (`EngineConnection` over `nodeWorkerTransport`): `hello`, `load`,
+then `slice`, and it writes the G-code it gets back.
 
 ```bash
 npm run build                                                       # the engine and the host, into dist/
 node examples/node-cli/slice.mjs --cube 20 --at 100,90 -o cube.gcode
 node examples/node-cli/slice.mjs model.stl --variant mt
 node examples/node-cli/slice.mjs model.stl --presets my-presets.json -o model.gcode
+node examples/node-cli/slice.mjs --cube 20 --dist muon3d-slicer-engine-0.2.0   # a release's runtime folder
 ```
 
 The presets are one JSON file with `machine`, `process` and `filaments` (an array), each an Orca preset flattened

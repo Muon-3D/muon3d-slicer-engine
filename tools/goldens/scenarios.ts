@@ -6,7 +6,7 @@
 //   - SAMPLE_SIZE printers sampled evenly across every other vendor (Bambu Lab's H2D always among
 //     them: two extruders with nozzle variants), each with a process and a filament that suit it;
 //   - EDIT_SCRIPTS: edits a user makes, one after the other, in each scope.
-type ConfigPatch = Record<string, string>;
+import type { ConfigPatch } from '../../packages/protocol/src/data.ts';
 import { FILAMENT_LIBRARY, listsPrinter, type ProfileTree } from './profiles.ts';
 
 export const SAMPLE_SIZE = 50;

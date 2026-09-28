@@ -4,7 +4,7 @@
 // and the functions it uses; the file and scan helpers were left out). It is Muon 3D Technologies' own
 // code; this copy is part of the engine repository and licensed like it (AGPL-3.0-only). The engine
 // tests check that the stats the engine returns are exactly what the G-code's header and footer say.
-import type { GcodeStats } from '../../packages/protocol/src/v1.ts';
+import type { GcodeStats } from '../../packages/protocol/src/index.ts';
 
 const UNIT_SECONDS: Record<string, number> = { d: 86_400, h: 3_600, m: 60, s: 1 };
 

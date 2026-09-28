@@ -260,7 +260,7 @@ let metafile;
 if (process.env.HOST_METAFILE) metafile = JSON.parse(read(process.env.HOST_METAFILE));
 else {
   const esbuild = await import('esbuild');
-  const result = await esbuild.build({ absWorkingDir: repo, entryPoints: ['host/src/worker.ts'], bundle: true, format: 'esm', platform: 'browser', target: 'es2022', write: false, metafile: true, logLevel: 'silent' });
+  const result = await esbuild.build({ absWorkingDir: repo, entryPoints: ['host/src/worker.ts'], bundle: true, splitting: true, outdir: 'dist', format: 'esm', platform: 'browser', target: 'es2022', external: ['node:*'], write: false, metafile: true, logLevel: 'silent' });
   metafile = result.metafile;
 }
 const npmPackages = [...new Set(Object.keys(metafile.inputs).map((f) => /node_modules\/((?:@[^/]+\/)?[^/]+)/.exec(f)?.[1]).filter(Boolean))].sort();
