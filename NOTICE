@@ -15,7 +15,9 @@ engine/shims/tbb-serial is derived from the serial TBB shim of Hiosdra/OrcaWasm
 Modified by Muon 3D Technologies Limited from September 2026: OrcaSlicer's libslic3r built headless for WebAssembly
 (Emscripten); a bridge that runs OrcaSlicer's command-line slicing path without a GUI; a Web Worker host speaking
 the protocol in packages/protocol; a settings catalogue generated from OrcaSlicer's option definitions and settings
-tabs; and a TypeScript translation of OrcaSlicer's settings rules (ConfigManipulation.cpp, Tab.cpp). Changes to
+tabs; a TypeScript translation of OrcaSlicer's settings rules (ConfigManipulation.cpp, Tab.cpp); the Muon3D
+printer profiles (profiles/muon3d); and a builder that packs OrcaSlicer's printer profiles for a static site
+(tools/profiles). Changes to
 OrcaSlicer's own files are the commits on branch muon3d-wasm of https://github.com/Muon-3D/OrcaSlicer after the
 upstream base named in SOURCE.md, and the patches listed in engine/PATCHES.md.
 

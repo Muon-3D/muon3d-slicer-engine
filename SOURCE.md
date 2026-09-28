@@ -27,6 +27,13 @@ bash on Linux. `engine/scripts/README.md` has the exact commands.
 - **Out-of-tree patches** applied at build time to copies in the build tree, never to `orca/`:
   `engine/cmake/OrcaSourcePatches.cmake`, described in `engine/PATCHES.md`.
 
+## The profile sets
+
+A release's profile set (`muon3d-slicer-profiles-<version>.tgz`, `docs/PROFILES.md`) is OrcaSlicer's
+`resources/profiles` at the pinned commit, with the Muon3D vendor from `profiles/muon3d` of this repository,
+normalised and packed by `tools/profiles` with the release's engine. Its source is those per-file JSON trees at the
+commits its `SOURCE.json` names, and the build scripts in this repository; a release's source assets hold all of it.
+
 ## Getting and building it
 
 ```bash

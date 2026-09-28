@@ -14,9 +14,12 @@ statistics, toolpaths for a preview, and Orca's warnings and error codes. Its se
 settings forms as documents: the tabs' layout for the mode and the printer, which settings Orca hides or greys out
 for the current values, Orca's checks and questions, and what an edit changes along with it.
 
-**Status:** pre-release (`0.x`). The host speaks **protocol v2**: a handshake with capabilities, the licence and
-the source; slicing, placement checks, Orca's option table and settings catalogue; the settings service
-(`settings.view`, `settings.edit`). Releases, each with its complete source, are on
+**Status:** pre-release (`0.x`). The host speaks **protocol v2** (2.1): a handshake with capabilities, the licence and
+the source; slicing (with Orca's log on request), placement checks, Orca's option table and settings catalogue; the
+settings service (`settings.view`, `settings.edit`); and Orca's own preset code on vendor profiles
+(`profiles.normalize`, `profiles.resolve`, `profiles.validate`). Each release also publishes a **profile set**:
+OrcaSlicer's printer, process and filament presets, normalised by the engine and packed for a static site
+([`docs/PROFILES.md`](docs/PROFILES.md)). Releases, each with its complete source, are on
 [GitHub Releases](https://github.com/Muon-3D/muon3d-slicer-engine/releases); the rolling `edge` prerelease follows
 `main`. Or build it from source as below.
 
@@ -28,16 +31,22 @@ orca/                 submodule: OrcaSlicer, branch muon3d-wasm of github.com/Mu
 host/                 the host (TypeScript) and its build: core.ts (ops, lifecycle, queues, cancel, progress),
                       worker.ts (the Web Worker and worker_threads entry), bridge.ts (the engine module),
                       settings/ (the settings service: Orca's rules, the tabs' layout, object and plate settings)
-packages/protocol/    @muon3d/slicer-engine-protocol: protocol v2's types, transports and client (Apache-2.0)
+packages/protocol/    @muon3d/slicer-engine-protocol: protocol v2's types, transports and client, and the profile
+                      sets' types with flattenPreset (Apache-2.0)
+profiles/muon3d/      the Muon3D vendor profiles (Muon3D M1), in OrcaSlicer's layout: the profile sets take them
 docs/PROTOCOL.md      the protocol, normative
+docs/PROFILES.md      the profile sets: files, formats, flattening a preset, the goldens, building and checking
 tools/                settings-catalogue/ (the catalogue generator), goldens/ (the settings goldens' recorders),
-                      check-imports.mjs, release/ (release assets, notices, offline rebuild), ci/ (the toolchain)
+                      profiles/ (the profile set builder and checker, the preset fixtures), check-imports.mjs,
+                      release/ (release assets, notices, offline rebuild), ci/ (the toolchain)
 data/                 settings-catalogue.json: every Orca option, laid out as Orca's settings tabs
 test/                 engine tests, protocol conformance (test/conformance), settings and slice goldens
-                      (test/goldens), preset fixtures, test helpers
+                      (test/goldens), preset and profile fixtures, the Muon3D profile record (test/profiles),
+                      test helpers
 examples/node-cli/    slice from the command line through the host
 examples/settings-cli/ validate presets and print Orca's settings forms, through the settings service
-docs/                 PROTOCOL.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original engine spec
+docs/                 PROTOCOL.md, PROFILES.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original
+                      engine spec
 .github/              workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
 ```
 
@@ -60,6 +69,9 @@ npm run test:engine                  # engine tests and the conformance suite's 
 npm run check                        # nothing imported from outside the repository (or the protocol package); types
 node examples/node-cli/slice.mjs --cube 20 -o cube.gcode
 node examples/settings-cli/settings.mjs --validate
+bash engine/scripts/get-orca.sh                        # orca/ at the pin, for the profile set
+npm run profiles:build -- --out out/profiles --set dev # the profile set (docs/PROFILES.md)
+npm run profiles:check -- out/profiles --expect test/profiles/muon3d.json
 ```
 
 The host alone (`npm run build:host`) needs no Emscripten: the settings service, and the whole protocol suite but
@@ -92,6 +104,10 @@ const { gcode, stats, toolpaths } = await engine.request('slice', {
   objects: [{ name: 'Cube.stl', mesh: { positions } }],
 });
 ```
+
+A release's profile set (`muon3d-slicer-profiles-<v>.tgz`) is served the same way, next to it: its `profiles/` folder
+holds an index of every vendor and printer, one gzip bundle per vendor and the printers' bed models and pictures;
+[`docs/PROFILES.md`](docs/PROFILES.md) says how to read it and how to flatten a preset for `slice`.
 
 The client starts the host by URL and talks to it only with messages; it never imports or bundles engine code. The
 protocol package (a release asset, `muon3d-slicer-engine-protocol-<v>.tgz`, until it is on npm) has the types, the

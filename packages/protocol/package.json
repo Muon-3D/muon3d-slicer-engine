@@ -1,6 +1,6 @@
 {
   "name": "@muon3d/slicer-engine-protocol",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Protocol v2 of the Muon3D Slicer Engine: message and data types, capability names, transports (Web Worker, Node worker_threads, byte streams) and a small RPC client. No engine code.",
   "license": "Apache-2.0",
   "repository": {

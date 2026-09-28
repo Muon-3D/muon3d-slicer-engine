@@ -1,6 +1,6 @@
 {
   "name": "muon3d-slicer-engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, with a host that serves protocol v2 (slicing, placement checks, OrcaSlicer's settings forms and vendor profiles) over a Web Worker, Node worker_threads or a byte stream; and OrcaSlicer's printer profiles packed for a static site.",
   "license": "AGPL-3.0-only",
