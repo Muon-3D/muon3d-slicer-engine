@@ -75,6 +75,14 @@ set(ENGINE_LINK_OPTIONS
     -sEXPORT_NAME=createOrcaEngine
     -sENVIRONMENT=web,worker,node                      # browsers' workers + Node for the test suite
     -lembind
+    # No code made from text at run time, so a page whose Content-Security-Policy leaves out 'unsafe-eval' runs
+    # the engine ('wasm-unsafe-eval' is all it needs). EMBIND_AOT: embind's call wrappers are generated at link
+    # time (Emscripten runs the module under node once to list them) instead of with `new Function` when the
+    # module starts; the same wrappers, so the same speed. DYNAMIC_EXECUTION=0: emval's callers (val::call and
+    # the like, which EMBIND_AOT does not cover) are plain closures instead of `new Function`, and any eval
+    # left in the glue aborts instead of running. The .wasm is unchanged.
+    -sEMBIND_AOT
+    -sDYNAMIC_EXECUTION=0
     # FS stays reachable from JS (the worker reads the G-code file from MEMFS without another copy).
     # wasmMemory: the heap's WebAssembly.Memory, so JS can read its size (wasmMemory.buffer.byteLength,
     # valid up to the full 4 GB) after a job or a crash. Wasm memory never shrinks, and the mt build's

@@ -11,7 +11,7 @@
 // must be identical, and the toolpaths the engine builds from Orca's GCodeProcessor must match what
 // the parser draws from the text. The G-code is written to ENGINE_TEST_OUT for inspection.
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { before, describe, test, type TestContext } from 'node:test';
 import { readConfigDefinitions } from '../host/src/configDefinitions.ts';
@@ -27,6 +27,7 @@ import {
   checkJob,
   cube,
   cylinder,
+  engineModulePath,
   engineSkip,
   flatPresets,
   m1Presets,
@@ -289,6 +290,14 @@ describe(`engine-${variant}`, { skip: engineSkip }, () => {
     const version = engine.version();
     assert.match(version.orcaVersion, /^\d+\.\d+\.\d+/);
     assert.equal(typeof version.orcaCommit, 'string');
+  });
+
+  test("makes no code from text (no eval, no new Function): a page's CSP without 'unsafe-eval' runs it", () => {
+    const glue = readFileSync(engineModulePath, 'utf8');
+    assert.doesNotMatch(glue, /(?<![\w.$])Function\s*\(/, 'the glue calls Function: link with -sEMBIND_AOT -sDYNAMIC_EXECUTION=0');
+    assert.doesNotMatch(glue, /(?<![\w.$])eval\s*\(/, 'the glue calls eval: link with -sDYNAMIC_EXECUTION=0');
+    // npm run test:engine refuses code from text as that CSP does, so every test here also runs the engine that way.
+    if (process.env.ENGINE_TEST_REQUIRE === '1') assert.throws(() => new Function('return 1'), EvalError);
   });
 
   test('slices a 20 mm cube at [100, 90]', (t) => {

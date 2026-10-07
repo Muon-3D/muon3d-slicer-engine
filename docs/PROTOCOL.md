@@ -75,7 +75,8 @@ const worker = new Worker(new URL(manifest.host.file, base), { type: 'module', n
 The host loads the files it needs from its own folder (the engine's `.mjs` and `.wasm`, the scripts listed in
 `manifest.host.chunks`, `manifest.json`). A server MUST serve the whole runtime folder as it is. The `mt` engine
 needs a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
-require-corp`).
+require-corp`). No file of the runtime makes code from text (since 0.3.1): a Content-Security-Policy needs
+`'wasm-unsafe-eval'` in `script-src`, never `'unsafe-eval'`.
 
 A Node program starts the same file with `new Worker(pathToFileURL(file))` from `node:worker_threads`
 ([`examples/start-host.mjs`](../examples/start-host.mjs)). `workerData.engineBase` MAY name another folder for the

@@ -91,6 +91,10 @@ A release's runtime tarball (or `dist/` of a build) is served as it is:
 | `*.br`, `*.gz` | precompressed copies a server can send as they are |
 | `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES.md`, `SOURCE.md` | the licence, the notices (ours and the third-party components'), and where the source of this build is |
 
+Nothing in the runtime makes code from text (`eval`, `new Function`): a page whose Content-Security-Policy allows the
+runtime's folder and `'wasm-unsafe-eval'` in `script-src`, without `'unsafe-eval'`, runs both engines. Releases
+before 0.3.1 need `'unsafe-eval'`.
+
 ```js
 import { EngineConnection, workerTransport } from '@muon3d/slicer-engine-protocol';
 

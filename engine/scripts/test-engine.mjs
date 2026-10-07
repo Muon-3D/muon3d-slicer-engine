@@ -8,6 +8,10 @@
 //
 // ENGINE_DIR (default dist/), ENGINE_TEST_OUT and ENGINE_TEST_BENCHY pass through (test/fixtures.ts).
 // The presets are committed fixtures (test/fixtures/presets), so no Orca checkout is needed.
+//
+// The tests run with --disallow-code-generation-from-strings, which refuses eval and new Function as a
+// Content-Security-Policy without 'unsafe-eval' does in a browser (WebAssembly still compiles): an engine whose
+// glue makes code from text fails every test (engine/cmake/Engine.cmake, EMBIND_AOT and DYNAMIC_EXECUTION=0).
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -34,7 +38,7 @@ for (const variant of variants) {
     continue;
   }
   console.log(`# engine tests: ${variant} (${engineDir})`);
-  const result = spawnSync(process.execPath, ['--test', ...testOptions, ...TESTS], {
+  const result = spawnSync(process.execPath, ['--disallow-code-generation-from-strings', '--test', ...testOptions, ...TESTS], {
     cwd: repo,
     stdio: 'inherit',
     env: { ...process.env, ENGINE_DIR: engineDir, ENGINE_VARIANT: variant, ENGINE_TEST_REQUIRE: '1' },
