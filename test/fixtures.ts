@@ -9,6 +9,8 @@
 //   ENGINE_TEST_BENCHY  an STL of 3DBenchy for the Benchy tests         (default test/fixtures/local/benchy.stl;
 //                       skipped without it: 3DBenchy is not redistributed here)
 //   ENGINE_TEST_REQUIRE 1: fail instead of skipping when the engine is not built (npm run test:engine)
+//   ENGINE_TEST_NO_EVAL 1: node runs with --disallow-code-generation-from-strings, which the tests check is in
+//                       force (npm run test:engine sets both)
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

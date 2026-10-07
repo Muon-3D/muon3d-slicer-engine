@@ -41,7 +41,8 @@ for (const variant of variants) {
   const result = spawnSync(process.execPath, ['--disallow-code-generation-from-strings', '--test', ...testOptions, ...TESTS], {
     cwd: repo,
     stdio: 'inherit',
-    env: { ...process.env, ENGINE_DIR: engineDir, ENGINE_VARIANT: variant, ENGINE_TEST_REQUIRE: '1' },
+    // ENGINE_TEST_NO_EVAL: the flag is in force, which test/engine.test.ts checks.
+    env: { ...process.env, ENGINE_DIR: engineDir, ENGINE_VARIANT: variant, ENGINE_TEST_REQUIRE: '1', ENGINE_TEST_NO_EVAL: '1' },
   });
   if (result.error) throw result.error;
   if (result.status !== 0) failed = true;
