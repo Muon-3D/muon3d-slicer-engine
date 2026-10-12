@@ -352,6 +352,13 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
     SliceResult             out;
 
     reporter.progress(1, "Loading presets");
+    Gravity gravity = Gravity::AgainstBuild;
+    try {
+        gravity = gravity_of_machine_json(request.machine_json);
+    } catch (const std::invalid_argument &ex) {
+        fail(CLI_CONFIG_FILE_ERROR, ex.what());
+    }
+    out.gravity = gravity_name(gravity);
     PreparedConfig prepared;
     try {
         prepared = prepare_config(request.machine_json, request.process_json, request.filament_jsons, job_dir.path());
@@ -554,7 +561,7 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
             // After the export: the checks never change the G-code, and never fail the slice.
             sink.progress(99, "Checking the print");
             try {
-                out.print_checks = run_print_checks(print, gcode_result);
+                out.print_checks = run_print_checks(print, gcode_result, gravity);
             } catch (const CanceledException &) {
                 throw;
             } catch (const std::bad_alloc &) {

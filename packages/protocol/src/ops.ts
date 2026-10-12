@@ -143,7 +143,19 @@ export interface SliceResult {
    * slice succeeded either way. Absent when output.printChecks is false, or from engines without the capability.
    */
   printChecks?: PrintCheck[];
+  /**
+   * Which way gravity pointed for this slice ('slice.gravity'; 2.2), in the slicer's frame where layers stack along
+   * +Z: the machine preset's `gravity`, 'against_build' (an upright printer) when it has none. The print checks
+   * that depend on it follow it (docs/print-checks.md, "Gravity").
+   */
+  gravity?: Gravity;
 }
+
+/**
+ * A printer's gravity, as its machine preset's `gravity` key says: 'along_build' when the part hangs from the bed
+ * and grows downwards (the Muon3D M1: gravity along +Z, the build direction), 'against_build' on an upright printer.
+ */
+export type Gravity = 'along_build' | 'against_build';
 
 /** What a print check found (docs/print-checks.md). New kinds and fixes may be added: show unknown ones plainly. */
 export type PrintCheckKind =
@@ -155,12 +167,16 @@ export type PrintCheckKind =
   | 'warp-risk'
   | 'slender'
   | 'thin-feature'
-  | 'layer-time';
+  | 'layer-time'
+  | 'overhang'
+  | 'roof-gap'
+  | 'hanging-mass'
+  | 'weak-support-interface';
 
 export type PrintCheckSeverity = 'critical' | 'warning' | 'info';
 
 /** The change that most likely helps; 'orientation' is "turn it". */
-export type PrintCheckFix = 'supports' | 'brim' | 'slower-outer-walls' | 'contact-area' | 'orientation';
+export type PrintCheckFix = 'supports' | 'brim' | 'slower-outer-walls' | 'contact-area' | 'orientation' | 'support-interface';
 
 export interface PrintCheck {
   kind: PrintCheckKind;
@@ -320,5 +336,7 @@ export const Capability = {
   sliceLog: 'slice.log',
   /** SliceParams.output.printChecks, SliceResult.printChecks and timings.checks (2.2). */
   printChecks: 'slice.printChecks',
+  /** The machine preset's `gravity` key, read by the print checks, and SliceResult.gravity (2.2). */
+  gravity: 'slice.gravity',
 } as const;
 

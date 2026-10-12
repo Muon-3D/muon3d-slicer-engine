@@ -114,6 +114,13 @@ export const PRESET_METADATA_KEYS: readonly string[] = [
   'renamed_from', 'is_custom_defined',
 ];
 
+/**
+ * Engine keys: settings of the engine that Orca does not define (its loader skips them), inherited like settings:
+ * a machine preset's `gravity` (docs/print-checks.md). Orca's flattened preset never has them; the profile build
+ * takes them from the merged chain.
+ */
+export const PRESET_ENGINE_KEYS: readonly string[] = ['gravity'];
+
 /** The keys a flattened preset carries that are stamps rather than settings: left out of canonicalConfigJson. */
 export const PRESET_STAMP_KEYS: readonly string[] = ['name', 'from', 'type', 'version', 'instantiation'];
 

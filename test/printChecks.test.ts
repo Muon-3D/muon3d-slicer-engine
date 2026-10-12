@@ -17,10 +17,10 @@ if (engineSkip) console.log(`# ${engineSkip}`);
 
 const KINDS: readonly PrintCheckKind[] = [
   'unstable-part', 'floating-extrusion', 'long-bridge', 'curled-overhang', 'weak-connection',
-  'warp-risk', 'slender', 'thin-feature', 'layer-time',
+  'warp-risk', 'slender', 'thin-feature', 'layer-time', 'overhang', 'roof-gap', 'hanging-mass', 'weak-support-interface',
 ];
 const SEVERITIES = ['critical', 'warning', 'info'];
-const FIXES = ['supports', 'brim', 'slower-outer-walls', 'contact-area', 'orientation'];
+const FIXES = ['supports', 'brim', 'slower-outer-walls', 'contact-area', 'orientation', 'support-interface'];
 
 function lift(positions: Float32Array, dz: number): Float32Array {
   const out = new Float32Array(positions);
@@ -175,6 +175,61 @@ describe(`print checks, engine-${variant}`, { skip: engineSkip }, () => {
     const { output } = sliceWith(engine, presets, [{ name: 'Cube.stl', positions: box([20, 20, 20], [100, 90]) }], true);
     const critical = (output.printChecks ?? []).filter((c) => c.severity === 'critical');
     assert.deepEqual(critical, []);
+  });
+
+  // The same parts with gravity along the build direction (the M1, hanging from the bed) and against it (an
+  // upright printer): the results must differ the way the physics says (docs/print-checks.md, "Gravity").
+  const withGravity = (p: Presets, gravity: string): Presets => ({ ...p, machine: { ...p.machine, gravity } });
+  const checksOf = (p: Presets, objects: EngineObject[]) => {
+    const { output } = sliceWith(engine, p, objects, true);
+    return { output, checks: output.printChecks ?? [] };
+  };
+  // A 30 mm block on a 4 mm stem 30 mm tall: hanging, the block's weight hangs from the stem.
+  const lollipop: EngineObject[] = [{ name: 'Lollipop.stl', positions: join(cylinder([100, 90], 2, 30.5, 48), lift(box([30, 30, 20], [100, 90]), 30)) }];
+
+  test('gravity: a tall top-heavy part, along vs against the build direction', (t) => {
+    const along = checksOf(withGravity(presets, 'along_build'), lollipop);
+    const against = checksOf(withGravity(presets, 'against_build'), lollipop);
+    assert.equal(along.output.gravity, 'along_build');
+    assert.equal(against.output.gravity, 'against_build');
+    const line = (c: PrintCheck) => `${c.severity} ${c.kind} L${c.layer} ${c.value ?? ''}: ${c.message}`;
+    t.diagnostic(`along:\n${along.checks.map(line).join('\n')}\nagainst:\n${against.checks.map(line).join('\n')}`);
+    // Hanging, the block's weight loads the stem: the hanging-mass check finds it, at the stem.
+    const hanging = along.checks.find((c) => c.kind === 'hanging-mass');
+    assert.ok(hanging, 'along: hanging-mass found');
+    assert.ok(hanging.position[2] < 30.5, `along: the neck is the stem (z ${hanging.position[2]})`);
+    assert.ok(!against.checks.some((c) => c.kind === 'hanging-mass'), 'against: the weight presses down, no hanging-mass');
+    // And the weight never steadies it: no fewer critical issues hanging.
+    const critical = (cs: PrintCheck[]) => cs.filter((c) => c.severity === 'critical').length;
+    assert.ok(critical(along.checks) > critical(against.checks), `more critical issues along (${critical(along.checks)}) than against (${critical(against.checks)})`);
+  });
+
+  test('gravity: the ABS plate warps more hanging (its weight peels it)', () => {
+    const plate = FIXTURES.find((f) => f.name === 'large ABS plate')!;
+    const p = plate.presets!(presets);
+    const score = (gravity: string) => checksOf(withGravity(p, gravity), plate.objects).checks.find((c) => c.kind === 'warp-risk')?.value ?? 0;
+    const along = score('along_build'), against = score('against_build');
+    assert.ok(against > 0 && along > against, `warp score along ${along} > against ${against}`);
+  });
+
+  test('gravity: supports on', () => {
+    const supported = (p: Presets): Presets => ({ ...p, process: { ...p.process, enable_support: '1', support_type: 'normal(auto)' } });
+    const mushroom = FIXTURES.find((f) => f.name === 'mushroom')!.objects;
+    const against = checksOf(withGravity(supported(presets), 'against_build'), mushroom).checks;
+    // Upright, supports hold what floated (PrusaSlicer reports these only with supports off).
+    assert.ok(!against.some((c) => c.kind === 'floating-extrusion' || c.kind === 'long-bridge'), 'against: nothing floating with supports');
+    assert.ok(!against.some((c) => c.kind === 'weak-support-interface'), 'against: supports push, no interface check');
+    // Hanging, supports hold the cap by what sticks: the M1 preset's 0.2 mm top gap is flagged.
+    const along = checksOf(withGravity(supported(presets), 'along_build'), mushroom).checks;
+    assert.ok(along.some((c) => c.kind === 'weak-support-interface'), 'along: weak support interface found');
+    const fused = checksOf(withGravity({ ...supported(presets), process: { ...supported(presets).process, support_top_z_distance: '0', support_interface_top_layers: '3', support_interface_spacing: '0' } }, 'along_build'), mushroom).checks;
+    assert.ok(!fused.some((c) => c.kind === 'weak-support-interface'), 'along: a dense interface with no gap is not flagged');
+  });
+
+  test('gravity: a preset without it is upright; a wrong value fails the slice', () => {
+    const { gravity: _, ...machine } = presets.machine;
+    assert.equal(checksOf({ ...presets, machine }, [{ name: 'Cube.stl', positions: box([20, 20, 20], [100, 90]) }]).output.gravity, 'against_build');
+    assert.throws(() => sliceWith(engine, withGravity(presets, 'sideways'), [{ name: 'Cube.stl', positions: box([20, 20, 20], [100, 90]) }], true), /gravity/);
   });
 
   test('writes the timing', () => {

@@ -9,7 +9,7 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, PrintCheck, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, Gravity, PrintCheck, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
 
 // ---------------------------------------------------------------------------
 // The bridge's shapes (engine/bridge/job.hpp, toolpaths.hpp)
@@ -86,6 +86,8 @@ export interface SliceOutput {
   log?: string;
   /** With SliceJob.printChecks (the default): the "Before you print" issues. */
   printChecks?: PrintCheck[];
+  /** The machine preset's gravity, as the checks used it (builds before 'slice.gravity' leave it out). */
+  gravity?: Gravity;
 }
 
 export interface CheckOutput {

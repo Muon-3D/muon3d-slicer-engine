@@ -262,6 +262,7 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 | `settings.view.v1` | `settings.view` format 1 |
 | `slice.log` | (2.1) `SliceParams.output.log`, `SliceResult.log` and `EngineError.log` |
 | `slice.printChecks` | (2.2) `SliceParams.output.printChecks`, `SliceResult.printChecks` and `timings.checks` |
+| `slice.gravity` | (2.2) the machine preset's `gravity` key is read (an older engine fails on it as unknown: send it only to a host with this capability) and `SliceResult.gravity` |
 | `cancel.cooperative` | (not yet served) a running request can be cancelled and the engine stays loaded |
 
 A client MUST send an op, or a field, only when `hello` lists its capability (the 2.0 ops and fields above are
@@ -319,6 +320,7 @@ result: {
   heapBytes?: number,
   log?: string,                      // with output.log: a line per record, "<level>: <message>"
   printChecks?: PrintCheck[],        // 2.2, 'slice.printChecks', unless output.printChecks is false
+  gravity?: 'along_build' | 'against_build',   // 2.2, 'slice.gravity': the machine preset's
 }
 PrintCheck = { kind: string, severity: 'critical' | 'warning' | 'info', layer: number, position: Vec3,
                message: string, fix: string, object?: string, value?: number }
@@ -342,6 +344,11 @@ PrintCheck = { kind: string, severity: 'critical' | 'warning' | 'info', layer: n
   only: the G-code is the same with or without them, and a check never fails the slice. `layer` is the toolpaths'
   layer index, `position` bed millimetres. Clients MUST show an unknown `kind` or `fix` plainly (more may come in a
   minor). `timings.checks` is the time they took, inside `total`.
+- `configs.machine.gravity` (2.2, `slice.gravity`) is an engine key, not Orca's: `"along_build"` for a printer whose
+  part hangs from the bed and grows downwards (the Muon3D M1: gravity along +Z, the build direction),
+  `"against_build"` for an upright one. Without it the printer is upright; another value fails the job with -5.
+  The checks that depend on gravity follow it ([print-checks.md](print-checks.md), "Gravity"); `gravity` in the
+  result says which one was used. The G-code does not depend on it.
 - `output.log` (2.1) returns Orca's log of the slice down to that level: its records go to the result instead of the
   host's console. `info` and below are long (Orca logs every step). A slice Orca refuses carries the log in the
   error's `log`.

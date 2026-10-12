@@ -514,6 +514,7 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
                 checks.call<void>("push", print_check_to_js(check));
             out.set("printChecks", checks);
         }
+        out.set("gravity", result.gravity);
         if (log)
             out.set("log", log->text());
         // Everything reported must reach the worker before it posts the result.

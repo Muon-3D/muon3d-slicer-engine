@@ -116,6 +116,7 @@ export function sliceResult(output: SliceOutput, heapBytes: number | undefined):
   };
   if (output.log !== undefined) result.log = output.log;
   if (output.printChecks !== undefined) result.printChecks = output.printChecks;
+  if (output.gravity !== undefined) result.gravity = output.gravity;
   if (heapBytes !== undefined) result.heapBytes = heapBytes;
   return result;
 }

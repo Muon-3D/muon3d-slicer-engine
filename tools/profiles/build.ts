@@ -29,6 +29,7 @@ import { gzipSync } from 'node:zlib';
 import sharp from 'sharp';
 import type { Config, PresetScope } from '../../packages/protocol/src/data.ts';
 import {
+  PRESET_ENGINE_KEYS,
   PRESET_TYPES,
   PROFILE_SET_FORMAT,
   canonicalConfigJson,
@@ -288,8 +289,6 @@ export async function buildProfileSet(options: BuildOptions): Promise<BuildResul
         if (taken && taken !== name) fail(`${type} "${old}" is an old name of both "${taken}" and "${name}".`);
         else bundle.renamed[type][old] = name;
       }
-      const expected = canonicalConfigJson(preset.config);
-      vendorGoldens[type][name] = sha256(expected);
       // What merging the chain gives, against what Orca holds: the difference is the preset's `adjust`.
       let mine: Config;
       try {
@@ -298,7 +297,11 @@ export async function buildProfileSet(options: BuildOptions): Promise<BuildResul
         fail(`${type} "${name}": ${(err as Error).message}`);
         continue;
       }
-      const theirs = preset.config;
+      // Orca's preset, with the engine keys (which its loader skips) as the chain sets them.
+      const theirs: Config = { ...preset.config };
+      for (const key of PRESET_ENGINE_KEYS) if (key in mine) theirs[key] = mine[key];
+      const expected = canonicalConfigJson(theirs);
+      vendorGoldens[type][name] = sha256(expected);
       const adjust: Config = {};
       for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
         if (key === 'name' || key === 'from' || key === 'type' || key === 'version') continue;

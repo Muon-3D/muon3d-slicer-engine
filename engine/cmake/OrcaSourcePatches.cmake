@@ -81,13 +81,31 @@ list(APPEND ORCA_LIBSLIC3R_PATCHED "Arachne/SkeletalTrapezoidation.cpp=${patched
 #    (engine/bridge/print_checks.cpp, KAN-528), ported to Orca's Layer: PrusaSlicer's LayerSlice (islands' links
 #    and extrusion ranges) is computed from lslices by shims at the top of the block, ExtrusionRole is Orca's enum,
 #    ExtendedPoint takes its dimension, Params has no max_acceleration, and the cancel
-#    callback is a std::function (a PrintTryCancel is only for PrintBase's friends). Nothing in libslic3r calls the search, so
-#    slicing is unchanged. The header's copy sits next to the source's, where its quoted include finds it first;
+#    callback is a std::function (a PrintTryCancel is only for PrintBase's friends). The engine also sets the printer's
+#    gravity (EngineGravity: along or against the build direction, and the bridge distance of its row) for the search:
+#    with gravity along the build direction the part's weight loads the bed interface and every section in tension.
+#    Nothing in libslic3r calls the search, so slicing is unchanged. The header's copy sits next to the source's, where its quoted include finds it first;
 #    the bridge includes it through ORCA_PATCHED_INCLUDE_DIR (Engine.cmake). Generated pairs: see engine/PATCHES.md.
 orca_patch_source(Support/SupportSpotsGenerator.hpp patched_header
     FIND    "/*struct SupportPoint
 "
-    REPLACE "struct SupportPoint
+    REPLACE "// Engine patch 2 (engine/PATCHES.md): the printer's gravity for the search, set by the engine around full_search
+// on the calling thread (engine/bridge/print_checks.cpp). Orca's own callers never set it, so their results are
+// unchanged. Params keeps its layout (PrintObject.cpp builds one with the original header).
+struct EngineGravity
+{
+    bool  along_build     = false; // gravity along +Z, the build direction: the part hangs from the bed (the Muon3D M1)
+    float bridge_distance = 0.0f;  // mm; 0 keeps Params::bridge_distance
+};
+void                 set_engine_gravity(const EngineGravity &gravity);
+const EngineGravity &engine_gravity();
+
+struct SupportPoint
+"
+    FIND    "    const float bridge_distance = 16.0f; // mm
+"
+    REPLACE "    const float bridge_distance = 16.0f; // mm
+    float bridge_distance_mm() const; // engine patch 2: the search's, EngineGravity::bridge_distance when set
 "
     FIND    "
 */
@@ -194,6 +212,16 @@ static std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> slic
             collect_slice_extrusions(entity, region, slice, bb, out);
     return out;
 }
+
+// The printer's gravity (EngineGravity, in the header). The search's code reads params.bridge_distance; inside
+// the search (up to the #undef where the block ends) that is the per-printer value.
+namespace {
+thread_local EngineGravity g_engine_gravity;
+}
+void                 set_engine_gravity(const EngineGravity &gravity) { g_engine_gravity = gravity; }
+const EngineGravity &engine_gravity() { return g_engine_gravity; }
+float                Params::bridge_distance_mm() const { return g_engine_gravity.bridge_distance > 0.0f ? g_engine_gravity.bridge_distance : bridge_distance; }
+#define bridge_distance bridge_distance_mm()
 // ---- end of patch 2's shims
 
 "
@@ -201,6 +229,7 @@ static std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> slic
 */
 "
     REPLACE "
+#undef bridge_distance
 
 "
     FIND    "void estimate_supports_malformations(SupportLayerPtrs &layers, float flow_width, const Params &params)
@@ -467,6 +496,29 @@ static std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> slic
 "
     FIND    "ExtrusionRole::BridgeInfill"
     REPLACE "erBridgeInfill"
+    FIND    "            float bed_weight_torque          = bed_weight_sign * bed_weight_arm_len * weight;
+"
+    REPLACE "            float bed_weight_torque          = bed_weight_sign * bed_weight_arm_len * weight;
+            if (g_engine_gravity.along_build) {
+                // Gravity along the build direction (the part hangs from the bed): the weight pulls the part off.
+                // Its eccentricity always peels (it never steadies the part), and the whole weight is a tension on
+                // the bed interface, here as the torque that loads the interface's section modulus as much.
+                bed_weight_torque = bed_weight_arm_len * weight -
+                                    bed_yield_torque / float(params.get_bed_adhesion_yield_strength()) * (weight / this->sticking_area);
+            }
+"
+    FIND    "            float conn_weight_torque = conn_weight_arm * weight * (1.0f - conn_centroid.z() / layer_z) * (1.0f - conn_centroid.z() / layer_z);
+"
+    REPLACE "            float conn_weight_torque = conn_weight_arm * weight * (1.0f - conn_centroid.z() / layer_z) * (1.0f - conn_centroid.z() / layer_z);
+            if (g_engine_gravity.along_build) {
+                // The section hangs everything printed after it (the part above it in the slicer's frame, taken as
+                // weight * (1 - z_conn / z)): a tension on the warm section, and its eccentricity a bending moment.
+                // The 30 mm grace above is for weight that presses down; this weight pulls from the first layer on.
+                const float hanging = weight * std::clamp(1.0f - conn_centroid.z() / layer_z, 0.0f, 1.0f);
+                const float arm     = (conn_centroid.head<2>() - mass_centroid.head<2>()).norm();
+                conn_weight_torque  = arm * hanging + conn_yield_torque / float(params.material_yield_strength) * (hanging / connection.area);
+            }
+"
     FIND    "    auto results = check_stability(po, cancel_func, params);"
     REPLACE "    compat_lslices_cache() = {};
     auto results = check_stability(po, cancel_func, params);")

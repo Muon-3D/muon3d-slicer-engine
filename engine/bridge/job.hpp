@@ -152,6 +152,7 @@ struct SliceResult {
     std::vector<EngineWarning>  warnings;
     SliceTimings                timings;
     std::vector<PrintCheck>     print_checks; // with want_print_checks
+    std::string                 gravity;      // the printer's: "along_build" or "against_build" (print_checks.hpp)
 };
 
 struct CheckRequest {

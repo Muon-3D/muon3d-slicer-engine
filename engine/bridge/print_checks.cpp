@@ -16,11 +16,14 @@
 #include <libslic3r/Layer.hpp>
 #include <libslic3r/Print.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -36,6 +39,43 @@ constexpr size_t MAX_PER_KIND        = 12;
 constexpr float  MERGE_DISTANCE_MM   = 10.f;
 constexpr float  MERGE_HEIGHT_MM     = 5.f;
 constexpr size_t MAX_RUNS_PER_OBJECT = 6;
+
+// The search's filament density (SupportSpotsGenerator::Params::filament_density), g/mm^3.
+constexpr double FILAMENT_DENSITY = 1.25e-3;
+constexpr double STANDARD_GRAVITY = 9.80665; // m/s^2
+
+// ---- Gravity: the per-printer table (docs/print-checks.md, "Gravity") ----------------------------------------
+//
+// In the slicer's frame layers stack along +Z. On an upright printer gravity points against that (down, onto the
+// bed); on one that prints hanging from the bed, as the Muon3D M1 does, it points along it. The printer preset's
+// "gravity" picks the row; the thresholds that depend on it are the row's.
+struct GravityRow {
+    Gravity gravity;
+    float   overhang_deg; // steepest overhang printed without supports, from vertical
+    float   bridge_mm;    // longest bridge (the search's bridge_distance)
+    float   curl_factor;  // the estimated curl times this: gravity's share of an edge lifting towards the nozzle
+    float   curl_layers;  // a curl is reported from this many layer heights
+    float   roof_fuse_mm; // a one-layer roof over a gap under this fuses with the part beneath
+    bool    calibrated;   // false: provisional, "to calibrate on M1 prints"
+};
+const GravityRow GRAVITY_ROWS[] = {
+    // Upright: the usual defaults (PrusaSlicer/Orca's 45 degrees and 16 mm, the search's curl rule, the common
+    // print-in-place clearance). Their sources are in docs/print-checks.md.
+    {Gravity::AgainstBuild, 45.f, 16.f, 1.0f, 1.0f, 0.2f, true},
+    // Hanging (M1): provisional, to calibrate on M1 prints. Sag goes towards the nozzle, so tighter.
+    {Gravity::AlongBuild, 35.f, 10.f, 1.5f, 0.5f, 0.1f, false},
+};
+const GravityRow &row_of(Gravity gravity) { return gravity == Gravity::AlongBuild ? GRAVITY_ROWS[1] : GRAVITY_ROWS[0]; }
+bool along(const GravityRow &row) { return row.gravity == Gravity::AlongBuild; }
+// The note a provisional threshold's message carries.
+std::string provisional(const GravityRow &row) { return row.calibrated ? std::string() : std::string(" (M1 threshold, to calibrate)"); }
+
+// Hanging parts (gravity along the build direction), provisional, to calibrate on M1 prints: the sideways load a
+// hanging part takes from the moves (fraction of its weight), the stress at which a warm section or the bed
+// interface is at risk (MPa), and the weight per area of first layer that doubles the warp score (MPa).
+constexpr double HANG_SWAY      = 0.1;
+constexpr double HANG_REF_MPA   = 0.1;
+constexpr double PEEL_REF_MPA   = 0.01;
 
 // Material data for the heuristics (docs/print-checks.md, "Material table"): linear shrinkage after cooling (%),
 // the temperature where the polymer stops flowing and starts to hold stress (glass transition; for the
@@ -138,18 +178,29 @@ double print_z_at(const PrintObject &object, float bottom_z)
     return best;
 }
 
+// The part's mass over each layer: Orca's islands times the layer height, at the search's density (g).
+double layer_mass(const Layer &layer)
+{
+    double area = 0;
+    for (const ExPolygon &island : layer.lslices)
+        area += unscaled(unscaled(island.area()));
+    return area * layer.height * FILAMENT_DENSITY;
+}
+
 // ---- Orca's stability and support-issue search (SupportSpotsGenerator) ---------------------------------------
 
 struct CauseInfo {
     const char *kind;
     const char *fix;
-    const char *message;
+    std::string message;
 };
 
-CauseInfo cause_info(SSG::SupportPointCause cause)
+CauseInfo cause_info(SSG::SupportPointCause cause, const GravityRow &row)
 {
     switch (cause) {
-    case SSG::SupportPointCause::LongBridge: return {"long-bridge", "supports", "Bridge longer than 16 mm may sag"};
+    case SSG::SupportPointCause::LongBridge:
+        return {"long-bridge", "supports",
+                "Bridge longer than " + fixed(row.bridge_mm, 0) + " mm may sag" + (along(row) ? " towards the nozzle" : "") + provisional(row)};
     case SSG::SupportPointCause::FloatingBridgeAnchor: return {"floating-extrusion", "supports", "Bridge anchored in mid-air"};
     case SSG::SupportPointCause::FloatingExtrusion: return {"floating-extrusion", "supports", "Extrusion printed in mid-air"};
     case SSG::SupportPointCause::SeparationFromBed: return {"unstable-part", "contact-area", "Part may come loose from the bed"};
@@ -159,7 +210,52 @@ CauseInfo cause_info(SSG::SupportPointCause cause)
     return {"unstable-part", "supports", "Unstable part"};
 }
 
-void stability_checks(PrintObject &object, std::vector<PrintCheck> &out)
+// The causes supports fix: PrusaSlicer only reports them while supports are off.
+bool support_fixable(SSG::SupportPointCause cause)
+{
+    return cause == SSG::SupportPointCause::LongBridge || cause == SSG::SupportPointCause::FloatingBridgeAnchor ||
+           cause == SSG::SupportPointCause::FloatingExtrusion || cause == SSG::SupportPointCause::UnstableFloatingPart;
+}
+
+// The printer's gravity for the search (engine patch 2), for as long as it runs on this thread.
+struct GravityScope {
+    explicit GravityScope(const GravityRow &row) { SSG::set_engine_gravity({along(row), row.bridge_mm}); }
+    ~GravityScope() { SSG::set_engine_gravity({}); }
+    GravityScope(const GravityScope &)            = delete;
+    GravityScope &operator=(const GravityScope &) = delete;
+};
+
+// With gravity along the build direction supports hold an overhang in tension, by what sticks at the interface,
+// not by pushing it up. A gap between them, no interface layers or a sparse interface leave little to stick:
+// one issue per object, at the lowest point the supports hold (provisional rule, to calibrate on M1 prints).
+void support_interface_check(const PrintObject &object, const Vec3f &lowest, size_t held, std::vector<PrintCheck> &out)
+{
+    const PrintObjectConfig &c       = object.config();
+    const double             gap     = c.support_top_z_distance.value;
+    const double             layer_h = c.layer_height.value;
+    const double             line    = object.layers().empty() || object.layers().front()->regions().empty() ?
+                                           0.45 :
+                                           object.layers().front()->regions().front()->flow(frExternalPerimeter).width();
+    const char *severity = nullptr;
+    std::string why;
+    if (gap >= 0.5 * layer_h) {
+        severity = gap >= layer_h ? "critical" : "warning";
+        why      = "across a " + fixed(gap, 2) + " mm gap";
+    } else if (c.support_interface_top_layers.value <= 0) {
+        severity = "warning";
+        why      = "with no interface layers";
+    } else if (c.support_interface_spacing.value > line) {
+        severity = "warning";
+        why      = "on a sparse interface";
+    }
+    if (severity == nullptr)
+        return;
+    out.push_back(make_check(object, "weak-support-interface", severity, "support-interface", lowest.head<2>().cast<double>(),
+                             print_z_at(object, lowest.z()), "Supports hold this overhang by sticking only, " + why + " (to calibrate)",
+                             double(held)));
+}
+
+void stability_checks(PrintObject &object, const GravityRow &row, std::vector<PrintCheck> &out)
 {
     if (object.layers().empty())
         return;
@@ -172,14 +268,27 @@ void stability_checks(PrintObject &object, std::vector<PrintCheck> &out)
     // down for overhangs; run after the export, so the G-code is the same either way.
     SSG::estimate_malformations(object.layers(), params);
 
-    auto [points, partial_objects] = SSG::full_search(&object, [&object] { if (object.print()->canceled()) throw Slic3r::CanceledException(); }, params);
+    auto [points, partial_objects] = [&] {
+        GravityScope gravity(row);
+        return SSG::full_search(&object, [&object] { if (object.print()->canceled()) throw Slic3r::CanceledException(); }, params);
+    }();
+    const bool supported = object.config().enable_support.value;
     // Which causes are worth telling, and which are critical (PrusaSlicer's alert rules).
     std::map<SSG::SupportPointCause, bool> reported;
     for (const auto &[cause, critical] : SSG::gather_issues(points, partial_objects))
         reported[cause] = reported[cause] || critical;
 
+    // With supports on, what they fix is not reported (as in PrusaSlicer); hanging, what holds it is checked.
+    size_t held = 0;
+    Vec3f  lowest(0.f, 0.f, std::numeric_limits<float>::max());
     for (const SSG::SupportPoint &point : points) {
-        const CauseInfo info     = cause_info(point.cause);
+        if (supported && support_fixable(point.cause)) {
+            ++held;
+            if (point.position.z() < lowest.z())
+                lowest = point.position;
+            continue;
+        }
+        const CauseInfo info     = cause_info(point.cause, row);
         const auto      it       = reported.find(point.cause);
         const char     *severity = it == reported.end() ? "info" : it->second ? "critical" : "warning";
         // The force is the destabilising force in g*mm/s^2 (global points only); shown in grams-force.
@@ -188,14 +297,16 @@ void stability_checks(PrintObject &object, std::vector<PrintCheck> &out)
                                    print_z_at(object, point.position.z()), info.message, gf));
     }
     for (const SSG::PartialObject &part : partial_objects)
-        if (!part.connected_to_bed)
+        if (!part.connected_to_bed && !supported)
             add_merged(out, make_check(object, "unstable-part", "critical", "supports", part.centroid.head<2>().cast<double>(),
                                        print_z_at(object, part.centroid.z()), "Part has nothing under it", part.volume));
+    if (supported && held > 0 && along(row))
+        support_interface_check(object, lowest, held, out);
 }
 
 // ---- Curled overhangs (SupportSpotsGenerator::estimate_malformations) -----------------------------------------
 
-void curl_checks(const PrintObject &object, std::vector<PrintCheck> &out)
+void curl_checks(const PrintObject &object, const GravityRow &row, std::vector<PrintCheck> &out)
 {
     // Runs of layers whose perimeters curl up by more than a layer: one issue each, at the highest curl.
     struct Run {
@@ -208,11 +319,11 @@ void curl_checks(const PrintObject &object, std::vector<PrintCheck> &out)
         float      max_h = 0.f;
         const Line *line = nullptr;
         for (const CurledLine &l : layer->curled_lines)
-            if (l.curled_height > max_h) {
-                max_h = l.curled_height;
+            if (l.curled_height * row.curl_factor > max_h) {
+                max_h = l.curled_height * row.curl_factor;
                 line  = &l;
             }
-        if (line == nullptr || max_h < layer->height) {
+        if (line == nullptr || max_h < row.curl_layers * layer->height) {
             open = false;
             continue;
         }
@@ -231,9 +342,20 @@ void curl_checks(const PrintObject &object, std::vector<PrintCheck> &out)
     if (runs.size() > MAX_RUNS_PER_OBJECT)
         runs.resize(MAX_RUNS_PER_OBJECT);
     const double layer_height = object.config().layer_height.value;
+    // Orca's "Slow down for curled perimeters" already slows these lines (the same estimate drives it): what is
+    // left is worth knowing, not fixing. The estimate is geometric, so slowing down does not change it.
+    bool slowed = false;
+    if (!object.layers().empty() && !object.layers().front()->regions().empty()) {
+        const auto &opt = object.layers().front()->regions().front()->region().config().slowdown_for_curled_perimeters;
+        slowed          = !opt.values.empty() && opt.values.front() == 1;
+    }
+    const std::string towards = along(row) ? " towards the nozzle" : "";
     for (const Run &run : runs)
-        out.push_back(make_check(object, "curled-overhang", run.height >= 3 * layer_height ? "warning" : "info", "slower-outer-walls", run.at,
-                                 run.z, "Overhang may curl up " + fixed(run.height, 1) + " mm", run.height));
+        out.push_back(make_check(object, "curled-overhang", !slowed && run.height >= 3 * layer_height ? "warning" : "info", "slower-outer-walls",
+                                 run.at, run.z,
+                                 "Overhang may curl up " + fixed(run.height, 1) + " mm" + towards + (slowed ? ", slowed down there" : "") +
+                                     provisional(row),
+                                 run.height));
 }
 
 // ---- Warp risk per first-layer island ------------------------------------------------------------------------
@@ -264,7 +386,7 @@ double sharpest_corner(const Polygon &contour)
     return sharpest;
 }
 
-void warp_checks(const PrintObject &object, std::vector<PrintCheck> &out)
+void warp_checks(const PrintObject &object, const GravityRow &row, std::vector<PrintCheck> &out)
 {
     if (object.layers().empty())
         return;
@@ -281,16 +403,26 @@ void warp_checks(const PrintObject &object, std::vector<PrintCheck> &out)
     const double brim_factor = 1. / (1. + brim_mm / 5.);
     const double raft_factor = object.config().raft_layers.getInt() > 0 ? 0.5 : 1.;
     const Layer *first = object.layers().front();
+    // Hanging, the part's weight peels the first layer off as well: each island carries its share by area.
+    double mass = 0, first_area = 0;
+    if (along(row)) {
+        for (const Layer *layer : object.layers())
+            mass += layer_mass(*layer);
+        for (const ExPolygon &island : first->lslices)
+            first_area += unscaled(unscaled(island.area()));
+    }
     for (const ExPolygon &island : first->lslices) {
         const BoundingBox bb     = get_extents(island.contour);
         const double      length = unscaled(bb.size()).norm();
         const double      corner = 1. + sharpest_corner(island.contour) / M_PI;
-        const double      score  = length * shrink_pct * corner * chamber_factor * brim_factor * raft_factor / 60.;
+        // The weight on the island per area (MPa: N/mm^2); the same for every island of a part.
+        const double      peel   = first_area > 0. ? 1. + mass * 1e-3 * STANDARD_GRAVITY / first_area / PEEL_REF_MPA : 1.;
+        const double      score  = length * shrink_pct * corner * chamber_factor * brim_factor * raft_factor * peel / 60.;
         if (score < 1.)
             continue;
         const Point c = island.contour.centroid();
         out.push_back(make_check(object, "warp-risk", score >= 2.5 ? "critical" : "warning", "brim", unscaled(c), first->print_z,
-                                 "Corners may lift (warp risk " + fixed(score, 1) + ")", score));
+                                 "Corners may lift (warp risk " + fixed(score, 1) + (along(row) ? ", weight peeling" : "") + ")", score));
     }
 }
 
@@ -433,6 +565,167 @@ void thin_checks(const PrintObject &object, std::vector<PrintCheck> &out)
                                  double(run.layers)));
 }
 
+// ---- Overhangs steeper than the printer's angle ---------------------------------------------------------------
+
+// Each layer against the one about 1 mm below, grown by that height times tan(angle): what sticks out further is
+// steeper than the angle (from vertical). A run of layers is one issue, at its largest area; with supports on,
+// they hold it (and hanging, support_interface_check looks at how).
+void overhang_checks(const PrintObject &object, const GravityRow &row, std::vector<PrintCheck> &out)
+{
+    if (object.config().enable_support.value)
+        return;
+    const auto layers = object.layers();
+    const double     tan_a  = std::tan(row.overhang_deg * M_PI / 180.);
+    struct Run {
+        double area = 0, z = 0;
+        Vec2d  at   = Vec2d::Zero();
+    };
+    std::vector<Run> runs;
+    bool             open = false;
+    for (size_t i = 1; i < layers.size(); ++i) {
+        const Layer *layer = layers[i];
+        if (layer->regions().empty() || layer->lslices.empty()) {
+            open = false;
+            continue;
+        }
+        size_t j = i;
+        while (j > 0 && layer->print_z - layers[j - 1]->print_z < 1.0 - EPSILON)
+            --j;
+        j = j > 0 ? j - 1 : 0;
+        const double     w     = layer->regions().front()->flow(frExternalPerimeter).width();
+        const double     reach = (layer->print_z - layers[j]->print_z) * tan_a;
+        const ExPolygons steep = opening_ex(diff_ex(layer->lslices, offset_ex(layers[j]->lslices, float(scaled(reach)))), float(scaled(0.5 * w)));
+        double           area  = 0;
+        const ExPolygon *largest = nullptr;
+        for (const ExPolygon &piece : steep)
+            if (double a = unscaled(unscaled(piece.area())); a > area) {
+                area    = a;
+                largest = &piece;
+            }
+        if (largest == nullptr || area < 2. * w * w) {
+            open = false;
+            continue;
+        }
+        if (!open) {
+            runs.emplace_back();
+            open = true;
+        }
+        Run &run = runs.back();
+        if (area > run.area) {
+            run.area = area;
+            run.z    = layer->print_z;
+            run.at   = unscaled(largest->contour.centroid());
+        }
+    }
+    std::sort(runs.begin(), runs.end(), [](const Run &a, const Run &b) { return a.area > b.area; });
+    if (runs.size() > MAX_RUNS_PER_OBJECT)
+        runs.resize(MAX_RUNS_PER_OBJECT);
+    for (const Run &run : runs)
+        out.push_back(make_check(object, "overhang", "warning", "supports", run.at, run.z,
+                                 "Overhang steeper than " + fixed(row.overhang_deg, 0) + "\u00b0" + (along(row) ? " sags towards the nozzle" : "") +
+                                     provisional(row),
+                                 run.area));
+}
+
+// ---- Roofs over print-in-place gaps ---------------------------------------------------------------------------
+
+// A layer's area that is not over the layer below (a roof's first layer), and under it, within 1 mm, the part
+// again: a gap that a one-layer roof closes. Upright, the roof sags into a gap under the printer's limit and
+// fuses with the part beneath; hanging, it sags away from it, so the rule is the M1 row's (to calibrate).
+void roof_gap_checks(const PrintObject &object, const GravityRow &row, std::vector<PrintCheck> &out)
+{
+    const auto layers = object.layers();
+    for (size_t i = 2; i < layers.size(); ++i) {
+        const Layer *layer = layers[i];
+        if (layer->regions().empty() || layer->lslices.empty())
+            continue;
+        const double     w    = layer->regions().front()->flow(frExternalPerimeter).width();
+        const ExPolygons roof = opening_ex(diff_ex(layer->lslices, layers[i - 1]->lslices), float(scaled(0.5 * w)));
+        if (roof.empty())
+            continue;
+        for (size_t j = i - 1; j-- > 0;) {
+            const double gap = layer->bottom_z() - layers[j]->print_z;
+            if (gap > 1.0 + EPSILON)
+                break;
+            const ExPolygons under = intersection_ex(roof, layers[j]->lslices);
+            double           area  = 0;
+            const ExPolygon *largest = nullptr;
+            for (const ExPolygon &piece : under)
+                if (double a = unscaled(unscaled(piece.area())); a > area) {
+                    area    = a;
+                    largest = &piece;
+                }
+            if (largest == nullptr || area < 2. * w * w)
+                continue;
+            if (gap < row.roof_fuse_mm - EPSILON)
+                add_merged(out, make_check(object, "roof-gap", "warning", "orientation", unscaled(largest->contour.centroid()), layer->print_z,
+                                           "Roof over a " + fixed(gap, 2) + " mm gap may fuse with the part below" + provisional(row), gap));
+            break;
+        }
+    }
+}
+
+// ---- Hanging mass behind a thin neck (gravity along the build direction) ---------------------------------------
+
+// Hanging from the bed, each section carries everything printed after it, while still warm. Its stress is the
+// weight over the section, plus the bending of that weight's offset and of a sideways sway (HANG_SWAY of the
+// weight, at the hanging mass's height) on a round section of the same area:
+//   sigma = W / A * (1 + 4 (e + k L) / r)
+// The worst section over HANG_REF_MPA is the issue (provisional, to calibrate on M1 prints). Turning the part so
+// the heavy end is printed first (near the bed) is the fix.
+void hanging_mass_checks(const PrintObject &object, std::vector<PrintCheck> &out)
+{
+    const auto layers = object.layers();
+    if (layers.size() < 2)
+        return;
+    double m = 0, mz = 0, worst = 0, worst_mass = 0, worst_area = 0;
+    Vec2d  mxy = Vec2d::Zero(), worst_at = Vec2d::Zero();
+    double worst_z = 0;
+    for (size_t i = layers.size(); i-- > 1;) {
+        const Layer *above = layers[i];
+        double       area  = 0;
+        Vec2d        first_moment = Vec2d::Zero();
+        for (const ExPolygon &island : above->lslices) {
+            const SectionProps p = section_props(island);
+            area += p.area;
+            first_moment += p.area * p.centroid;
+        }
+        const double dm = area * above->height * FILAMENT_DENSITY;
+        m += dm;
+        mz += dm * (above->print_z - above->height / 2.);
+        mxy += above->height * FILAMENT_DENSITY * first_moment;
+        const Layer *section = layers[i - 1];
+        double       a       = 0;
+        Vec2d        c       = Vec2d::Zero();
+        for (const ExPolygon &island : section->lslices) {
+            const SectionProps p = section_props(island);
+            a += p.area;
+            c += p.area * p.centroid;
+        }
+        if (a <= 0. || m <= 0.)
+            continue;
+        c /= a;
+        const double weight_n = m * 1e-3 * STANDARD_GRAVITY;
+        const double r        = std::sqrt(a / M_PI);
+        const double lever    = std::max(0., mz / m - section->print_z);
+        const double e        = (mxy / m - c).norm();
+        const double stress   = weight_n / a * (1. + 4. * (e + HANG_SWAY * lever) / r);
+        const double index    = stress / HANG_REF_MPA;
+        if (index > worst) {
+            worst      = index;
+            worst_mass = m;
+            worst_area = a;
+            worst_at   = c;
+            worst_z    = section->print_z;
+        }
+    }
+    if (worst < 0.3)
+        return;
+    out.push_back(make_check(object, "hanging-mass", worst >= 1. ? "critical" : "warning", "orientation", worst_at, worst_z,
+                             "Heavy part hangs from a thin neck: " + fixed(worst_mass, 0) + " g on " + fixed(worst_area, 0) + " mm\u00b2 (to calibrate)",
+                             worst));
+}
+
 // ---- Layer-time bond index ------------------------------------------------------------------------------------
 
 struct GcodeLayer {
@@ -520,14 +813,35 @@ int severity_rank(const std::string &severity) { return severity == "critical" ?
 
 } // namespace
 
-std::vector<PrintCheck> run_print_checks(Print &print, const GCodeProcessorResult &gcode)
+const char *gravity_name(Gravity gravity) { return gravity == Gravity::AlongBuild ? "along_build" : "against_build"; }
+
+Gravity gravity_of_machine_json(const std::string &machine_json)
 {
+    // Text that does not parse is prepare_config's to report.
+    const nlohmann::json root = nlohmann::json::parse(machine_json, nullptr, /* allow_exceptions */ false);
+    if (root.is_discarded() || !root.is_object() || !root.contains("gravity"))
+        return Gravity::AgainstBuild;
+    const nlohmann::json &value = root["gravity"];
+    if (value.is_string() && value.get<std::string>() == "along_build")
+        return Gravity::AlongBuild;
+    if (value.is_string() && value.get<std::string>() == "against_build")
+        return Gravity::AgainstBuild;
+    throw std::invalid_argument("The printer preset's \"gravity\" must be \"along_build\" or \"against_build\".");
+}
+
+std::vector<PrintCheck> run_print_checks(Print &print, const GCodeProcessorResult &gcode, Gravity gravity)
+{
+    const GravityRow       &row = row_of(gravity);
     std::vector<PrintCheck> out;
     for (PrintObject *object : print.objects_mutable()) {
         if (print.canceled()) throw Slic3r::CanceledException();
-        stability_checks(*object, out);
-        curl_checks(*object, out);
-        warp_checks(*object, out);
+        stability_checks(*object, row, out);
+        curl_checks(*object, row, out);
+        warp_checks(*object, row, out);
+        overhang_checks(*object, row, out);
+        roof_gap_checks(*object, row, out);
+        if (along(row))
+            hanging_mass_checks(*object, out);
         // The nozzle force of the stability search (10 gf): g*mm/s^2 -> N.
         const SSG::Params params{print.config().filament_type.values, 0, btNoBrim, 0.f};
         slenderness_checks(*object, params.standard_extruder_conflict_force * 1e-6, out);

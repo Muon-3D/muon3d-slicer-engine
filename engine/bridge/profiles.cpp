@@ -116,8 +116,15 @@ const char *const k_metadata_keys[] = {BBL_JSON_KEY_VERSION, BBL_JSON_KEY_NAME, 
                                        BBL_JSON_KEY_FROM,    BBL_JSON_KEY_DESCRIPTION,   BBL_JSON_KEY_INSTANTIATION,
                                        BBL_JSON_KEY_INHERITS, ORCA_JSON_KEY_RENAMED_FROM};
 
+// Engine keys of a preset that Orca does not define, kept as they are (Orca's loader skips them): a machine
+// preset's "gravity" (docs/print-checks.md, "Gravity").
+const char *const k_engine_keys[] = {"gravity"};
+
 bool is_metadata_key(const std::string &key)
 {
+    for (const char *m : k_engine_keys)
+        if (key == m)
+            return true;
     for (const char *m : k_metadata_keys)
         if (boost::iequals(key, m))
             return true;
@@ -355,6 +362,30 @@ std::vector<std::string> error_lines(const LogCapture &capture, int level)
 
 bool is_vendor_system(const Preset &preset) { return !preset.is_default && preset.is_system && preset.vendor != nullptr; }
 
+// The engine keys (k_engine_keys) a preset inherits, which Orca's loader skips: each from the nearest file of
+// its chain (the preset's own file, then what it inherits) that sets it.
+json engine_keys_of(const std::vector<Folder> &folders, const std::string &type, const std::string &name)
+{
+    json out = json::object();
+    std::string at = name;
+    for (int depth = 0; depth < 64 && !at.empty(); ++depth) {
+        const json *file = nullptr;
+        for (const Folder &folder : folders)
+            for (auto it = folder.files->begin(); it != folder.files->end() && file == nullptr; ++it) {
+                const json &f = it.value();
+                if (f.contains("name") && f["name"] == at && f.contains("type") && f["type"] == type)
+                    file = &f;
+            }
+        if (file == nullptr)
+            break;
+        for (const char *key : k_engine_keys)
+            if (!out.contains(key) && file->contains(key))
+                out[key] = (*file)[key];
+        at = file->contains("inherits") && (*file)["inherits"].is_string() ? (*file)["inherits"].get<std::string>() : std::string();
+    }
+    return out;
+}
+
 std::string resolve(const json &request)
 {
     const std::vector<Folder> folders = request_folders(request);
@@ -427,6 +458,12 @@ std::string resolve(const json &request)
             std::string text = entry.dump();
             text.pop_back(); // '}'
             std::string config_text = config.str();
+            if (const json engine_keys = engine_keys_of(folders, type_name(type), preset.name); !engine_keys.empty()) {
+                ojson with_keys = ojson::parse(config_text);
+                for (auto it = engine_keys.begin(); it != engine_keys.end(); ++it)
+                    with_keys[it.key()] = it.value();
+                config_text = with_keys.dump(4);
+            }
             while (!config_text.empty() && (config_text.back() == '\n' || config_text.back() == '\r'))
                 config_text.pop_back();
             out += (first ? "" : ",") + text + ",\"config\":" + config_text + "}";
