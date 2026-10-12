@@ -81,6 +81,7 @@ export function sliceJob(params: SliceParams): SliceJob {
     objects: objects(params.objects, true),
     toolpaths: output.toolpaths !== false,
     toolpathExtras: output.toolpathExtras !== false,
+    printChecks: output.printChecks !== false,
     ...(log > 0 ? { log } : {}),
   };
 }
@@ -114,6 +115,7 @@ export function sliceResult(output: SliceOutput, heapBytes: number | undefined):
     timings: output.timings,
   };
   if (output.log !== undefined) result.log = output.log;
+  if (output.printChecks !== undefined) result.printChecks = output.printChecks;
   if (heapBytes !== undefined) result.heapBytes = heapBytes;
   return result;
 }

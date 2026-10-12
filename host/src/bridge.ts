@@ -9,7 +9,7 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, PrintCheck, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
 
 // ---------------------------------------------------------------------------
 // The bridge's shapes (engine/bridge/job.hpp, toolpaths.hpp)
@@ -63,6 +63,8 @@ export interface SliceJob {
   toolpathExtras?: boolean;
   /** Orca's log to return, down to this level: 0 none (default), 1 errors … 5 trace. */
   log?: number;
+  /** The "Before you print" checks (docs/print-checks.md). Default true. */
+  printChecks?: boolean;
 }
 
 export interface CheckJob {
@@ -78,9 +80,12 @@ export interface SliceOutput {
   toolpaths: BridgeToolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
-  timings: { load: number; slice: number; export: number; total: number };
+  /** `checks`: the print checks' share of `total`, when they ran. */
+  timings: { load: number; slice: number; export: number; total: number; checks?: number };
   /** With SliceJob.log: Orca's log, a line each ("<level>: <message>"). */
   log?: string;
+  /** With SliceJob.printChecks (the default): the "Before you print" issues. */
+  printChecks?: PrintCheck[];
 }
 
 export interface CheckOutput {
@@ -114,6 +119,8 @@ export interface OrcaEngineModule {
     onWarning: (warning: EngineWarning) => void,
     /** Orca's log to return with the result (`log`): 0 none, 1 errors … 5 trace. Builds before 0.3.0 ignore it. */
     logLevel: number,
+    /** Run the print checks (`printChecks`, timings.checks). */
+    printChecks: boolean,
   ): EngineResult<SliceOutput>;
   check(machineJson: string, processJson: string, filamentJsons: string[], objects: EngineMeshInput[]): EngineResult<CheckOutput>;
   /** Makes a running slice stop at Orca's next cancellation point (needs a second thread to call it). */
@@ -401,6 +408,7 @@ export function runSlice(
     guarded(onProgress),
     guarded(onWarning),
     job.log ?? 0,
+    job.printChecks ?? true,
   );
   if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
   return {

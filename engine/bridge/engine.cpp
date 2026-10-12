@@ -48,6 +48,7 @@
 #endif
 
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
 #include <new>
@@ -216,6 +217,26 @@ val failure_to_js(const muon::EngineError &error)
 {
     val out = val::object();
     out.set("error", error_to_js(error));
+    return out;
+}
+
+val print_check_to_js(const muon::PrintCheck &check)
+{
+    val out = val::object();
+    out.set("kind", check.kind);
+    out.set("severity", check.severity);
+    out.set("layer", check.layer);
+    val position = val::array();
+    position.call<void>("push", check.x);
+    position.call<void>("push", check.y);
+    position.call<void>("push", check.z);
+    out.set("position", position);
+    out.set("message", check.message);
+    out.set("fix", check.fix);
+    if (!check.object.empty())
+        out.set("object", check.object);
+    if (std::isfinite(check.value))
+        out.set("value", check.value);
     return out;
 }
 
@@ -443,7 +464,7 @@ val js_version()
 }
 
 val js_slice(const std::string &machine_json, const std::string &process_json, const val &filaments, const val &objects, bool want_toolpaths,
-             const val &on_progress, const val &on_warning, int log_level)
+             const val &on_progress, const val &on_warning, int log_level, bool want_print_checks)
 {
     ensure_initialised();
     g_cancel_requested = false;
@@ -458,6 +479,7 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
         request.filament_jsons = strings_from_js(filaments);
         request.objects        = meshes_from_js(objects, true);
         request.want_toolpaths = want_toolpaths;
+        request.want_print_checks = want_print_checks;
 
         muon::SliceResult result = muon::run_slice(std::move(request), reporter);
         muon::JobDirGuard job_dir(result.job_dir);
@@ -467,6 +489,8 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
         timings.set("slice", result.timings.slice_ms);
         timings.set("export", result.timings.export_ms);
         timings.set("total", result.timings.total_ms);
+        if (want_print_checks)
+            timings.set("checks", result.timings.checks_ms);
 
         val warnings = val::array();
         for (const muon::EngineWarning &warning : result.warnings)
@@ -484,6 +508,12 @@ val js_slice(const std::string &machine_json, const std::string &process_json, c
         }
         out.set("warnings", warnings);
         out.set("timings", timings);
+        if (want_print_checks) {
+            val checks = val::array();
+            for (const muon::PrintCheck &check : result.print_checks)
+                checks.call<void>("push", print_check_to_js(check));
+            out.set("printChecks", checks);
+        }
         if (log)
             out.set("log", log->text());
         // Everything reported must reach the worker before it posts the result.

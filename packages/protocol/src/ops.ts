@@ -117,6 +117,8 @@ export interface SliceParams {
      * when the slice fails. Default: none.
      */
     log?: LogLevel;
+    /** Run the "Before you print" checks: SliceResult.printChecks ('slice.printChecks'; 2.2). Default true. */
+    printChecks?: boolean;
   };
 }
 
@@ -130,12 +132,50 @@ export interface SliceResult {
   toolpaths: Toolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
-  /** Wall-clock milliseconds per stage. */
-  timings: { load: number; slice: number; export: number; total: number };
+  /** Wall-clock milliseconds per stage; `checks`, the print checks' share of `total`, when they ran (2.2). */
+  timings: { load: number; slice: number; export: number; total: number; checks?: number };
   /** With output.log: Orca's log of the slice, a line each ("<level>: <message>"). */
   log?: string;
   /** The engine's heap after the job (it only grows). */
   heapBytes?: number;
+  /**
+   * The "Before you print" issues ('slice.printChecks'; 2.2): critical first, then by layer. Warnings only, the
+   * slice succeeded either way. Absent when output.printChecks is false, or from engines without the capability.
+   */
+  printChecks?: PrintCheck[];
+}
+
+/** What a print check found (docs/print-checks.md). New kinds and fixes may be added: show unknown ones plainly. */
+export type PrintCheckKind =
+  | 'unstable-part'
+  | 'floating-extrusion'
+  | 'long-bridge'
+  | 'curled-overhang'
+  | 'weak-connection'
+  | 'warp-risk'
+  | 'slender'
+  | 'thin-feature'
+  | 'layer-time';
+
+export type PrintCheckSeverity = 'critical' | 'warning' | 'info';
+
+/** The change that most likely helps; 'orientation' is "turn it". */
+export type PrintCheckFix = 'supports' | 'brim' | 'slower-outer-walls' | 'contact-area' | 'orientation';
+
+export interface PrintCheck {
+  kind: PrintCheckKind;
+  severity: PrintCheckSeverity;
+  /** 0-based layer, as Toolpaths numbers them. */
+  layer: number;
+  /** Bed coordinates in mm; z is the layer's print height. */
+  position: Vec3;
+  /** One short line, e.g. "Bridge longer than 16 mm may sag". */
+  message: string;
+  fix: PrintCheckFix;
+  /** The object it belongs to, when one. */
+  object?: string;
+  /** The check's number (warp-risk score, deflection in mm, ...; docs/print-checks.md), when it has one. */
+  value?: number;
 }
 
 /** Print statistics, as Orca writes them into the G-code. */
@@ -278,5 +318,7 @@ export const Capability = {
   settingsViewV1: 'settings.view.v1',
   /** SliceParams.output.log, SliceResult.log and EngineError.log (2.1). */
   sliceLog: 'slice.log',
+  /** SliceParams.output.printChecks, SliceResult.printChecks and timings.checks (2.2). */
+  printChecks: 'slice.printChecks',
 } as const;
 

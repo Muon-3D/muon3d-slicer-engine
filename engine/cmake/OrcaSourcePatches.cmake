@@ -72,3 +72,403 @@ orca_patch_source(Arachne/SkeletalTrapezoidation.cpp patched
     FIND    "for (next_inset_idx = left.toolpath_locations.size() - 1; next_inset_idx >= 0; next_inset_idx--)"
     REPLACE "for (next_inset_idx = coord_t(left.toolpath_locations.size()) - 1; next_inset_idx >= 0; next_inset_idx--)")
 list(APPEND ORCA_LIBSLIC3R_PATCHED "Arachne/SkeletalTrapezoidation.cpp=${patched}")
+
+
+
+
+# 2. Support/SupportSpotsGenerator.{hpp,cpp}: the stability and support-issue search (check_stability, full_search,
+#    gather_issues: PrusaSlicer's, commented out in Orca) turned back on for the "Before you print" checks
+#    (engine/bridge/print_checks.cpp, KAN-528), ported to Orca's Layer: PrusaSlicer's LayerSlice (islands' links
+#    and extrusion ranges) is computed from lslices by shims at the top of the block, ExtrusionRole is Orca's enum,
+#    ExtendedPoint takes its dimension, Params has no max_acceleration, and the cancel
+#    callback is a std::function (a PrintTryCancel is only for PrintBase's friends). Nothing in libslic3r calls the search, so
+#    slicing is unchanged. The header's copy sits next to the source's, where its quoted include finds it first;
+#    the bridge includes it through ORCA_PATCHED_INCLUDE_DIR (Engine.cmake). Generated pairs: see engine/PATCHES.md.
+orca_patch_source(Support/SupportSpotsGenerator.hpp patched_header
+    FIND    "/*struct SupportPoint
+"
+    REPLACE "struct SupportPoint
+"
+    FIND    "
+*/
+"
+    REPLACE "
+
+"
+    FIND    "const PrintTryCancel& cancel_func"
+    REPLACE "const std::function<void()> &cancel_func"
+    FIND    "#include <cstddef>
+"
+    REPLACE "#include <cstddef>
+#include <functional>
+"
+    FIND    "#include \"Layer.hpp\"
+#include \"Line.hpp\"
+#include \"PrintBase.hpp\"
+#include \"PrintConfig.hpp\"
+#include \"MaterialType.hpp\"
+"
+    REPLACE "#include \"libslic3r/Layer.hpp\"
+#include \"libslic3r/Line.hpp\"
+#include \"libslic3r/PrintBase.hpp\"
+#include \"libslic3r/PrintConfig.hpp\"
+#include \"libslic3r/MaterialType.hpp\"
+")
+orca_patch_source(Support/SupportSpotsGenerator.cpp patched
+    FIND    "
+/*
+"
+    REPLACE "
+
+// ---- Engine patch 2 (engine/PATCHES.md): PrusaSlicer's search on Orca's Layer. Orca has no LayerSlice
+// (Layer::lslices_ex: each island's links to the islands below and its extrusion ranges), so the links are
+// computed here from lslices, and an island's extrusions are the regions' extrusions that start inside it.
+struct LayerSliceLink
+{
+    size_t slice_idx;
+    float  area;
+};
+struct CompatLayerSlice
+{
+    std::vector<LayerSliceLink> overlaps_below;
+};
+struct CompatLayerSlicesCache
+{
+    const Layer                  *layer = nullptr;
+    std::vector<CompatLayerSlice> slices;
+};
+static CompatLayerSlicesCache &compat_lslices_cache()
+{
+    static thread_local CompatLayerSlicesCache cache;
+    return cache;
+}
+static const std::vector<CompatLayerSlice> &compat_lslices_ex(const Layer *layer)
+{
+    CompatLayerSlicesCache &cache = compat_lslices_cache();
+    if (cache.layer == layer && cache.slices.size() == layer->lslices.size())
+        return cache.slices;
+    cache.layer = layer;
+    cache.slices.assign(layer->lslices.size(), CompatLayerSlice{});
+    const Layer *lower = layer->lower_layer;
+    if (lower == nullptr)
+        return cache.slices;
+    std::vector<BoundingBox> lower_bbs;
+    lower_bbs.reserve(lower->lslices.size());
+    for (const ExPolygon &below : lower->lslices)
+        lower_bbs.push_back(get_extents(below));
+    for (size_t i = 0; i < layer->lslices.size(); ++i) {
+        const BoundingBox bb = get_extents(layer->lslices[i]);
+        for (size_t j = 0; j < lower->lslices.size(); ++j) {
+            if (!bb.overlap(lower_bbs[j]))
+                continue;
+            double overlap = 0;
+            for (const ExPolygon &piece : intersection_ex(ExPolygons{layer->lslices[i]}, ExPolygons{lower->lslices[j]}))
+                overlap += piece.area();
+            if (overlap > 0)
+                cache.slices[i].overlaps_below.push_back({j, float(overlap)});
+        }
+    }
+    return cache.slices;
+}
+static void collect_slice_extrusions(const ExtrusionEntity *entity, const LayerRegion *region, const ExPolygon &slice,
+                                     const BoundingBox &bb, std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> &out)
+{
+    if (entity->is_collection()) {
+        for (const ExtrusionEntity *child : static_cast<const ExtrusionEntityCollection *>(entity)->entities)
+            collect_slice_extrusions(child, region, slice, bb, out);
+        return;
+    }
+    const Point first = entity->first_point();
+    if (bb.contains(first) && slice.contains(first))
+        out.emplace_back(entity, region);
+}
+// The leaf extrusions of one of the layer's per-region collections (perimeters, fills, thin_fills) in island slice_idx.
+static std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> slice_extrusions(const Layer *layer, size_t slice_idx,
+                                                                                            ExtrusionEntityCollection LayerRegion::*member)
+{
+    std::vector<std::pair<const ExtrusionEntity *, const LayerRegion *>> out;
+    const ExPolygon  &slice = layer->lslices[slice_idx];
+    const BoundingBox bb    = get_extents(slice);
+    for (const LayerRegion *region : layer->regions())
+        for (const ExtrusionEntity *entity : (region->*member).entities)
+            collect_slice_extrusions(entity, region, slice, bb, out);
+    return out;
+}
+// ---- end of patch 2's shims
+
+"
+    FIND    "
+*/
+"
+    REPLACE "
+
+"
+    FIND    "void estimate_supports_malformations(SupportLayerPtrs &layers, float flow_width, const Params &params)
+{
+#ifdef DEBUG_FILES
+    FILE *debug_file = boost::nowide::fopen(debug_out_path(\"supports_malformations.obj\").c_str(), \"w\");
+    FILE *full_file = boost::nowide::fopen(debug_out_path(\"supports_full.obj\").c_str(), \"w\");
+#endif
+
+    AABBTreeLines::LinesDistancer<ExtrusionLine> prev_layer_lines{};
+
+    for (SupportLayer *l : layers) {
+        std::vector<ExtrusionLine> current_layer_lines;
+
+        for (const ExtrusionEntity *extrusion : l->support_fills.flatten().entities) {
+            Polyline pl = extrusion->as_polyline();
+            Polygon  pol(pl.points);
+            pol.make_counter_clockwise();
+
+            auto annotated_points = estimate_points_properties<true, true, false, false>(pol.points, prev_layer_lines, flow_width);
+
+            for (size_t i = 0; i < annotated_points.size(); ++i) {
+                ExtendedPoint &curr_point = annotated_points[i];
+                float          line_len   = i > 0 ? ((annotated_points[i - 1].position - curr_point.position).norm()) : 0.0f;
+                ExtrusionLine  line_out{i > 0 ? annotated_points[i - 1].position.cast<float>() : curr_point.position.cast<float>(),
+                                       curr_point.position.cast<float>(), line_len, extrusion};
+
+                const ExtrusionLine nearest_prev_layer_line = prev_layer_lines.get_lines().size() > 0 ?
+                                                                  prev_layer_lines.get_line(curr_point.nearest_prev_layer_line) :
+                                                                  ExtrusionLine{};
+
+                Vec2f v1 = (nearest_prev_layer_line.b - nearest_prev_layer_line.a);
+                Vec2f v2 = (curr_point.position.cast<float>() - nearest_prev_layer_line.a);
+                auto  d  = (v1.x() * v2.y()) - (v1.y() * v2.x());
+                if (d > 0) {
+                    curr_point.distance *= -1.0f;
+                }
+
+                line_out.curled_up_height = estimate_curled_up_height(curr_point, l->height, flow_width,
+                                                                      nearest_prev_layer_line.curled_up_height, params);
+
+                current_layer_lines.push_back(line_out);
+            }
+        }
+
+        for (const ExtrusionLine &line : current_layer_lines) {
+            if (line.curled_up_height > 0.3f) {
+                l->malformed_lines.push_back(Line{Point::new_scale(line.a), Point::new_scale(line.b)});
+            }
+        }
+
+#ifdef DEBUG_FILES
+        for (const ExtrusionLine &line : current_layer_lines) {
+            if (line.curled_up_height > 0.3f) {
+                Vec3f color = value_to_rgbf(-EPSILON, l->height * params.max_curled_height_factor, line.curled_up_height);
+                fprintf(debug_file, \"v %f %f %f  %f %f %f\\n\", line.b[0], line.b[1], l->print_z, color[0], color[1], color[2]);
+            }
+        }
+        for (const ExtrusionLine &line : current_layer_lines) {
+            Vec3f color = value_to_rgbf(-EPSILON, l->height * params.max_curled_height_factor, line.curled_up_height);
+            fprintf(full_file, \"v %f %f %f  %f %f %f\\n\", line.b[0], line.b[1], l->print_z, color[0], color[1], color[2]);
+        }
+#endif
+
+        prev_layer_lines = LD{current_layer_lines};
+    }
+
+#ifdef DEBUG_FILES
+    fclose(debug_file);
+    fclose(full_file);
+#endif
+}
+"
+    REPLACE ""
+    FIND    "prev_layer_lines.get_line(curr_point.nearest_prev_layer_line)"
+    REPLACE "prev_layer_lines.get_line(std::get<1>(prev_layer_lines.distance_from_lines_extra<false>(curr_point.position.cast<float>())))"
+    FIND    "estimate_curled_up_height(curr_point, "
+    REPLACE "estimate_curled_up_height(curr_point.distance, curr_point.curvature, "
+    FIND    "entity->role().is_bridge() && !entity->role().is_perimeter()"
+    REPLACE "is_bridge(entity->role()) && !is_perimeter(entity->role())"
+    FIND    "        const float                flow_width       = get_flow_width(layer_region, entity->role());
+        std::vector<ExtendedPoint> "
+    REPLACE "        const float                flow_width       = get_flow_width(layer_region, entity->role());
+        std::vector<ExtendedPoint<2>> "
+    FIND    "std::vector<ExtendedPoint> "
+    REPLACE "std::vector<ExtendedPoint<2>> "
+    FIND    "            ExtendedPoint &"
+    REPLACE "            ExtendedPoint<2> &"
+    FIND    "            ExtendedPoint<2> &curr_point = annotated_points[i];
+            const ExtendedPoint &"
+    REPLACE "            ExtendedPoint<2> &curr_point = annotated_points[i];
+            const ExtendedPoint<2> &"
+    FIND    "ExtendedPoint &"
+    REPLACE "ExtendedPoint<2> &"
+    FIND    "ExtendedPoint       &"
+    REPLACE "ExtendedPoint<2>       &"
+    FIND    "const LayerSlice   &slice       = layer->lslices_ex[slice_idx];"
+    REPLACE "const CompatLayerSlice &slice = compat_lslices_ex(layer)[slice_idx];"
+    FIND    "params.max_acceleration * mass"
+    REPLACE "0.0f * mass /* Orca: no max_acceleration in Params */"
+    FIND    "const LayerSlice& slice = layer->lslices_ex.at(slice_idx);"
+    REPLACE "[[maybe_unused]] const CompatLayerSlice &slice = compat_lslices_ex(layer).at(slice_idx);"
+    FIND    "    for (const auto &island : slice.islands) {
+        const LayerRegion *perimeter_region = layer->get_region(island.perimeters.region());
+        for (const auto &perimeter_idx : island.perimeters) {
+            for (const ExtrusionEntity *perimeter :
+                 static_cast<const ExtrusionEntityCollection *>(perimeter_region->perimeters().entities[perimeter_idx])->entities) {
+                add_extrusions_to_object(perimeter, perimeter_region);
+            }
+        }
+        for (const LayerExtrusionRange &fill_range : island.fills) {
+            const LayerRegion *fill_region = layer->get_region(fill_range.region());
+            for (const auto &fill_idx : fill_range) {
+                for (const ExtrusionEntity *fill :
+                     static_cast<const ExtrusionEntityCollection *>(fill_region->fills().entities[fill_idx])->entities) {
+                    add_extrusions_to_object(fill, fill_region);
+                }
+            }
+        }
+        for (const auto &thin_fill_idx : island.thin_fills) {
+            add_extrusions_to_object(perimeter_region->thin_fills().entities[thin_fill_idx], perimeter_region);
+        }
+    }
+"
+    REPLACE "    for (ExtrusionEntityCollection LayerRegion::*member : {&LayerRegion::perimeters, &LayerRegion::fills, &LayerRegion::thin_fills})
+        for (const auto &[entity, region] : slice_extrusions(layer, slice_idx, member))
+            add_extrusions_to_object(entity, region);
+"
+    FIND    "const PrintTryCancel &cancel_func"
+    REPLACE "const std::function<void()> &cancel_func"
+    FIND    "const PrintTryCancel& cancel_func"
+    REPLACE "const std::function<void()> &cancel_func"
+    FIND    "const LayerSlice &slice             = layer->lslices_ex.at(slice_idx);"
+    REPLACE "const CompatLayerSlice &slice = compat_lslices_ex(layer).at(slice_idx);"
+    FIND    "const LayerSlice          &slice        = layer->lslices_ex.at(slice_idx);"
+    REPLACE "const CompatLayerSlice &slice = compat_lslices_ex(layer).at(slice_idx);"
+    FIND    "/ layer->lslices_ex.size());"
+    REPLACE "/ std::max<size_t>(1, layer->lslices.size()));"
+    FIND    "        auto create_support_point_position = [bottom_z](const Vec2f &layer_pos) { return Vec3f{layer_pos.x(), layer_pos.y(), bottom_z}; };
+
+        for (size_t slice_idx = 0; slice_idx < layer->lslices_ex.size();"
+    REPLACE "        auto create_support_point_position = [bottom_z](const Vec2f &layer_pos) { return Vec3f{layer_pos.x(), layer_pos.y(), bottom_z}; };
+
+        for (size_t slice_idx = 0; slice_idx < layer->lslices.size();"
+    FIND    "slice_idx < layer->lslices_ex.size();"
+    REPLACE "slice_idx < layer->lslices.size();"
+    FIND    "            for (const auto &island : slice.islands) {
+                // Support bridges where needed.
+                for (const LayerExtrusionRange &fill_range : island.fills) {
+                    const LayerRegion *fill_region = layer->get_region(fill_range.region());
+                    for (const auto &fill_idx : fill_range) {
+                        const ExtrusionEntity *entity = fill_region->fills().entities[fill_idx];
+                        if (entity->role() == ExtrusionRole::BridgeInfill) {
+                            for (const ExtrusionLine &bridge :
+                                 check_extrusion_entity_stability(entity, fill_region, prev_layer_ext_perim_lines, prev_layer_boundary,
+                                                                  params)) {
+                                if (bridge.support_point_generated.has_value()) {
+                                    reckon_new_support_point(*bridge.support_point_generated, create_support_point_position(bridge.b),
+                                                             -EPSILON, Vec2f::Zero());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                const LayerRegion *perimeter_region = layer->get_region(island.perimeters.region());
+                for (const auto &perimeter_idx : island.perimeters) {
+                    const ExtrusionEntity     *entity = perimeter_region->perimeters().entities[perimeter_idx];
+                    std::vector<ExtrusionLine> perims = check_extrusion_entity_stability(entity, perimeter_region,
+                                                                                         prev_layer_ext_perim_lines, prev_layer_boundary,
+                                                                                         params);
+                    for (const ExtrusionLine &perim : perims) {
+                        if (perim.support_point_generated.has_value()) {
+                            reckon_new_support_point(*perim.support_point_generated, create_support_point_position(perim.b), -EPSILON,
+                                                     Vec2f::Zero());
+                        }
+                        if (perim.is_external_perimeter()) {
+                            current_slice_ext_perims_lines.push_back(perim);
+                        }
+                    }
+                }
+                // DEBUG EXPORT, NOT USED NOW
+                // if (BR_bridge) {
+                //     Lines scaledl;
+                //     for (const auto &l : prev_layer_boundary.get_lines()) {
+                //         scaledl.emplace_back(Point::new_scale(l.a), Point::new_scale(l.b));
+                //     }
+
+                //     Lines perimsl;
+                //     for (const auto &l : current_slice_ext_perims_lines) {
+                //         perimsl.emplace_back(Point::new_scale(l.a), Point::new_scale(l.b));
+                //     }
+
+                //     BoundingBox bb = get_extents(scaledl);
+                //     bb.merge(get_extents(perimsl));
+
+                //     ::Slic3r::SVG svg(debug_out_path(
+                //                           (\"slice\" + std::to_string(slice_idx) + \"_\" + std::to_string(layer_idx).c_str()).c_str()),
+                //                       get_extents(scaledl));
+                //     svg.draw(scaledl, \"red\", scale_(0.4));
+                //     svg.draw(perimsl, \"blue\", scale_(0.25));
+                    
+                    
+                //     svg.Close();
+                // }
+            }
+"
+    REPLACE "            {
+                // Support bridges where needed.
+                for (const auto &[entity, fill_region] : slice_extrusions(layer, slice_idx, &LayerRegion::fills)) {
+                    {
+                        if (entity->role() == ExtrusionRole::BridgeInfill) {
+                            for (const ExtrusionLine &bridge :
+                                 check_extrusion_entity_stability(entity, fill_region, prev_layer_ext_perim_lines, prev_layer_boundary,
+                                                                  params)) {
+                                if (bridge.support_point_generated.has_value()) {
+                                    reckon_new_support_point(*bridge.support_point_generated, create_support_point_position(bridge.b),
+                                                             -EPSILON, Vec2f::Zero());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (const auto &[entity, perimeter_region] : slice_extrusions(layer, slice_idx, &LayerRegion::perimeters)) {
+                    std::vector<ExtrusionLine> perims = check_extrusion_entity_stability(entity, perimeter_region,
+                                                                                         prev_layer_ext_perim_lines, prev_layer_boundary,
+                                                                                         params);
+                    for (const ExtrusionLine &perim : perims) {
+                        if (perim.support_point_generated.has_value()) {
+                            reckon_new_support_point(*perim.support_point_generated, create_support_point_position(perim.b), -EPSILON,
+                                                     Vec2f::Zero());
+                        }
+                        if (perim.is_external_perimeter()) {
+                            current_slice_ext_perims_lines.push_back(perim);
+                        }
+                    }
+                }
+                // DEBUG EXPORT, NOT USED NOW
+                // if (BR_bridge) {
+                //     Lines scaledl;
+                //     for (const auto &l : prev_layer_boundary.get_lines()) {
+                //         scaledl.emplace_back(Point::new_scale(l.a), Point::new_scale(l.b));
+                //     }
+
+                //     Lines perimsl;
+                //     for (const auto &l : current_slice_ext_perims_lines) {
+                //         perimsl.emplace_back(Point::new_scale(l.a), Point::new_scale(l.b));
+                //     }
+
+                //     BoundingBox bb = get_extents(scaledl);
+                //     bb.merge(get_extents(perimsl));
+
+                //     ::Slic3r::SVG svg(debug_out_path(
+                //                           (\"slice\" + std::to_string(slice_idx) + \"_\" + std::to_string(layer_idx).c_str()).c_str()),
+                //                       get_extents(scaledl));
+                //     svg.draw(scaledl, \"red\", scale_(0.4));
+                //     svg.draw(perimsl, \"blue\", scale_(0.25));
+                    
+                    
+                //     svg.Close();
+                // }
+            }
+"
+    FIND    "ExtrusionRole::BridgeInfill"
+    REPLACE "erBridgeInfill"
+    FIND    "    auto results = check_stability(po, cancel_func, params);"
+    REPLACE "    compat_lslices_cache() = {};
+    auto results = check_stability(po, cancel_func, params);")
+list(APPEND ORCA_LIBSLIC3R_PATCHED "Support/SupportSpotsGenerator.cpp=${patched}")
+set(ORCA_PATCHED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/libslic3r/patched")

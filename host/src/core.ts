@@ -107,7 +107,7 @@ class Lane {
 const PROFILE_OPS: ReadonlySet<string> = new Set(['profiles.normalize', 'profiles.resolve', 'profiles.validate']);
 const ENGINE_OPS: ReadonlySet<string> = new Set(['load', 'slice', 'check', 'config.definitions', ...PROFILE_OPS]);
 const SETTINGS_OPS: ReadonlySet<string> = new Set(['settings.catalogue', 'settings.view', 'settings.edit']);
-const CAPABILITIES = [...OPS, Capability.toolpathsV1, Capability.toolpathExtras, Capability.indexedMeshes, Capability.settingsViewV1, Capability.sliceLog];
+const CAPABILITIES = [...OPS, Capability.toolpathsV1, Capability.toolpathExtras, Capability.indexedMeshes, Capability.settingsViewV1, Capability.sliceLog, Capability.printChecks];
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
