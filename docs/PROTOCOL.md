@@ -261,6 +261,7 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 | `mesh.indexed` | `Mesh.indices` (indexed meshes) in `slice` and `check` |
 | `settings.view.v1` | `settings.view` format 1 |
 | `slice.log` | (2.1) `SliceParams.output.log`, `SliceResult.log` and `EngineError.log` |
+| `slice.field` | `SliceParams.output.sliceField` and `SliceResult.sliceField` (docs/SLICE_FIELD.md) |
 | `cancel.cooperative` | (not yet served) a running request can be cancelled and the engine stays loaded |
 
 A client MUST send an op, or a field, only when `hello` lists its capability (the 2.0 ops and fields above are
@@ -304,6 +305,7 @@ params: {
   output?: {
     toolpaths?: boolean, toolpathExtras?: boolean,                   // both default true
     log?: 'error' | 'warning' | 'info' | 'debug' | 'trace',          // 2.1, 'slice.log': Orca's log down to this level
+    sliceField?: { voxelSize?: 1 | 0.5, depositionTime?: boolean },  // 'slice.field': the slice field (docs/SLICE_FIELD.md)
   },
 }
 PlateObject = { name: string, mesh: Mesh, config?: ConfigPatch }
@@ -316,6 +318,7 @@ result: {
   timings: { load: number, slice: number, export: number, total: number },   // ms
   heapBytes?: number,
   log?: string,                      // with output.log: a line per record, "<level>: <message>"
+  sliceField?: Uint8Array,           // with output.sliceField: the slice field file
 }
 ```
 
@@ -334,6 +337,11 @@ result: {
 - `output.log` (2.1) returns Orca's log of the slice down to that level: its records go to the result instead of the
   host's console. `info` and below are long (Orca logs every step). A slice Orca refuses carries the log in the
   error's `log`.
+- `output.sliceField` (`slice.field`) also returns the plate's slice field: how it will be printed (wall, skin and
+  infill fractions, infill density and pattern, raster direction, layer index, optionally deposition time) on a 1 mm
+  (default) or 0.5 mm voxel grid, as the file [SLICE_FIELD.md](SLICE_FIELD.md) describes. It is built from the
+  toolpaths, so it works with `output.toolpaths: false` too (the result's `toolpaths` stay null). Another voxel size
+  fails with `BadRequest`.
 
 ### 6.6 `check`
 

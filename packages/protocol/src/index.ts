@@ -17,3 +17,4 @@ export * from './helpers.ts';
 export * from './framing.ts';
 export * from './transport.ts';
 export * from './connection.ts';
+export * from './sliceField.ts';

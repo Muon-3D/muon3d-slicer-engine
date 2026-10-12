@@ -117,7 +117,20 @@ export interface SliceParams {
      * when the slice fails. Default: none.
      */
     log?: LogLevel;
+    /**
+     * Also return the plate's slice field ('slice.field'): `SliceResult.sliceField`, the file docs/SLICE_FIELD.md
+     * describes. Works with toolpaths off too.
+     */
+    sliceField?: SliceFieldRequest;
   };
+}
+
+/** SliceParams.output.sliceField. */
+export interface SliceFieldRequest {
+  /** Voxel edge, mm: 1 (default) or 0.5. */
+  voxelSize?: number;
+  /** Add the optional depositionTime array. Default false. */
+  depositionTime?: boolean;
 }
 
 /** Orca's log levels, most severe first. */
@@ -136,6 +149,8 @@ export interface SliceResult {
   log?: string;
   /** The engine's heap after the job (it only grows). */
   heapBytes?: number;
+  /** With output.sliceField: the slice field file (docs/SLICE_FIELD.md; read it with decodeSliceField). */
+  sliceField?: Uint8Array;
 }
 
 /** Print statistics, as Orca writes them into the G-code. */
@@ -278,5 +293,7 @@ export const Capability = {
   settingsViewV1: 'settings.view.v1',
   /** SliceParams.output.log, SliceResult.log and EngineError.log (2.1). */
   sliceLog: 'slice.log',
+  /** SliceParams.output.sliceField and SliceResult.sliceField: the slice field file (docs/SLICE_FIELD.md). */
+  sliceField: 'slice.field',
 } as const;
 

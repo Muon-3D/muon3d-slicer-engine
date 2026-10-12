@@ -35,6 +35,7 @@ packages/protocol/    @muon3d/slicer-engine-protocol: protocol v2's types, trans
                       sets' types with flattenPreset (Apache-2.0)
 profiles/muon3d/      the Muon3D vendor profiles (Muon3D M1), in OrcaSlicer's layout: the profile sets take them
 docs/PROTOCOL.md      the protocol, normative
+docs/SLICE_FIELD.md   the slice field file (how a plate will be printed, on a voxel grid) for the simulator
 docs/PROFILES.md      the profile sets: files, formats, flattening a preset, the goldens, building and checking
 tools/                settings-catalogue/ (the catalogue generator), goldens/ (the settings goldens' recorders),
                       profiles/ (the profile set builder and checker, the preset fixtures), check-imports.mjs,
@@ -45,7 +46,7 @@ test/                 engine tests, protocol conformance (test/conformance), set
                       test helpers
 examples/node-cli/    slice from the command line through the host
 examples/settings-cli/ validate presets and print Orca's settings forms, through the settings service
-docs/                 PROTOCOL.md, PROFILES.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original
+docs/                 PROTOCOL.md, SLICE_FIELD.md, PROFILES.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original
                       engine spec
 .github/              workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
 ```
