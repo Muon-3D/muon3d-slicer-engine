@@ -425,6 +425,7 @@ export function runSlice(
 
 function sliceFieldOf(job: SliceJob, toolpaths: BridgeToolpaths, extras: ToolpathExtras | null): Uint8Array {
   const { description, arrays } = buildSliceField({
+    machine: job.machine,
     process: job.process,
     filaments: job.filaments,
     objects: job.objects,

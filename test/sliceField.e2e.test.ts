@@ -7,7 +7,7 @@ import { runSlice, type OrcaEngineModule } from '../host/src/bridge.ts';
 import { sliceJob, sliceResult } from '../host/src/ops.ts';
 import type { SliceParams } from '../packages/protocol/src/ops.ts';
 import { decodeSliceField, encodeSliceField, SLICE_FIELD_NO_LAYER, sliceFieldIndex, type SliceField } from '../packages/protocol/src/sliceField.ts';
-import { cube, engineSkip, m1Presets, startEngine, variant, type Presets } from './fixtures.ts';
+import { box, cube, engineSkip, m1Presets, startEngine, variant, type Presets } from './fixtures.ts';
 
 const SIZE = 20;
 const CENTER: [number, number] = [100, 90];
@@ -116,5 +116,46 @@ describe(`slice field on the engine (${variant})`, { skip: engineSkip }, () => {
     assert.equal(field.depositionTime, undefined);
     const { header, ...arrays } = field;
     assert.deepEqual(encodeSliceField(header, arrays), result.sliceField);
+  });
+});
+
+// The same tall part both ways: gravity is the printer's (its printer_notes), recorded in the header and nothing else.
+describe(`slice field gravity on the engine (${variant})`, { skip: engineSkip }, () => {
+  let engine: OrcaEngineModule;
+  let presets: Presets;
+  before(async () => {
+    [{ engine }, presets] = await Promise.all([startEngine(), m1Presets()]);
+  });
+
+  function fieldWith(printerNotes: string | undefined) {
+    const machine = { ...presets.machine };
+    if (printerNotes === undefined) delete machine.printer_notes;
+    else machine.printer_notes = printerNotes;
+    const params: SliceParams = {
+      configs: { ...presets, machine, process: { ...presets.process, wall_loops: '2', sparse_infill_density: '20%', sparse_infill_pattern: 'gyroid' } },
+      objects: [{ name: 'Tower.stl', mesh: { positions: box([8, 8, 40], CENTER) } }],
+      output: { toolpaths: false, sliceField: {} },
+    };
+    const result = sliceResult(runSlice(engine, sliceJob(params)), undefined);
+    assert.ok(result.sliceField instanceof Uint8Array);
+    return decodeSliceField(result.sliceField);
+  }
+
+  it('records along_build for an upside-down printer and against_build for a normal one; the part is the same', () => {
+    const along = fieldWith('gravity = along_build');
+    const against = fieldWith('gravity = against_build');
+    assert.equal(along.header.gravity, 'along_build');
+    assert.equal(against.header.gravity, 'against_build');
+    assert.deepEqual(along.header.buildDirection, [0, 0, 1]);
+    assert.deepEqual(against.header.buildDirection, [0, 0, 1]);
+    // Layers sit in the part the same way: every array is the same, so service-load strength is unchanged.
+    for (const name of ['wallFraction', 'skinFraction', 'infillFraction', 'infillDensity', 'infillPattern', 'rasterDirection', 'layerIndex'] as const) {
+      assert.deepEqual(along[name], against[name], name);
+    }
+  });
+
+  it('records null when the printer profile does not say', () => {
+    assert.equal(fieldWith(undefined).header.gravity, null);
+    assert.equal(fieldWith('no gravity line here').header.gravity, null);
   });
 });

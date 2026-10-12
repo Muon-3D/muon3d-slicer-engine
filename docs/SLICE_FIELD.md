@@ -36,6 +36,7 @@ All numbers little-endian.
   "voxelSize": 1,                     // cube edge, mm: 1 (default) or 0.5
   "dims": [100, 100, 100],            // voxels along x, y, z
   "buildDirection": [0, 0, 1],        // layers stack along +z of the grid
+  "gravity": "along_build",           // gravity during the print: "along_build" | "against_build" | null (below)
   "material": { "type": "PLA", "name": "Generic PLA @Muon3D M1", "vendor": "Generic" },   // filament 1
   "layerHeight": 0.2,                 // the process's layer_height, mm
   "firstLayerHeight": 0.2,            // initial_layer_print_height, mm
@@ -63,6 +64,13 @@ All numbers little-endian.
 - `infillPatterns` maps the ids `infillPattern` uses to Orca's `sparse_infill_pattern` names. Id 0 is `none`. The
   writer keeps the ids stable (Orca's patterns in a fixed order, unknown names appended), but a reader MUST look names
   up in the table rather than assume ids.
+- `gravity` is which way gravity pointed **during the print**, relative to `buildDirection`. `"against_build"`: a
+  normal printer, the part standing on the plate (gravity along -z). `"along_build"`: the Muon3D M1, which prints
+  upside down, the part hanging from the plate above it and growing downward (gravity along +z of this frame). It
+  comes from the printer profile (`printer_notes`, [PROFILES.md](PROFILES.md) §9.1); `null` when the profile does
+  not say, and a reader MUST NOT assume either then. It does not change the arrays: the layers sit in the part the
+  same way, so a service-load analysis of the finished part reads the field the same either way. Process simulation
+  and stability checks (weight while printing, sag of unsupported extrusions, peel at the plate) MUST use it.
 - `objects` are the plate's objects and their sparse-infill settings (each object's own settings over the process's).
 - Unknown header keys MUST be ignored; new ones may appear within version 1. A new array may appear too (a reader finds
   arrays by name in `arrays`).

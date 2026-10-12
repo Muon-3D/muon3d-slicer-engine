@@ -59,6 +59,25 @@ export interface SliceFieldObject {
   infillPattern: number;
 }
 
+/**
+ * Which way gravity points during the print, relative to the build direction (the way layers stack). A normal
+ * printer: against it. The Muon3D M1 prints upside down, the part hanging from the plate: along it.
+ */
+export type SliceFieldGravity = 'along_build' | 'against_build';
+
+/**
+ * The printer's gravity, from its machine preset's `printer_notes`: a line `gravity = along_build` or
+ * `gravity = against_build` (docs/PROFILES.md). null when the preset does not say: never assumed either way.
+ */
+export function printerGravity(printerNotes: string | readonly string[] | undefined): SliceFieldGravity | null {
+  const notes = Array.isArray(printerNotes) ? printerNotes.join('\n') : (printerNotes ?? '');
+  const found = [...String(notes).replace(/\\n/g, '\n').matchAll(/^[ \t]*gravity[ \t]*[=:][ \t]*(\S+)[ \t]*$/gim)].map((m) => m[1]!.toLowerCase());
+  const values = new Set(found);
+  if (values.size !== 1) return null;
+  const [value] = values;
+  return value === 'along_build' || value === 'against_build' ? value : null;
+}
+
 export interface SliceFieldHeader {
   format: typeof SLICE_FIELD_FORMAT;
   version: number;
@@ -71,6 +90,8 @@ export interface SliceFieldHeader {
   dims: [number, number, number];
   /** The direction layers stack in, a unit vector in the grid's frame. */
   buildDirection: [number, number, number];
+  /** Gravity during the print, relative to buildDirection, from the printer profile; null when it does not say. */
+  gravity: SliceFieldGravity | null;
   material: { type: string; name: string | null; vendor: string | null };
   /** The process's layer height and first layer height, mm. */
   layerHeight: number;
@@ -179,6 +200,9 @@ export function readSliceFieldHeader(bytes: Uint8Array): SliceFieldHeader {
   if (header.format !== SLICE_FIELD_FORMAT) throw new Error(`slice field: unknown format ${String(header.format)}`);
   if (header.version !== SLICE_FIELD_VERSION) throw new Error(`slice field: version ${header.version}, this reader reads ${SLICE_FIELD_VERSION}`);
   if (header.units !== 'mm') throw new Error(`slice field: units ${String(header.units)}`);
+  if (header.gravity !== null && header.gravity !== 'along_build' && header.gravity !== 'against_build') {
+    throw new Error(`slice field: gravity ${String(header.gravity)}`);
+  }
   if (!Array.isArray(header.dims) || header.dims.length !== 3 || !header.dims.every((d) => Number.isInteger(d) && d >= 0)) {
     throw new Error('slice field: bad dims');
   }

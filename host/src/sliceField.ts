@@ -6,7 +6,7 @@
 // cross-section is the sparse-infill region. Support, skirt, brim, ironing and custom moves are left out.
 // The raster is then integrated over each voxel, layer thickness by layer thickness.
 import type { SliceFieldArrays, SliceFieldDescription, SliceFieldPattern, SliceFieldRequest, ToolpathExtras } from '../../packages/protocol/src/index.ts';
-import { SLICE_FIELD_NO_DIRECTION, SLICE_FIELD_NO_LAYER } from '../../packages/protocol/src/sliceField.ts';
+import { printerGravity, SLICE_FIELD_NO_DIRECTION, SLICE_FIELD_NO_LAYER } from '../../packages/protocol/src/sliceField.ts';
 import type { BridgeToolpaths, EngineObject, FlatConfig } from './bridge.ts';
 
 export const SLICE_FIELD_VOXEL_SIZES: readonly number[] = [1, 0.5];
@@ -37,6 +37,8 @@ export const INFILL_PATTERNS: readonly string[] = [
 export const sizeFromCode = (code: number): number => (code <= 200 ? code * 0.01 : 2 + (code - 200) * 0.05);
 
 export interface SliceFieldSource {
+  /** For the printer's gravity (printer_notes). */
+  machine: FlatConfig;
   process: FlatConfig;
   filaments: FlatConfig[];
   objects: EngineObject[];
@@ -364,6 +366,7 @@ export function buildSliceField(src: SliceFieldSource): { description: SliceFiel
     voxelSize: v,
     dims: [nx, ny, nz],
     buildDirection: [0, 0, 1],
+    gravity: printerGravity(src.machine.printer_notes),
     material: { type: text(filament.filament_type) ?? 'PLA', name: text(filament.name) || null, vendor: text(filament.filament_vendor) || null },
     layerHeight: number(text(src.process.layer_height), 0),
     firstLayerHeight: number(text(src.process.initial_layer_print_height), 0),

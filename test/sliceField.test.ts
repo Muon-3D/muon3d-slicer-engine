@@ -21,6 +21,7 @@ import { cube } from './fixtures.ts';
 
 const description = (dims: [number, number, number]): SliceFieldDescription => ({
   origin: [10.5, -3, 0],
+  gravity: 'along_build',
   voxelSize: 0.5,
   dims,
   buildDirection: [0, 0, 1],
@@ -148,6 +149,7 @@ describe('slice field building', () => {
   it('samples hand-made toolpaths: the wall band, the infill region, its density and direction, the layer matching Z', () => {
     const toolpaths = handMadeCube(50);
     const { description: d, arrays: a } = buildSliceField({
+      machine: {},
       process: { layer_height: '0.2', initial_layer_print_height: '0.2', sparse_infill_density: '20%', sparse_infill_pattern: 'gyroid', wall_loops: '1' },
       filaments: [{ filament_type: ['PETG'] }],
       objects: [{ name: 'Cube', positions: cube([5, 5], 10) }],
@@ -181,6 +183,7 @@ describe('slice field building', () => {
 
   it('marks voxels with no material as empty', () => {
     const { arrays } = buildSliceField({
+      machine: {},
       process: {}, filaments: [], objects: [{ name: 'Cube', positions: cube([5, 5], 10) }], toolpaths: handMadeCube(10), extras: null, request: {},
     });
     // Only 2 mm of the 10 mm cube is printed: the upper voxels stay empty.
