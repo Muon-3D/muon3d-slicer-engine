@@ -98,7 +98,7 @@ One value per voxel each.
   `infillFraction / 255 × infillDensity / 100` of the voxel, as a homogenised continuum.
 - `rasterDirection` is the mean direction of all the material extruded in the voxel (walls, skin and infill), weighted
   by volume, taken on doubled angles because a line has no sense (0° ≡ 180°). Lines along +x give 0, along +y -45
-  (i.e. ±90°), along x = y 22. Sparse infill does not cross every voxel of a fine grid: a voxel in the sparse region
+  (i.e. ±90°), along x = y 23 (46°, the nearest 2° sample; halfway values round toward +∞). Sparse infill does not cross every voxel of a fine grid: a voxel in the sparse region
   with no line through it has -128.
 - `layerIndex` follows the plate's layers (`layerZ`); with objects of different layer heights the layers are the union
   of their tops.
