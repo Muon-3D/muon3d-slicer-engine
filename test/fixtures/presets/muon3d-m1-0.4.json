@@ -81,7 +81,6 @@
     "flashforge_serial_number": "",
     "from": "system",
     "gcode_flavor": "klipper",
-    "gravity": "along_build",
     "gcode_skip_config_block": "0",
     "grab_length": [
       "0"
@@ -338,6 +337,7 @@
       "Auto Lift"
     ],
     "z_offset": "0",
+    "gravity": "along_build",
     "type": "machine"
   },
   "process": {
