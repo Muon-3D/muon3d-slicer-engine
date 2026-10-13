@@ -268,3 +268,21 @@ Sources: interlayer bond strength against the time the previous layer cools — 
 The filament's `filament_type` picks the row by its longest matching prefix (`PLA-CF` is PLA, `PA6-GF` is PA);
 unknown types are PLA. Values are typical datasheet figures for printed parts (manufacturers' TDS: Prusament,
 Polymaker, BASF Ultrafuse; mould shrinkage for the shrinkage column) and are meant to rank risks, not predict them.
+
+## Fixture coverage
+
+`test/printChecks.test.ts` runs on both the single-threaded and multithreaded engines. It requires these
+issues to appear, checks their layer, position, severity and message, and verifies that enabling checks leaves
+G-code unchanged:
+
+| Fixture | Required issues |
+|---|---|
+| Tall pin (Ø3 × 40 mm) | Slenderness, unstable part, minimum layer time |
+| Bridge (52 mm deck) | Long bridge, floating extrusion |
+| Mushroom (Ø40 cap) | Curled overhang, floating extrusion, unstable part |
+| Large ABS plate (150 × 130 mm) | Warp risk |
+| Thin wall (0.6 mm) | Thin feature under two lines |
+| Broad foot with a 1 mm neck and a tapered tall pin | Weak connection |
+
+The taper on the weak-neck fixture avoids an unsupported cap: support spots proposed for such a cap would
+reinforce the search's virtual connection before it evaluates the nozzle load.

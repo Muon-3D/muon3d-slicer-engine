@@ -1,5 +1,5 @@
 // The "Before you print" checks (docs/print-checks.md) on fixtures made to fail: a tall pin, a bridge, a mushroom
-// and a large ABS plate, each slice checked for the issue it is made for. Every fixture is sliced with the checks
+// and a large ABS plate, plus a thin wall and a weak neck, each slice checked for its required issues. Every fixture is sliced with the checks
 // and without: the G-code must be the same, and the difference in time is what the checks cost (written to
 // ENGINE_TEST_OUT/print-checks-timing.json). Skipped until the engine is built, like test/engine.test.ts.
 //
@@ -58,8 +58,6 @@ interface Fixture {
   presets?: (presets: Presets) => Presets;
   /** Each of these kinds must be found on the fixture. */
   expect: PrintCheckKind[];
-  /** And at least one of these, when the search may name the failure either way. */
-  expectOneOf?: PrintCheckKind[];
 }
 
 const FIXTURES: Fixture[] = [
@@ -67,7 +65,7 @@ const FIXTURES: Fixture[] = [
     // 3 mm across and 40 mm tall: bends under the nozzle.
     name: 'tall pin',
     objects: [{ name: 'Pin.stl', positions: cylinder([100, 90], 1.5, 40, 48) }],
-    expect: ['slender'],
+    expect: ['slender', 'unstable-part', 'layer-time'],
   },
   {
     // Two 11 mm pillars 35 mm apart under a 2 mm deck, no supports: the deck is a bridge over 16 mm.
@@ -76,7 +74,7 @@ const FIXTURES: Fixture[] = [
       name: 'Bridge.stl',
       positions: join(box([6, 12, 11], [77, 90]), box([6, 12, 11], [123, 90]), lift(box([52, 12, 2], [100, 90]), 10)),
     }],
-    expect: ['long-bridge'],
+    expect: ['long-bridge', 'floating-extrusion'],
   },
   {
     // A 40 mm cap on a 6 mm stem, no supports: the cap's underside (68° from vertical) overhangs and curls, and its
@@ -86,8 +84,7 @@ const FIXTURES: Fixture[] = [
       name: 'Mushroom.stl',
       positions: join(cylinder([100, 90], 3, 16, 48), frustum([100, 90], 3, 20, 15, 22), lift(cylinder([100, 90], 20, 3, 96), 21.5)),
     }],
-    expect: ['curled-overhang'],
-    expectOneOf: ['floating-extrusion', 'unstable-part'],
+    expect: ['curled-overhang', 'floating-extrusion', 'unstable-part'],
   },
   {
     // 150 × 130 mm of ABS, no brim, chamber unheated.
@@ -99,6 +96,23 @@ const FIXTURES: Fixture[] = [
       filaments: p.filaments.map((f) => ({ ...f, filament_type: ['ABS'] })),
     }),
     expect: ['warp-risk'],
+  },
+  {
+    // 0.6 mm across: less than two 0.42 mm external-perimeter lines.
+    name: 'thin wall',
+    objects: [{ name: 'ThinWall.stl', positions: box([0.6, 20, 4], [100, 90]) }],
+    expect: ['thin-feature'],
+  },
+  {
+    // A broad foot, a 1 mm neck and a gentle taper to a 3 mm pin: the nozzle load breaks the neck.
+    // The taper avoids unsupported cap extrusions, whose proposed supports would reinforce the search's neck.
+    name: 'weak neck',
+    objects: [{
+      name: 'WeakNeck.stl',
+      positions: join(box([30, 30, 3], [100, 90]), lift(cylinder([100, 90], 0.5, 5, 32), 2.8),
+        frustum([100, 90], 0.5, 1.5, 7.5, 15.5, 32), lift(cylinder([100, 90], 1.5, 30, 32), 15.3)),
+    }],
+    expect: ['weak-connection'],
   },
 ];
 
@@ -135,7 +149,7 @@ describe(`print checks, engine-${variant}`, { skip: engineSkip }, () => {
   });
 
   for (const fixture of FIXTURES) {
-    test(`${fixture.name}: ${[...fixture.expect, ...(fixture.expectOneOf ? [fixture.expectOneOf.join(' or ')] : [])].join(', ')}`, (t) => {
+    test(`${fixture.name}: ${fixture.expect.join(', ')}`, (t) => {
       const p = fixture.presets ? fixture.presets(presets) : presets;
       sliceWith(engine, p, fixture.objects, false); // warm-up: the first slice of a plate pays for allocations
       const without = sliceWith(engine, p, fixture.objects, false);
@@ -155,9 +169,6 @@ describe(`print checks, engine-${variant}`, { skip: engineSkip }, () => {
       const kinds = new Set(checks.map((c) => c.kind));
       t.diagnostic(checks.map((c) => `${c.severity} ${c.kind} L${c.layer} (${c.position.map((v) => v.toFixed(1)).join(', ')}) ${c.fix}: ${c.message}`).join('\n'));
       for (const kind of fixture.expect) assert.ok(kinds.has(kind), `${fixture.name}: ${kind} found (got ${[...kinds].join(', ') || 'none'})`);
-      if (fixture.expectOneOf) {
-        assert.ok(fixture.expectOneOf.some((k) => kinds.has(k)), `${fixture.name}: one of ${fixture.expectOneOf.join(', ')} (got ${[...kinds].join(', ') || 'none'})`);
-      }
 
       const checksMs = withChecks.output.timings.checks ?? NaN;
       assert.ok(checksMs >= 0, 'timings.checks');
