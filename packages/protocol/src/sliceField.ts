@@ -217,6 +217,8 @@ export function decodeSliceField(bytes: Uint8Array): SliceField {
   const header = readSliceFieldHeader(bytes);
   const length = sliceFieldVoxels(header);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const dataStart = 16 + view.getUint32(8, true);
+  const ranges: Array<{ name: SliceFieldArrayName; start: number; end: number }> = [];
   const read = (name: SliceFieldArrayName): Uint8Array | Int8Array | Uint16Array | Float32Array | undefined => {
     const info = header.arrays[name];
     if (info === undefined) return undefined;
@@ -224,7 +226,13 @@ export function decodeSliceField(bytes: Uint8Array): SliceField {
     if (info.type !== type) throw new Error(`slice field: ${name} is ${info.type}, expected ${type}`);
     if (info.length !== length) throw new Error(`slice field: ${name} has ${info.length} values, the grid ${length}`);
     const size = BYTES[type];
-    if (info.offset < 16 || info.offset + length * size > bytes.length) throw new Error(`slice field: ${name} is outside the file`);
+    if (!Number.isSafeInteger(info.offset) || info.offset % 8 !== 0) throw new Error(`slice field: ${name} has an invalid offset (8-byte alignment required)`);
+    const end = info.offset + length * size;
+    if (info.offset < dataStart || end > bytes.length) throw new Error(`slice field: ${name} is outside the file data`);
+    for (const range of ranges) {
+      if (info.offset < range.end && end > range.start) throw new Error(`slice field: ${name} overlaps ${range.name}`);
+    }
+    ranges.push({ name, start: info.offset, end });
     const at = bytes.byteOffset + info.offset;
     if (type === 'u8') return new Uint8Array(bytes.buffer, at, length);
     if (type === 'i8') return new Int8Array(bytes.buffer, at, length);

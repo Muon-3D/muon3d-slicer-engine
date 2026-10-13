@@ -5,12 +5,12 @@ it; a separate program, such as the print-strength simulator ([Muon-3D/muon3d-si
 reads it. **Only this file crosses that boundary**: no libslic3r structure, no engine code, no protocol connection.
 That keeps the AGPL engine and the programs that read the field separate programs.
 
-The reader and writer are in `packages/protocol/src/sliceField.ts` (Apache-2.0, no engine code):
+The engine's reader and writer are in [`packages/protocol/src/sliceField.ts`](https://github.com/Muon-3D/muon3d-slicer-engine/blob/feat/KAN-528-slice-field/packages/protocol/src/sliceField.ts) (Apache-2.0, no engine code):
 `decodeSliceField(bytes)`, `readSliceFieldHeader(bytes)`, `encodeSliceField(description, arrays)`. Another
 language needs nothing but this page.
 
 The engine builds the field when a `slice` asks for it (`SliceParams.output.sliceField`, capability `slice.field`;
-[PROTOCOL.md](PROTOCOL.md) §6.5) and returns the file's bytes in `SliceResult.sliceField`. A client saves them as
+[engine PROTOCOL.md](https://github.com/Muon-3D/muon3d-slicer-engine/blob/feat/KAN-528-slice-field/docs/PROTOCOL.md) §6.5) and returns the file's bytes in `SliceResult.sliceField`. A client saves them as
 `<name>.slicefield`.
 
 ## The file
@@ -24,6 +24,9 @@ All numbers little-endian.
 | 12-15 | `u32`: 0 (reserved) |
 | 16 … 16 + H - 1 | The header: UTF-8 JSON, padded with spaces to `H` bytes |
 | … | The arrays, each at the byte `offset` the header gives (from the start of the file; a multiple of 8) |
+
+Arrays must start after the padded header, have integer offsets aligned to 8 bytes, fit in the file,
+and occupy disjoint byte ranges. Readers reject a layout that violates these rules.
 
 ## The header
 
@@ -67,7 +70,7 @@ All numbers little-endian.
 - `gravity` is which way gravity pointed **during the print**, relative to `buildDirection`. `"against_build"`: a
   normal printer, the part standing on the plate (gravity along -z). `"along_build"`: the Muon3D M1, which prints
   upside down, the part hanging from the plate above it and growing downward (gravity along +z of this frame). It
-  comes from the printer profile (`printer_notes`, [PROFILES.md](PROFILES.md) §9.1); `null` when the profile does
+  comes from the printer profile (`printer_notes`, [engine PROFILES.md](https://github.com/Muon-3D/muon3d-slicer-engine/blob/feat/KAN-528-slice-field/docs/PROFILES.md) §9.1); `null` when the profile does
   not say, and a reader MUST NOT assume either then. It does not change the arrays: the layers sit in the part the
   same way, so a service-load analysis of the finished part reads the field the same either way. Process simulation
   and stability checks (weight while printing, sag of unsupported extrusions, peel at the plate) MUST use it.
@@ -126,5 +129,5 @@ A bead turning a convex corner leaves its radius unfilled there, as the print do
 
 ## Versions
 
-- **1** (this page): first version. The simulator's repository had no `docs/SLICE_FIELD.md` on any branch or open pull
-  request when it was written (Muon-3D/muon3d-slicer-engine, KAN-528); this page is the agreed format until it does.
+- **1** (this page): first version. This contract is mirrored at `docs/SLICE_FIELD.md` in Muon-3D/muon3d-sim.
+  Keep both copies identical when evolving the file format.

@@ -191,3 +191,24 @@ describe('slice field building', () => {
     assert.equal(arrays.infillFraction[sliceFieldIndex({ dims: [10, 10, 10] }, 5, 5, 9)], 0);
   });
 });
+
+// A file must not point its arrays into the header or another array, or use rounded byte offsets.
+it('refuses malformed array layouts before constructing typed views', () => {
+  const make = (change: (h: ReturnType<typeof readSliceFieldHeader>) => void) => {
+    const bytes = encodeSliceField(description([2, 1, 1]), randomArrays(2, false));
+    const h = readSliceFieldHeader(bytes);
+    h.material.name = null;
+    h.objects[0].name = '';
+    change(h);
+    const size = new DataView(bytes.buffer).getUint32(8, true);
+    const json = new TextEncoder().encode(JSON.stringify(h));
+    assert.ok(json.length <= size);
+    bytes.fill(32, 16, 16 + size);
+    bytes.set(json, 16);
+    return bytes;
+  };
+  assert.throws(() => decodeSliceField(make((h) => { h.arrays.wallFraction!.offset = 16; })), /offset|header|outside/);
+  assert.throws(() => decodeSliceField(make((h) => { h.arrays.wallFraction!.offset += 0.5; })), /offset|align/);
+  assert.throws(() => decodeSliceField(make((h) => { h.arrays.wallFraction!.offset += 1; })), /offset|align/);
+  assert.throws(() => decodeSliceField(make((h) => { h.arrays.skinFraction!.offset = h.arrays.wallFraction!.offset; })), /overlap/);
+});
