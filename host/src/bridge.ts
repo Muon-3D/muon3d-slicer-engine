@@ -9,7 +9,8 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, ObjectPaint, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
 // The bridge's shapes (engine/bridge/job.hpp, toolpaths.hpp)
@@ -50,6 +51,11 @@ export interface EngineObject {
   positions: Float32Array;
   /** The object's own settings (Orca option key -> text). */
   config?: Record<string, string>;
+  /**
+   * Painting on the soup's triangles (protocol 2.2's ObjectPaint; the ops check it). With any kind in it the
+   * engine loads the mesh as sent, with no STL repair, so that triangle i is the soup's i-th triangle.
+   */
+  paint?: ObjectPaint;
 }
 
 export interface SliceJob {
@@ -97,6 +103,11 @@ export interface EngineMeshInput {
   positions: Float32Array;
   /** EngineObject.config: the object's own settings (the placement check ignores them). */
   config?: Record<string, string>;
+  /**
+   * EngineObject.paint: per kind (supports, seam, fuzzySkin, filaments) the painted triangles, their codes and
+   * where each code ends. Builds before 0.4.0 ignore it, and so does the placement check.
+   */
+  paint?: ObjectPaint;
 }
 
 type EngineResult<T> = T | { error: EngineError; log?: string };
@@ -374,11 +385,17 @@ function guarded<A extends unknown[]>(callback: ((...args: A) => void) | undefin
 
 const presetJson = (config: object) => JSON.stringify(config);
 
-/** The objects as the engine takes them; `config` only where the object has settings. Exported for the tests. */
+/**
+ * The objects as the engine takes them: `config` only where the object has settings, `paint` only where it
+ * holds a kind (an object without one loads as before). Exported for the tests.
+ */
 export function meshInputs(objects: SliceJob['objects']): EngineMeshInput[] {
-  return objects.map(({ name, positions, config }) =>
-    config && Object.keys(config).length > 0 ? { name, positions, config } : { name, positions },
-  );
+  return objects.map(({ name, positions, config, paint }) => {
+    const input: EngineMeshInput = { name, positions };
+    if (config && Object.keys(config).length > 0) input.config = config;
+    if (hasPaintKinds(paint)) input.paint = paint;
+    return input;
+  });
 }
 
 /**

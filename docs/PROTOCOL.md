@@ -8,7 +8,7 @@ The code of this document is [`packages/protocol`](../packages/protocol) (`@muon
 Apache-2.0): the TypeScript types of every message, and the helpers named below. The conformance suite
 ([`test/conformance`](../test/conformance)) runs every operation through every transport against those types.
 
-**Version: 2.1** (2.1 adds the profile ops and the slice log; a 2.0 client works unchanged). Words such as MUST,
+**Version: 2.2** (2.1 adds the profile ops and the slice log, 2.2 painting; a 2.0 client works unchanged). Words such as MUST,
 SHOULD and MAY are used as in RFC 2119.
 
 ## Contents
@@ -230,10 +230,10 @@ in `log`.
 ```ts
 params: { protocol: { major: 2, minMinor?: number }, client: { name: string, version: string } }
 result: {
-  protocol: { major: 2, minor: 1 },
+  protocol: { major: 2, minor: 2 },
   engine: {
     name: string,                // "Muon3D Slicer Engine (based on OrcaSlicer)"
-    version: string,             // this release, e.g. "0.3.0"
+    version: string,             // this release, e.g. "0.4.0"
     orca: { version: string, commit: string, repository: string },
     license: 'AGPL-3.0-only',
     source: string,              // this build's source: the repository at the commit the host was built from
@@ -261,6 +261,7 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 | `mesh.indexed` | `Mesh.indices` (indexed meshes) in `slice` and `check` |
 | `settings.view.v1` | `settings.view` format 1 |
 | `slice.log` | (2.1) `SliceParams.output.log`, `SliceResult.log` and `EngineError.log` |
+| `paint.v1` | (2.2) `PlateObject.paint`: support, seam, fuzzy skin and filament painting on an object's triangles |
 | `cancel.cooperative` | (not yet served) a running request can be cancelled and the engine stays loaded |
 
 A client MUST send an op, or a field, only when `hello` lists its capability (the 2.0 ops and fields above are
@@ -306,7 +307,7 @@ params: {
     log?: 'error' | 'warning' | 'info' | 'debug' | 'trace',          // 2.1, 'slice.log': Orca's log down to this level
   },
 }
-PlateObject = { name: string, mesh: Mesh, config?: ConfigPatch }
+PlateObject = { name: string, mesh: Mesh, config?: ConfigPatch, paint?: ObjectPaint }   // paint: 2.2, 'paint.v1'
 result: {
   gcode: Uint8Array,                 // as Orca writes it
   stats: GcodeStats,
@@ -326,6 +327,26 @@ result: {
 - `objects[].config` is the object's own settings (a per-object key: `objectKeys` or `regionKeys` of
   `config.definitions`) in Orca's text, applied as Orca's 3MF loader does. An unknown key or a bad value fails the
   job with -5, naming the object.
+- `objects[].paint` (2.2, `paint.v1`) is painting on the mesh's triangles, one field per kind (`ObjectPaint`,
+  section 8): support enforcers and blockers, seam enforcers and blockers, fuzzy skin, and filaments. Each painted
+  triangle carries its code, the text a 3MF paint attribute holds for it ("Paint codes", section 8). An object whose
+  `paint` holds at least one kind (even one with no triangle) is **used as sent**: its triangles, and each
+  triangle's corners, are taken in the order given; nothing is repaired, dropped, flipped or reordered, and corners
+  are shared where they are equal. The paint then means what the client meant, and the mesh must be sound as it is
+  (outward-facing; a coordinate that is not a finite number fails the job, naming the object). An object without
+  `paint`, or with `{}`, is loaded as before (the way Orca's CLI loads an STL, with its repair), and its G-code is
+  unchanged; a client therefore leaves out the kinds with no painted triangle. With an indexed mesh, triangle *i* is
+  the *i*-th index triple.
+- Malformed paint fails the job with `BadRequest` before anything is sliced. The checks are those of
+  `checkFacetPaint` in `packages/protocol`: the field types, as many `ends` as `triangles`, triangles strictly
+  ascending and below the mesh's triangle count, each code exactly one tree of uppercase hexadecimal digits, and no
+  state above the kind's. `message` names the object and the kind, e.g. "3DBenchy: the seam paint of triangle 1204
+  is not a valid code.", and `objects` names the object.
+- Paint acts only where Orca's settings let it. Support enforcers need `enable_support` = 1 (Orca warns otherwise,
+  in a `validation` warning), and with `support_type` `normal(manual)` or `tree(manual)` only the enforced areas get
+  support. Seam paint works with every `seam_position`, and a blocker wins over an enforcer. Fuzzy skin paint needs
+  `fuzzy_skin` other than `disabled_fuzzy` (`none` fuzzes the painted areas only). Filament paint needs more than
+  one filament, and is ignored with one.
 - The configs are the presets exactly as Orca's CLI takes them: inheritance resolved (no `inherits`),
   `from: "system"`, a `type`, overrides already applied.
 - Progress comes as `progress` messages, Orca's warnings as `warning` messages (and in `warnings`).
@@ -832,10 +853,61 @@ interface SegmentSet {
 interface ToolpathExtras {                          // parallel to extrusions
   feedrate: Float32Array; fanSpeed: Uint8Array; temperature: Uint16Array; time: Float32Array; height: Float32Array;
 }
+
+interface ObjectPaint {                             // 2.2, 'paint.v1': a kind left out is unpainted
+  supports?: FacetPaint;                            // states: 1 enforces support, 2 blocks it
+  seam?: FacetPaint;                                // 1 enforces the seam, 2 blocks it
+  fuzzySkin?: FacetPaint;                           // 1 gives fuzzy skin
+  filaments?: FacetPaint;                           // 1-32: the filament (1-based) the painted area prints with
+}
+interface FacetPaint {
+  triangles: Uint32Array;                           // painted triangles of the mesh, 0-based, strictly ascending
+  codes: string;                                    // their codes, concatenated in the same order
+  ends: Uint32Array;                                // code i is codes.slice(i ? ends[i - 1] : 0, ends[i])
+}
 ```
 
 Width and height codes: 0.01 mm steps up to 2 mm (code 200), then 0.05 mm steps up to 4.75 mm (255); 0 unknown
 (use `lineWidth`). A segment's z is the top of its bead.
+
+### Paint codes
+
+A triangle's code says how the triangle is divided and which state each piece has. It is the text a 3MF paint
+attribute holds for that triangle in OrcaSlicer's and Bambu Studio's project files (`paint_supports`, `paint_seam`,
+`paint_fuzzy_skin`, `paint_color`), so a client that reads and writes those files sends their codes as they are.
+
+- **Digits:** uppercase hexadecimal, `0`-`9` and `A`-`F`. Lowercase is not a code.
+- **Read from the end.** The last digit is the triangle's **head** *h*: *s* = *h* mod 4 is the number of its edges
+  that are halved (0 for an undivided triangle, a **leaf**), and *x* = *h* div 4.
+- **A leaf** (*s* = 0) has state *x* when *x* is 0, 1 or 2. When *x* is 3, the state continues in the digit to its
+  left, *e*: the state is *e* + 3 when *e* is below 15; when *e* is 15, the digit to the left of that, *f*, gives
+  state *f* + 18. So the leaves are `0` (none), `4` (state 1), `8` (2), `0C` (3), `1C` (4) ... `EC` (17), `0FC` (18)
+  ... `EFC` (32).
+- **A divided triangle** (*s* = 1, 2 or 3) has *s* + 1 pieces, and *x* (0, 1 or 2) is its **special corner** *k*.
+  The pieces' codes stand to the left of its head, in piece order: the code is `code(piece 0) code(piece 1) ...
+  code(piece s) head`, so reading leftwards from the head meets the last piece first. Each piece is itself a leaf
+  or divided, in the same way.
+- **The pieces.** Name the triangle's corners, in the mesh's order, from the special corner: *v0* is corner *k*,
+  *v1* corner *k* + 1 and *v2* corner *k* + 2 (mod 3). With mid(*a*, *b*) the midpoint of an edge:
+  - *s* = 1, the edge *v1 v2* halved at *m*: pieces (*v0*, *v1*, *m*) and (*m*, *v2*, *v0*);
+  - *s* = 2, the edges at *v0* halved at *a* = mid(*v0*, *v1*) and *b* = mid(*v0*, *v2*): pieces (*v0*, *a*, *b*),
+    (*a*, *v1*, *b*) and (*v1*, *v2*, *b*);
+  - *s* = 3, every edge halved at *a* = mid(*v0*, *v1*), *b* = mid(*v1*, *v2*) and *c* = mid(*v2*, *v0*): pieces
+    (*v0*, *a*, *c*), (*a*, *v1*, *b*), (*b*, *v2*, *c*) and (*a*, *b*, *c*). Writers use *k* = 0 here; another *k*
+    turns the corners all the same.
+
+  A piece's corners are listed in that order, which is the order its own special corner refers to.
+- **Examples:** `401` is a triangle halved once at corner 0, piece 0 in state 1 and piece 1 bare; `4002` is divided
+  by two edges at corner 0 with piece 0 in state 1; `0004053` is divided three ways, pieces 0-2 bare and piece 3
+  halved once at corner 1 with its piece 0 in state 1.
+- **A code is exactly one tree:** no digit left over to its left, none missing. A layer lists only painted triangles
+  (a bare leaf `0` can simply be left out), and each kind's states are those `ObjectPaint` gives.
+- **Corner order matters.** A code describes the triangle with its corners in the mesh's order. A client that sends
+  a triangle with its corners in another order (baking a mirrored placement into the mesh swaps two of them) sends
+  the code rewritten for that order.
+
+`checkFacetPaint(paint, triangleCount, maxState?)` and `checkObjectPaint(paint, triangleCount, name)` in
+`packages/protocol` check one kind and an object's paint as the host does.
 
 **Option keys are data, not protocol.** An Orca upgrade may add or remove options; a client MUST tolerate unknown
 keys and missing ones.
@@ -855,7 +927,7 @@ keys and missing ones.
    (`npm run test:conformance`; the engine part with `npm run test:engine`). A client's fake engine type-checks
    against the same package.
 
-The package's version follows the protocol: 2.1.x is protocol 2.1.
+The package's version follows the protocol: 2.2.x is protocol 2.2.
 
 ## 10. A client in brief
 

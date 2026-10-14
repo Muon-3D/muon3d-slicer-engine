@@ -44,8 +44,30 @@ void write_binary_stl(const std::string &path, const std::vector<float> &positio
 // Throws JobFailure(CLI_DATA_FILE_ERROR) when the mesh cannot be read, JobFailure
 // (CLI_CONFIG_FILE_ERROR) naming the object for a setting Orca does not know or a value it cannot
 // read, and std::bad_alloc when memory ran out, also where Orca itself swallowed that (the convex
-// hull). The slice runs check_object_config on every object first.
+// hull). The slice runs check_object_config and check_object_paint on every object first.
+//
+// A painted object (`object.painted`, protocol 2.2) is loaded the way Orca's 3MF loader builds a volume
+// (bbs_3mf.cpp:5108-5205) instead of through an STL: the soup's corners welded by exact float equality,
+// every triangle kept in order with its corners in order (no repair: nothing dropped, flipped or
+// reordered), the volume added as load_stl adds it (Model::add_object), then each kind's codes read into
+// supported_facets, seam_facets, fuzzy_skin_facets and mmu_segmentation_facets by Orca's own 3MF string
+// reader (FacetsAnnotation::set_triangle_from_string). The rest is as above. `stl_path` is then only the
+// name the object's source records; no file is written. An unpainted object keeps the STL path, so its
+// G-code is unchanged (the slice goldens).
 Slic3r::ModelObject *load_object(Slic3r::Model &model, const MeshInput &object, const std::string &stl_path);
+
+// Checks a painted object's paint before its mesh loads, as checkFacetPaint of packages/protocol does
+// (the host runs that first): per kind, as many ends as triangles; triangles strictly ascending and below
+// the soup's triangle count (Orca's reader drops a volume's paint otherwise); ends ascending, the last at
+// the end of the codes; each code exactly one tree of uppercase hexadecimal digits, with no state above
+// the kind's (2 supports and seam, 1 fuzzy skin, 32 filaments). set_triangle_from_string itself checks
+// nothing. Throws JobFailure(ENGINE_BAD_REQUEST) naming the object and the kind, e.g.
+// "Cube.stl: the seam paint of triangle 4 is not a valid code."
+void check_object_paint(const MeshInput &object);
+
+// The highest state in one paint code (codes[begin, end)), or -1 when it is not exactly one tree of
+// uppercase hexadecimal digits (paintCodeMaxState in packages/protocol/src/paint.ts).
+int paint_code_max_state(const std::string &codes, size_t begin, size_t end);
 
 // Checks one object's own settings (`object.config`) before its mesh loads: each must be a setting
 // Orca knows with a value it can read (the failures load_object would give), and the plate's

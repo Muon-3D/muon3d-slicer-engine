@@ -7,6 +7,7 @@
 export * from './envelope.ts';
 export * from './data.ts';
 export * from './ops.ts';
+export * from './paint.ts';
 export * from './settings.ts';
 export * from './profiles.ts';
 export * from './profileSet.ts';

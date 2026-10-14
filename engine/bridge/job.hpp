@@ -46,13 +46,31 @@ private:
     EngineError m_error;
 };
 
+// One kind of painting on a plate object's triangles (protocol 2.2 FacetPaint): the painted triangles,
+// 0-based in the soup's order and strictly ascending, and their codes (the text a 3MF paint attribute
+// holds), concatenated: code i is codes[ends[i - 1] (0 for i = 0), ends[i]).
+struct FacetInput {
+    std::vector<uint32_t> triangles;
+    std::string           codes;
+    std::vector<uint32_t> ends;
+};
+
 // One plate object: a triangle soup (9 floats per triangle) already in bed coordinates, and its
 // per-object settings (protocol.ts EngineObject.config): Orca option name -> value text, in the
 // order given, applied to the ModelObject's config as Orca's 3MF loader does.
+//
+// `painted`: the object carries paint (protocol 2.2 PlateObject.paint with at least one kind, even an
+// empty one). It is then loaded as sent, without the STL import's repair, and each kind's codes go to
+// its ModelVolume through Orca's own 3MF string reader (model_input.cpp, load_object).
 struct MeshInput {
     std::string                                      name;
     std::vector<float>                               positions;
     std::vector<std::pair<std::string, std::string>> config;
+    bool                                             painted = false;
+    FacetInput                                       supports;   // 1 enforcer, 2 blocker
+    FacetInput                                       seam;       // 1 enforcer, 2 blocker
+    FacetInput                                       fuzzy_skin; // 1 fuzzy skin
+    FacetInput                                       filaments;  // 1-32 the filament
 };
 
 // Receives progress and warnings while a job runs. Implementations must be thread-safe: in the

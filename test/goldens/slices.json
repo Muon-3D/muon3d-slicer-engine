@@ -90,5 +90,78 @@
     "filamentMm": 1224.56
    }
   }
+ },
+ "painted": {
+  "reference": {
+   "version": "0.4.0",
+   "orcaCommit": "2d1163eb6f5228de605150e3b4800081947070eb",
+   "recordedWith": "the engine 0.4.0 (st and mt alike); no native OrcaSlicer CLI is built from the pinned commit yet"
+  },
+  "plates": {
+   "m1-t-blockers-tree": {
+    "st": {
+     "sha256": "1eb9099390a4189ec5715849dbc282f9d47762a7ca308645354ac0ad670890ef",
+     "bytes": 285967,
+     "layers": 75,
+     "printTimeText": "10m 39s",
+     "filamentMm": 1337.36
+    },
+    "mt": {
+     "sha256": "1eb9099390a4189ec5715849dbc282f9d47762a7ca308645354ac0ad670890ef",
+     "bytes": 285967,
+     "layers": 75,
+     "printTimeText": "10m 39s",
+     "filamentMm": 1337.36
+    }
+   },
+   "m1-t-enforcers-normal": {
+    "st": {
+     "sha256": "290dd9a7f37d860cd9050df21a927fd6cc9205efe5c9550ff8ad687c63a2ed88",
+     "bytes": 343648,
+     "layers": 99,
+     "printTimeText": "11m 33s",
+     "filamentMm": 1703.59
+    },
+    "mt": {
+     "sha256": "290dd9a7f37d860cd9050df21a927fd6cc9205efe5c9550ff8ad687c63a2ed88",
+     "bytes": 343648,
+     "layers": 99,
+     "printTimeText": "11m 33s",
+     "filamentMm": 1703.59
+    }
+   },
+   "m1-t-enforcers-tree": {
+    "st": {
+     "sha256": "a9ecdf66c362783b469d934ada667662ae75b3b29a2b222a3563172e55281e5d",
+     "bytes": 1075815,
+     "layers": 75,
+     "printTimeText": "12m 30s",
+     "filamentMm": 1613.65
+    },
+    "mt": {
+     "sha256": "a9ecdf66c362783b469d934ada667662ae75b3b29a2b222a3563172e55281e5d",
+     "bytes": 1075815,
+     "layers": 75,
+     "printTimeText": "12m 30s",
+     "filamentMm": 1613.65
+    }
+   },
+   "m1-cylinder-seam": {
+    "st": {
+     "sha256": "ff2c13c2227ef7526ae3b319ee607c1b46f5b87767d372ec33db0b676b6b94bb",
+     "bytes": 651020,
+     "layers": 50,
+     "printTimeText": "5m 47s",
+     "filamentMm": 1202.22
+    },
+    "mt": {
+     "sha256": "ff2c13c2227ef7526ae3b319ee607c1b46f5b87767d372ec33db0b676b6b94bb",
+     "bytes": 651020,
+     "layers": 50,
+     "printTimeText": "5m 47s",
+     "filamentMm": 1202.22
+    }
+   }
+  }
  }
 }

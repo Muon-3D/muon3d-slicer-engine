@@ -96,6 +96,18 @@ What `build.sh` publishes into `dist/`:
   value Orca cannot read or one outside Orca's limits fails the job with code -5 and a message naming the object
   and the setting, for example `has an invalid value for the setting "Wall loops" (wall_loops): "-1". It must be
   between 0 and 1000.` Settings never carry over to the next job.
+- **Painting.** `PlateObject.paint` (protocol 2.2; the bridge's `EngineObject.paint`) carries, per kind (supports,
+  seam, fuzzy skin, filaments), the painted triangles and their 3MF paint codes. Before any mesh loads,
+  `check_object_paint` (`bridge/model_input.cpp`) checks them as the host's `checkFacetPaint` does (the host has
+  already refused malformed paint; the engine's check covers callers of the module itself): `set_triangle_from_string`
+  checks nothing, and a bad code would read past its triangle's bits. A painted object then skips the STL file and
+  its repair: `load_object` welds the soup's corners by exact float equality and keeps every triangle in order with
+  its corners in order, adds the mesh as `load_stl` does (`Model::add_object`), and reads each kind's codes into
+  `supported_facets`, `seam_facets`, `fuzzy_skin_facets` and `mmu_segmentation_facets` with Orca's own 3MF string
+  reader, `FacetsAnnotation::set_triangle_from_string`, as Orca's 3MF loader does (`bbs_3mf.cpp`). Unlike that
+  loader it never flips a mesh whose volume is negative, which would turn the codes' corners. An object without
+  paint keeps the STL path, so its G-code is unchanged; for the golden plates the painted path with empty layers
+  gives the same G-code as well (recorded by the conformance suite, not required).
 - **`configDefinitions()`** (`bridge/config_def.cpp`) returns Orca's option table as JSON text: every option of
   `print_config_def` (type, labels, tooltip, unit, limits, enum values, labels and every name `deserialize`
   accepts, default in Orca's text form, mode, GUI type) plus the key sets libslic3r defines (preset scopes,
