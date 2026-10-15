@@ -77,7 +77,7 @@ What `build.sh` publishes into `dist/`:
 - `manifest.json` (`EngineManifest` in `packages/protocol/src/manifest.ts`): Orca version and commit, build time, and
   each variant's file names, sizes, sha256 and `engineCommit`. An entry for the other variant is kept only if it
   was built from the same Orca commit, so after moving the pin rebuild **both** variants. `npm run build:host` adds
-  the `host` entry (file, sha256, protocol, canary, the chunks it loads).
+  the `host` entry (file, sha256, protocol major and minor, canary, the chunks it loads).
 
 `dist/` is git-ignored. A page serves the whole folder as it is and starts the host by URL:
 `new Worker(base + manifest.host.file, { type: 'module' })`, then protocol v2 (`docs/PROTOCOL.md`): `hello`, `load`
