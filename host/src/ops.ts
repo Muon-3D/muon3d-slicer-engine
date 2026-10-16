@@ -5,18 +5,9 @@ import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceFieldRequest
 import { PAINT_KINDS, checkObjectPaint, hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 import type { CheckJob, CheckOutput, EngineObject, SliceJob, SliceOutput } from './bridge.ts';
 import { SLICE_FIELD_VOXEL_SIZES } from './sliceField.ts';
+import { BadRequest } from './badRequest.ts';
 
-/** A request the host refuses (BadRequest). */
-export class BadRequest extends Error {
-  readonly detail?: string;
-  /** The objects the request is wrong about, by name. */
-  readonly objects?: string[];
-  constructor(message: string, detail?: string, objects?: string[]) {
-    super(message);
-    if (detail !== undefined) this.detail = detail;
-    if (objects !== undefined) this.objects = objects;
-  }
-}
+export { BadRequest };
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
