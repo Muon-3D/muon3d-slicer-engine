@@ -349,6 +349,20 @@ describe(`engine-${variant}`, { skip: engineSkip }, () => {
     assertToolpathsMatchParser(t, output);
   });
 
+  test("the heap stops growing: Benchy sliced again needs no more of it (mt: no tbbmalloc, big objects outside mimalloc's arenas)", needsBenchy, async (t) => {
+    // Engine 0.5.0's mt heap grew by 100-200 MB with every Benchy at 8+ threads (1.7, 1.9, 2.0 GB …):
+    // tbbmalloc's pools on top of mimalloc, and mimalloc reserving a new arena for each 20-50 MB buffer.
+    const objects = [{ name: 'Benchy.stl', positions: await benchy([100, 90]) }];
+    const heaps: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      slice(engine, presets, objects);
+      heaps.push((engine as unknown as { wasmMemory: WebAssembly.Memory }).wasmMemory.buffer.byteLength);
+    }
+    t.diagnostic(`heap after each Benchy: ${heaps.map((b) => `${Math.round(b / 2 ** 20)} MB`).join(', ')}`);
+    assert.ok(heaps[2] - heaps[1] < 64 * 2 ** 20, 'the third Benchy grew the heap');
+    if (variant === 'mt') assert.ok(heaps[2] < 1.5 * 2 ** 30, `${Math.round(heaps[2] / 2 ** 20)} MB of heap for a Benchy`);
+  });
+
   test('support, ironing, gap fill and combined infill: every bead as wide and as tall as Orca draws it', needsBenchy, async (t) => {
     const positions = await benchy([100, 90]);
     const process = {

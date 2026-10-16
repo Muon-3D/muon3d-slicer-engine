@@ -102,11 +102,14 @@ set(ENGINE_LINK_OPTIONS
 if (ENGINE_VARIANT STREQUAL "mt")
     list(APPEND ENGINE_LINK_OPTIONS
         -pthread
-        # Per-thread heaps; dlmalloc has one global lock (a Benchy takes ~6 s with it, as long as st). The
-        # price: the heap grows by ~100-150 MB per Benchy at 24 threads and never shrinks. Measured 2026-09-25,
-        # none of mimalloc's own remedies bounds that: mi_collect(true) after each job, page_reclaim_on_free
-        # = 1, page_full_retain = 0, arena_reserve 4 MiB or 256 MiB, arena_max_object_size 1 GiB. So the
-        # client caps the threads and replaces an engine whose heap has grown (wasmMemory above).
+        # Per-thread heaps; dlmalloc has one global lock (a Benchy takes 2.5-3.5 times as long with it). Two
+        # things keep mimalloc's heap close to what is in use (measured 2026-10-16, Harry's two-part plate
+        # with organic supports: 0.5.0 ran the 4 GB heap out at any thread count, now 2.0 GB at 8 threads):
+        # tbb::scalable_allocator is malloc (allocator/scalable_malloc.c, no tbbmalloc), and objects over
+        # 4 MiB bypass mimalloc's arenas (allocator/mimalloc_options.c). mimalloc's other settings
+        # (page_reclaim_on_free, page_full_retain, purge_delay, a smaller arena_reserve, no arenas at all)
+        # did not help. The heap still never shrinks, so the client replaces an engine whose heap has grown
+        # (wasmMemory above).
         -sMALLOC=mimalloc
         # Workers are started up front: a thread blocked in slicing cannot wait for a new Worker to be
         # created, and TBB may use every hardware thread plus the callers. STRICT=2 makes running out an
@@ -117,6 +120,15 @@ if (ENGINE_VARIANT STREQUAL "mt")
         # Growable memory with threads makes JS re-check the heap views on every access; where the
         # browser has resizable ArrayBuffers (detected at runtime) that overhead goes away.
         -sGROWABLE_ARRAYBUFFERS=1)
+    target_sources(orca_engine PRIVATE
+        "${ENGINE_DIR}/allocator/scalable_malloc.c"
+        "${ENGINE_DIR}/allocator/mimalloc_options.c")
+    # mimalloc.h (mi_option_set) from the Emscripten that links the engine's mimalloc.
+    set_source_files_properties("${ENGINE_DIR}/allocator/mimalloc_options.c" PROPERTIES
+        INCLUDE_DIRECTORIES "${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include")
+    if (NOT EXISTS "${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include/mimalloc.h")
+        message(FATAL_ERROR "No mimalloc.h under ${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include.")
+    endif ()
 else ()
     list(APPEND ENGINE_LINK_OPTIONS -sMALLOC=dlmalloc)
 endif ()

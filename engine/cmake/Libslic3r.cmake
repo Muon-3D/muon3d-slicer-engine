@@ -149,6 +149,7 @@ target_link_libraries(libslic3r
         TBB::tbbmalloc
         ZLIB::ZLIB
 )
+engine_without_tbbmalloc(libslic3r)   # cmake/Dependencies.cmake
 
 # Orca builds libslic3r with pchheader.hpp as a precompiled header (SLIC3R_PCH, on in its Linux build),
 # which also force-includes it into every source. Doing the same keeps the translation units identical to
