@@ -9,8 +9,9 @@ release creation, publication, deployment or printer action was performed.
 Do not run the sequence below as written. Main published
 [v0.5.0](https://github.com/Muon-3D/muon3d-slicer-engine/releases/tag/v0.5.0) at `ed35130` (12:15 UTC)
 and has since moved to 0.6.0 / protocol 2.4 (`351518f`: mt64, and `tbb::scalable_allocator` on malloc),
-all without #4 or #5. Both PRs conflict with main (#4: protocol, host, conformance and the engine test
-runner; #5 also `engine/bridge/slice_job.cpp`). Rebase them onto main and give them unused engine and
+all without #4 or #5. Both PRs conflict with that main (#4: the host's bridge, core and ops, the protocol's
+ops and the engine test runner; #5 also versions, release workflow, protocol docs, conformance and
+`engine/bridge/slice_job.cpp`). Rebase them onto main and give them unused engine and
 protocol versions before any tag. Never replace an existing tag or its assets.
 
 The mt crash hold is resolved: it was V8's lag in showing a grown shared heap to other threads' atomic
