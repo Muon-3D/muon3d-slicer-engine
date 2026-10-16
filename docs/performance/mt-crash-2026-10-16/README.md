@@ -64,8 +64,8 @@ A job that grows the heap anyway logs `Engine host: the engine's shared heap gre
 its threads ran …`. A crash after such growth carries the same words in the error's `detail`.
 
 `test/sharedHeap.e2e.test.ts` (mt, in `npm run test:engine`) asserts that neither of two slices grows the
-shared heap. It fails before the fix (`results/red-sharedHeap.log`: "slice 1 grew the shared heap from 256
-to 836.25 MiB while its threads ran") and passes after it (`results/green-sharedHeap.log`).
+shared heap. It fails before the fix (`results/red-sharedHeap.txt`: "slice 1 grew the shared heap from 256
+to 836.25 MiB while its threads ran") and passes after it (`results/green-sharedHeap.txt`).
 `host/test/bridge.test.ts` covers the reserve: shared memory only, no compounding, the maximum, a refused
 grow, and the growth named on a crash.
 

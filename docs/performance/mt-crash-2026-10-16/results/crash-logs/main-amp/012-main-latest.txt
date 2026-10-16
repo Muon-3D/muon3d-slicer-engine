@@ -1,0 +1,35 @@
+Aborted()
+MT_TRAP first-slice RuntimeError: unreachable
+    at wasm://wasm/02cceb6e:wasm-function[6387]:0x609b63
+    at abort (file:///C:/Users/jack/claude-engine-mtfix-evidence/dist-amp-main/engine-mt.mjs:9:5890)
+    at __abort_js (file:///C:/Users/jack/claude-engine-mtfix-evidence/dist-amp-main/engine-mt.mjs:9:71179)
+    at wasm://wasm/02cceb6e:wasm-function[1064]:0x756de
+    at wasm://wasm/02cceb6e:wasm-function[578]:0x39a88
+    at wasm://wasm/02cceb6e:wasm-function[7833]:0x6dd4ab
+    at wasm://wasm/02cceb6e:wasm-function[1838]:0x105d17
+    at wasm://wasm/02cceb6e:wasm-function[74]:0x6742
+    at wasm://wasm/02cceb6e:wasm-function[4272]:0x38aa2e
+    at wasm://wasm/02cceb6e:wasm-function[2920]:0x1f3022
+MT_WORKER_STACK RuntimeError: memory access out of bounds
+    at wasm://wasm/02cceb6e:wasm-function[2410]:0x16531d
+    at wasm://wasm/02cceb6e:wasm-function[4845]:0x3efc10
+    at wasm://wasm/02cceb6e:wasm-function[106]:0xab34
+    at wasm://wasm/02cceb6e:wasm-function[116]:0xbca6
+    at wasm://wasm/02cceb6e:wasm-function[2127]:0x140c01
+    at wasm://wasm/02cceb6e:wasm-function[842]:0x59fa7
+    at wasm://wasm/02cceb6e:wasm-function[2251]:0x157ebc
+    at wasm://wasm/02cceb6e:wasm-function[6110]:0x5cca59
+    at wasm://wasm/02cceb6e:wasm-function[6111]:0x5ccc6c
+    at wasm://wasm/02cceb6e:wasm-function[301]:0x1a30d
+worker sent an error! undefined:undefined: memory access out of bounds
+MT_UNCAUGHT RuntimeError: memory access out of bounds
+    at wasm://wasm/02cceb6e:wasm-function[2410]:0x16531d
+    at wasm://wasm/02cceb6e:wasm-function[4845]:0x3efc10
+    at wasm://wasm/02cceb6e:wasm-function[106]:0xab34
+    at wasm://wasm/02cceb6e:wasm-function[116]:0xbca6
+    at wasm://wasm/02cceb6e:wasm-function[2127]:0x140c01
+    at wasm://wasm/02cceb6e:wasm-function[842]:0x59fa7
+    at wasm://wasm/02cceb6e:wasm-function[2251]:0x157ebc
+    at wasm://wasm/02cceb6e:wasm-function[6110]:0x5cca59
+    at wasm://wasm/02cceb6e:wasm-function[6111]:0x5ccc6c
+    at wasm://wasm/02cceb6e:wasm-function[301]:0x1a30d
