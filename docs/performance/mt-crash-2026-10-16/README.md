@@ -133,14 +133,21 @@ What differs in the mt job is the CPU the engine tests take around the gate. In 
 - An mt engine also keeps about one core busy for 1–3 s after each job on 16 threads, against about 1 s
   for st (`mt-stress.mjs --idle-cpu`; the engine's own thread is idle then, event-loop utilisation 0).
 
+After this fix, Builds dispatched minutes apart on the two branches (unchanged gate, node-worker p95):
+#4 0.91 ms on mt and 1.81 ms on st; #5 7.64 ms on mt and **6.43 ms on st**. p50 was 0.46–0.69 ms on #4
+and 2.32–3.58 ms on #5. #5's st job fails too, so the cost is not mt's. #5's settings path is identical to #4's.
+What #5 adds around the gate is `printChecks.test.ts`, 27 s on mt and 44 s on st, slicing while
+`conformance.test.ts` measures. Run [38930783189](https://github.com/Muon-3D/muon3d-slicer-engine/actions/runs/38930783189)
+(#4) and [38930791909](https://github.com/Muon-3D/muon3d-slicer-engine/actions/runs/38930791909) (#5).
+
 That is contention for the runner's CPUs, not work on the settings path, so there is nothing to defer to
 the first slice.
 
 `gate-after-slice.mjs` and `gate.py` run the unchanged gate procedure right after an st or mt slice in the
 same process. Local numbers taken while other sessions loaded the laptop are meaningless:
 p95 11–300 ms for every arm, including the arm with no engine (`results/gate-pr5*.jsonl`). The gate, its
-timing code and its threshold are unchanged. Whether to run the mt engine tests with less file parallelism
-in CI changes how the gate is measured, so that is Jack's call.
+timing code and its threshold are unchanged. Running conformance apart from the heavier engine files, or lighter
+print-checks tests, would change how the gate is measured, so that is Jack's call.
 
 ## Reproduce
 
