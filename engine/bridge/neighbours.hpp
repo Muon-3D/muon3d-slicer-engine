@@ -75,4 +75,13 @@ std::vector<EngineWarning> find_dropped_supports(const Slic3r::Print &print, con
 // object's outline there), or empty when neither's does (walls, or support against support).
 ConflictInfo describe_conflict(const Slic3r::Print &print, const Slic3r::ConflictResult &conflict, const std::vector<float> *layer_z);
 
+// The lowest of the plate's path conflicts between two objects, given the one Orca found (`found`,
+// Print::get_conflict_result). Orca checks the layers in parallel (ConflictChecker::
+// find_inter_of_lines_in_diff_objs, tbb::parallel_for) and keeps whichever conflict a thread reported
+// first: on the mt engines that is any conflicting layer, a different one from run to run, while st (the
+// serial shim) finds the lowest. This checks the layers in order, as st does, so every variant reports the
+// same conflict: the first layer the plate would go wrong on. A conflict with the prime tower is returned
+// as Orca found it.
+Slic3r::ConflictResult lowest_conflict(Slic3r::Print &print, const Slic3r::ConflictResult &found);
+
 } // namespace muon

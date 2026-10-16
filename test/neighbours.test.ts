@@ -173,6 +173,10 @@ describe('supports and the other objects on the plate', { skip: engineSkip }, ()
         ([x, y, z]) => Math.abs(z - error.conflict!.z) < 1e-3 && distance(x, y, block) === 0,
       );
       assert.ok(crossing.length > 0, label);
+      // The lowest conflicting layer, on every variant and every run (the mt engines check the layers in parallel,
+      // and Orca keeps whichever conflict a thread found first; the engine looks for the lowest: neighbours.hpp).
+      const again = failure(objects, overrides);
+      assert.deepEqual([again.conflict?.layer, again.conflict?.z, again.message], [error.conflict.layer, error.conflict.z, error.message], label);
     }
   });
 

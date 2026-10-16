@@ -511,7 +511,14 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
         // does to preview a conflict.
         if (!print.get_conflict_string().empty()) {
             EngineError              error{CLI_GCODE_PATH_CONFLICTS, print.get_conflict_string(), {}, std::nullopt, nullptr};
-            if (const ConflictResultOpt conflict = print.get_conflict_result()) {
+            // The lowest conflict, whichever the mt engines' parallel check came upon (neighbours.hpp); the
+            // message as Orca words it (Print::get_conflict_string), for that conflict.
+            ConflictResultOpt conflict = print.get_conflict_result();
+            if (conflict) {
+                conflict = lowest_conflict(print, *conflict);
+                error.message = "Found gcode path conflicts between object " + conflict->_objName1 + " and " + conflict->_objName2;
+            }
+            if (conflict) {
                 for (const std::string &name : {conflict->_objName1, conflict->_objName2})
                     if (!name.empty())
                         error.objects.push_back(name);

@@ -6,6 +6,7 @@
 #include <libslic3r/ExPolygon.hpp>
 #include <libslic3r/Geometry.hpp>
 #include <libslic3r/Layer.hpp>
+#include <libslic3r/GCode/ConflictChecker.hpp>
 #include <libslic3r/Polyline.hpp>
 
 #include <algorithm>
@@ -334,6 +335,42 @@ std::vector<EngineWarning> find_dropped_supports(const Print &print, const std::
                        objects});
     }
     return out;
+}
+
+ConflictResult lowest_conflict(Print &print, const ConflictResult &found)
+{
+    if (found._obj1 == nullptr || found._obj2 == nullptr)
+        return found; // the prime tower
+
+    // The same buckets as ConflictChecker::find_inter_of_lines_in_diff_objs, without the prime tower's.
+    LinesBucketQueue queue;
+    for (PrintObject *object : print.objects_mutable()) {
+        ObjectExtrusions layers = getAllLayersExtrusionPathsFromObject(object);
+        const auto &instances = object->instances();
+        for (size_t i = 0; i < instances.size(); ++i) {
+            const PrintInstance &instance = instances[i];
+            if (i + 1 == instances.size()) {
+                queue.emplace_back_bucket(std::move(layers.perimeters), &instance, instance.shift);
+                queue.emplace_back_bucket(std::move(layers.support), &instance, instance.shift);
+            } else {
+                queue.emplace_back_bucket(ExtrusionLayers(layers.perimeters), &instance, instance.shift);
+                queue.emplace_back_bucket(ExtrusionLayers(layers.support), &instance, instance.shift);
+            }
+        }
+    }
+    // Layer by layer from the bed, up to Orca's: the first one with a conflict.
+    while (queue.valid()) {
+        const LineWithIDs lines  = queue.getCurLines();
+        const float       bottom = queue.getCurrBottomZ();
+        if (bottom > found._height + EPSILON)
+            break;
+        if (const ConflictComputeOpt hit = ConflictChecker::find_inter_of_lines(lines)) {
+            const auto *first  = static_cast<const PrintInstance *>(hit->_obj1);
+            const auto *second = static_cast<const PrintInstance *>(hit->_obj2);
+            return ConflictResult(first->print_object->model_object()->name, second->print_object->model_object()->name, bottom, first, second);
+        }
+    }
+    return found;
 }
 
 ConflictInfo describe_conflict(const Print &print, const ConflictResult &conflict, const std::vector<float> *layer_z)
