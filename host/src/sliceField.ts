@@ -382,7 +382,9 @@ export function buildSliceField(src: SliceFieldSource): { description: SliceFiel
     voxelSize: v,
     dims: [nx, ny, nz],
     buildDirection: [0, 0, 1],
-    gravity: printerGravity(src.machine.printer_notes),
+    gravity: text(src.machine.gravity) === 'along_build' ? 'along_build'
+      : text(src.machine.gravity) === 'against_build' ? 'against_build'
+      : printerGravity(src.machine.printer_notes),
     material: { type: text(filament.filament_type) ?? 'PLA', name: text(filament.name) || null, vendor: text(filament.filament_vendor) || null },
     layerHeight: number(text(src.process.layer_height), 0),
     firstLayerHeight: number(text(src.process.initial_layer_print_height), 0),

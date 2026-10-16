@@ -75,10 +75,10 @@ for (const target of TARGETS) {
 
     const settingsPresets = () => ({ machine: presets.machine, process: presets.process, filament: presets.filaments[0] });
 
-    test('hello: protocol 2.2, every op, painting, the engine and its licence', async () => {
-      const hello = await host.connection.open(client, { minMinor: 2, required: [...OPS, Capability.sliceLog, Capability.paintV1] });
+    test('hello: protocol 2.3, painting, field, checks, gravity and the engine licence', async () => {
+      const hello = await host.connection.open(client, { minMinor: 3, required: [...OPS, Capability.sliceLog, Capability.paintV1, Capability.sliceField, Capability.printChecks, Capability.gravity] });
       assert.deepEqual(hello.protocol, { major: PROTOCOL.major, minor: PROTOCOL.minor });
-      assert.equal(PROTOCOL.minor, 2);
+      assert.equal(PROTOCOL.minor, 3);
       for (const op of OPS) assert.ok(hello.capabilities.includes(op), op);
       for (const op of PROFILE_OPS) assert.ok(OPS.includes(op), op);
       assert.equal(hello.engine.license, 'AGPL-3.0-only');

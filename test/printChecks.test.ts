@@ -238,7 +238,7 @@ describe(`print checks, engine-${variant}`, { skip: engineSkip }, () => {
   });
 
   test('gravity: a preset without it is upright; a wrong value fails the slice', () => {
-    const { gravity: _, ...machine } = presets.machine;
+    const { gravity: _, printer_notes: _notes, ...machine } = presets.machine;
     assert.equal(checksOf({ ...presets, machine }, [{ name: 'Cube.stl', positions: box([20, 20, 20], [100, 90]) }]).output.gravity, 'against_build');
     assert.throws(() => sliceWith(engine, withGravity(presets, 'sideways'), [{ name: 'Cube.stl', positions: box([20, 20, 20], [100, 90]) }], true), /gravity/);
   });

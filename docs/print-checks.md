@@ -286,3 +286,13 @@ G-code unchanged:
 
 The taper on the weak-neck fixture avoids an unsupported cap: support spots proposed for such a cap would
 reinforce the search's virtual connection before it evaluates the nozzle load.
+
+## Combined runtime review, 16 October 2026
+
+The explicit machine `gravity` key takes precedence over legacy `printer_notes` for field export and
+checks together. Recognized legacy notes are also passed to the C++ checks when the key is absent.
+An unspecified field gravity remains null; the legacy print-check default remains upright.
+Slenderness integrates the same discrete cantilever compliance in O(layers) using running moments,
+instead of revisiting all earlier layers at every section. `engine/tests/cantilever_compliance.cpp`
+compares unequal sections to direct integration and tests 100,000 sections against an analytic sum.
+This is an algorithmic correction, not a measured end-to-end timing claim. M1 thresholds remain provisional.

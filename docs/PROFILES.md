@@ -218,7 +218,10 @@ gravity = against_build    a normal printer: the part stands on the plate (gravi
 `printerGravity(printer_notes)` (`@muon3d/slicer-engine-protocol`) reads it; it gives null when the line is missing,
 malformed or contradicted, and nothing assumes a value then. The Muon3D overlay sets `along_build` in
 `fdm_common_muon_m1.json` (every M1 nozzle inherits it); another vendor's printer says `against_build` the same way.
-The slice field records it (SLICE_FIELD.md, `gravity`); gravity-dependent checks read it from the same place.
+The slice field records it (SLICE_FIELD.md, `gravity`); the explicit engine `gravity` key takes precedence for both field export and print checks.
+When that key is absent, recognized legacy notes are passed to the checks too. With neither, the field
+records null (unknown), while the legacy check default remains upright. Do not infer a simulator gravity
+from that default.
 
 ## 10. Sizes
 

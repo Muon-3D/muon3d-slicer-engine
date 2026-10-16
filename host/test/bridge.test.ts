@@ -350,3 +350,16 @@ test('an oversized optional field preserves the successful slice and reports why
   assert.equal(result.sliceField, undefined);
   assert.ok(result.warnings.some((w) => w.kind === 'slice_field' && /memory budget/.test(w.message)));
 });
+
+test('field gravity and the engine checks use the explicit printer key before legacy notes', async () => {
+  const { decodeSliceField } = await import('../../packages/protocol/src/sliceField.ts');
+  const engine = fakeEngine({ slice: (machine) => ({ ...output(), gravity: JSON.parse(machine).gravity }) });
+  for (const [machine, want] of [
+    [{ gravity: 'against_build', printer_notes: 'gravity = along_build' }, 'against_build'],
+    [{ printer_notes: 'gravity = along_build' }, 'along_build'],
+  ] as const) {
+    const result = runSlice(engine, { ...job, machine, sliceField: {} });
+    assert.equal(result.gravity, want);
+    assert.equal(decodeSliceField(result.sliceField!).header.gravity, want);
+  }
+});

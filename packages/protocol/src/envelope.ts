@@ -4,7 +4,7 @@
 import type { OpName, OpParams } from './ops.ts';
 
 /** The protocol these types describe. */
-export const PROTOCOL = { major: 2, minor: 2 } as const;
+export const PROTOCOL = { major: 2, minor: 3 } as const;
 
 /** Client -> host. `id` is chosen by the client: an integer > 0, unique among its open requests on one connection. */
 export interface Request<K extends OpName = OpName> {

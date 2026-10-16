@@ -6,6 +6,7 @@
 #include "Support/SupportSpotsGenerator.hpp"
 
 #include "print_checks.hpp"
+#include "cantilever_compliance.hpp"
 
 #include <libslic3r/libslic3r.h>
 #include <libslic3r/BoundingBox.hpp>
@@ -494,12 +495,10 @@ void slenderness_checks(const PrintObject &object, double nozzle_force_n, std::v
     // the integral of F (h - z)^2 / (E I(z)) dz over the part below.
     double worst = 0;
     size_t worst_i = 0;
+    CantileverCompliance compliance;
     for (size_t i = 0; i < slices.size(); ++i) {
-        const double h = slices[i].top;
-        double       d = 0;
-        for (size_t j = 0; j <= i; ++j)
-            d += (h - slices[j].z_mid) * (h - slices[j].z_mid) * slices[j].height / slices[j].i_min;
-        d *= nozzle_force_n / material.modulus_mpa;
+        const Slice &s = slices[i];
+        const double d = compliance.add(s.top, s.z_mid, s.height, s.i_min) * nozzle_force_n / material.modulus_mpa;
         if (d > worst) {
             worst   = d;
             worst_i = i;

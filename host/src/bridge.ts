@@ -10,7 +10,7 @@
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
 import type { GcodeStats, Gravity, PrintCheck, ObjectPaint, SliceFieldRequest, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
-import { encodeSliceField } from '../../packages/protocol/src/sliceField.ts';
+import { encodeSliceField, printerGravity } from '../../packages/protocol/src/sliceField.ts';
 import { buildSliceField, SliceFieldUnavailable } from './sliceField.ts';
 import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
@@ -424,8 +424,13 @@ export function runSlice(
   onWarning?: (warning: EngineWarning) => void,
 ): SliceOutput {
   const started = now();
+  // Older field profiles recorded gravity in notes. Use that value for checks too, unless the
+  // printer supplies the explicit engine key (which the C++ validates).
+  const legacyGravity = printerGravity(job.machine.printer_notes);
+  const machine = job.machine.gravity === undefined && legacyGravity !== null
+    ? { ...job.machine, gravity: legacyGravity } : job.machine;
   const result = engine.slice(
-    presetJson(job.machine),
+    presetJson(machine),
     presetJson(job.process),
     job.filaments.map(presetJson),
     meshInputs(job.objects),

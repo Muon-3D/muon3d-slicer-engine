@@ -149,7 +149,7 @@ export interface SliceParams {
      * when the slice fails. Default: none.
      */
     log?: LogLevel;
-    /** Run the "Before you print" checks: SliceResult.printChecks ('slice.printChecks'; 2.2). Default true. */
+    /** Run the "Before you print" checks: SliceResult.printChecks ('slice.printChecks'; 2.3). Default true. */
     printChecks?: boolean;
     /**
      * Also return the plate's slice field ('slice.field'): `SliceResult.sliceField`, the file docs/SLICE_FIELD.md
@@ -184,12 +184,12 @@ export interface SliceResult {
   /** The engine's heap after the job (it only grows). */
   heapBytes?: number;
   /**
-   * The "Before you print" issues ('slice.printChecks'; 2.2): critical first, then by layer. Warnings only, the
+   * The "Before you print" issues ('slice.printChecks'; 2.3): critical first, then by layer. Warnings only, the
    * slice succeeded either way. Absent when output.printChecks is false, or from engines without the capability.
    */
   printChecks?: PrintCheck[];
   /**
-   * Which way gravity pointed for this slice ('slice.gravity'; 2.2), in the slicer's frame where layers stack along
+   * Which way gravity pointed for this slice ('slice.gravity'; 2.3), in the slicer's frame where layers stack along
    * +Z: the machine preset's `gravity`, 'against_build' (an upright printer) when it has none. The print checks
    * that depend on it follow it (docs/print-checks.md, "Gravity").
    */
@@ -381,9 +381,9 @@ export const Capability = {
   settingsViewV1: 'settings.view.v1',
   /** SliceParams.output.log, SliceResult.log and EngineError.log (2.1). */
   sliceLog: 'slice.log',
-  /** SliceParams.output.printChecks, SliceResult.printChecks and timings.checks (2.2). */
+  /** SliceParams.output.printChecks, SliceResult.printChecks and timings.checks (2.3). */
   printChecks: 'slice.printChecks',
-  /** The machine preset's `gravity` key, read by the print checks, and SliceResult.gravity (2.2). */
+  /** The machine preset's `gravity` key, read by the print checks, and SliceResult.gravity (2.3). */
   gravity: 'slice.gravity',
   /** SliceParams.output.sliceField and SliceResult.sliceField: the slice field file (docs/SLICE_FIELD.md). */
   sliceField: 'slice.field',

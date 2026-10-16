@@ -109,6 +109,15 @@ describe(`slice field on the engine (${variant})`, { skip: engineSkip }, () => {
     assert.ok(times.length > 0 && times.every((t, n) => n === 0 || t > times[n - 1]), `times ${times.join(' ')}`);
   });
 
+  it('returns the field and print checks together with matching gravity', () => {
+    const { result, field } = slice({ toolpaths: false, sliceField: {}, printChecks: true });
+    assert.ok(Array.isArray(result.printChecks));
+    assert.equal(field.header.gravity, result.gravity);
+    assert.equal(result.gravity, 'along_build');
+    assert.equal(result.toolpaths, null);
+    assert.ok(Number.isFinite(result.timings.checks));
+  });
+
   it('round-trips the engine\'s file through the TypeScript reader byte for byte', () => {
     const { result, field } = slice({ toolpaths: false, sliceField: {} });
     assert.equal(result.toolpaths, null, 'toolpaths stay off when only the field is asked for');
@@ -129,6 +138,7 @@ describe(`slice field gravity on the engine (${variant})`, { skip: engineSkip },
 
   function fieldWith(printerNotes: string | undefined) {
     const machine = { ...presets.machine };
+    delete machine.gravity; // Exercise legacy notes independently of the explicit key.
     if (printerNotes === undefined) delete machine.printer_notes;
     else machine.printer_notes = printerNotes;
     const params: SliceParams = {
