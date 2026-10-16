@@ -448,12 +448,15 @@ for (const target of TARGETS) {
         // A fresh host: the first slice waits for the engine to load, so the second is still queued.
         const fresh = await target.connect();
         try {
+          // The variant under test, named: 'auto' never loads mt64, and a CI job's dist/ has only its own variant.
+          const loading = fresh.connection.request('load', { variant: engineVariant });
           const first = fresh.connection.call('slice', sliceParams());
           const second = fresh.connection.call('slice', sliceParams());
           // The request's error comes before the cancel's answer.
           const cancelled = rejection(second.result);
           assert.equal(await second.cancel(), true);
           assert.equal((await cancelled).code, ErrorCode.Cancelled);
+          await loading;
           await first.result;
           assert.equal(await first.cancel(), false);
         } finally {
