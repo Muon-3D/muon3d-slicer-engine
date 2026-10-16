@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// The operations of protocol v2 (2.1): their params and results, and the capability names a host lists in
+// The operations of protocol v2 (2.2): their params and results, and the capability names a host lists in
 // `hello`. docs/PROTOCOL.md describes each.
 import type { SettingsCatalogue } from './catalogue.ts';
 import type { ConfigPatch, ConfigSet, Mesh, Vec3 } from './data.ts';
@@ -102,6 +102,38 @@ export interface PlateObject {
    * as Orca's 3MF loader does. An unknown key or a bad value fails the job with -5, naming the object.
    */
   config?: ConfigPatch;
+  /**
+   * Painting on the mesh's triangles (2.2; capability 'paint.v1'). With it the mesh is used as sent: no repair,
+   * triangles and their corners in the order given, so the indices and codes below mean what the client meant.
+   * An object whose `paint` holds no kind (absent, or `{}`) is loaded as before (Orca's STL import, with repair).
+   * Malformed paint fails the job with BadRequest, naming the object and the kind (checkObjectPaint).
+   */
+  paint?: ObjectPaint;
+}
+
+/** Painting on one object's mesh, one field per kind (2.2; capability 'paint.v1'). Kinds left out are unpainted. */
+export interface ObjectPaint {
+  /** 1 enforces support, 2 blocks it. */
+  supports?: FacetPaint;
+  /** 1 enforces the seam, 2 blocks it. */
+  seam?: FacetPaint;
+  /** 1 gives fuzzy skin. */
+  fuzzySkin?: FacetPaint;
+  /** 1-32: the filament (1-based) the painted area prints with; none = the object's own. */
+  filaments?: FacetPaint;
+}
+
+/**
+ * One kind of painting: each painted triangle with its code, the text a 3MF paint attribute holds for it
+ * (`paint_supports="..."`; docs/PROTOCOL.md, "Paint codes").
+ */
+export interface FacetPaint {
+  /** Painted triangles of `mesh`, 0-based in its triangle order, strictly ascending. */
+  triangles: Uint32Array;
+  /** Their codes, uppercase hexadecimal, concatenated in the same order. */
+  codes: string;
+  /** Where each code ends in `codes` (exclusive): code i is codes.slice(i ? ends[i - 1] : 0, ends[i]). */
+  ends: Uint32Array;
 }
 
 export interface SliceParams {
@@ -119,7 +151,20 @@ export interface SliceParams {
     log?: LogLevel;
     /** Run the "Before you print" checks: SliceResult.printChecks ('slice.printChecks'; 2.2). Default true. */
     printChecks?: boolean;
+    /**
+     * Also return the plate's slice field ('slice.field'): `SliceResult.sliceField`, the file docs/SLICE_FIELD.md
+     * describes. Works with toolpaths off too.
+     */
+    sliceField?: SliceFieldRequest;
   };
+}
+
+/** SliceParams.output.sliceField. */
+export interface SliceFieldRequest {
+  /** Voxel edge, mm: 1 (default) or 0.5. */
+  voxelSize?: number;
+  /** Add the optional depositionTime array. Default false. */
+  depositionTime?: boolean;
 }
 
 /** Orca's log levels, most severe first. */
@@ -149,6 +194,8 @@ export interface SliceResult {
    * that depend on it follow it (docs/print-checks.md, "Gravity").
    */
   gravity?: Gravity;
+  /** With output.sliceField: the slice field file (docs/SLICE_FIELD.md; read it with decodeSliceField). */
+  sliceField?: Uint8Array;
 }
 
 /**
@@ -311,7 +358,7 @@ export const OPS_2_0: readonly OpName[] = [
 /** The ops protocol 2.1 adds: a host that serves one lists it in `hello.capabilities`. */
 export const PROFILE_OPS: readonly OpName[] = ['profiles.normalize', 'profiles.resolve', 'profiles.validate'];
 
-/** Every op of protocol 2.1, in the order docs/PROTOCOL.md lists them. */
+/** Every op of protocol 2.2 (2.2 adds none; painting is a field of slice), in the order docs/PROTOCOL.md lists them. */
 export const OPS: readonly OpName[] = [...OPS_2_0, ...PROFILE_OPS];
 
 /** Ops that need the engine (wasm): the host loads it on the first of them ('auto' variant). */
@@ -338,5 +385,9 @@ export const Capability = {
   printChecks: 'slice.printChecks',
   /** The machine preset's `gravity` key, read by the print checks, and SliceResult.gravity (2.2). */
   gravity: 'slice.gravity',
+  /** SliceParams.output.sliceField and SliceResult.sliceField: the slice field file (docs/SLICE_FIELD.md). */
+  sliceField: 'slice.field',
+  /** PlateObject.paint: support, seam, fuzzy skin and filament painting on a mesh's triangles (2.2). */
+  paintV1: 'paint.v1',
 } as const;
 

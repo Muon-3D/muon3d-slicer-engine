@@ -14,8 +14,9 @@ statistics, toolpaths for a preview, and Orca's warnings and error codes. Its se
 settings forms as documents: the tabs' layout for the mode and the printer, which settings Orca hides or greys out
 for the current values, Orca's checks and questions, and what an edit changes along with it.
 
-**Status:** pre-release (`0.x`). The host speaks **protocol v2** (2.1): a handshake with capabilities, the licence and
-the source; slicing (with Orca's log on request), placement checks, Orca's option table and settings catalogue; the
+**Status:** pre-release (`0.x`). The host speaks **protocol v2** (2.2): a handshake with capabilities, the licence and
+the source; slicing (with Orca's log on request, and support, seam, fuzzy skin and filament painting on the objects'
+triangles, read by Orca's own 3MF paint reader), placement checks, Orca's option table and settings catalogue; the
 settings service (`settings.view`, `settings.edit`); and Orca's own preset code on vendor profiles
 (`profiles.normalize`, `profiles.resolve`, `profiles.validate`). Each release also publishes a **profile set**:
 OrcaSlicer's printer, process and filament presets, normalised by the engine and packed for a static site
@@ -35,6 +36,7 @@ packages/protocol/    @muon3d/slicer-engine-protocol: protocol v2's types, trans
                       sets' types with flattenPreset (Apache-2.0)
 profiles/muon3d/      the Muon3D vendor profiles (Muon3D M1), in OrcaSlicer's layout: the profile sets take them
 docs/PROTOCOL.md      the protocol, normative
+docs/SLICE_FIELD.md   the slice field file (how a plate will be printed, on a voxel grid) for the simulator
 docs/PROFILES.md      the profile sets: files, formats, flattening a preset, the goldens, building and checking
 tools/                settings-catalogue/ (the catalogue generator), goldens/ (the settings goldens' recorders),
                       profiles/ (the profile set builder and checker, the preset fixtures), check-imports.mjs,
@@ -45,7 +47,7 @@ test/                 engine tests, protocol conformance (test/conformance), set
                       test helpers
 examples/node-cli/    slice from the command line through the host
 examples/settings-cli/ validate presets and print Orca's settings forms, through the settings service
-docs/                 PROTOCOL.md, PROFILES.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original
+docs/                 PROTOCOL.md, SLICE_FIELD.md, PROFILES.md, BUILD.md (Linux, offline rebuilds, CI), RELEASING.md, the original
                       engine spec
 .github/              workflows: build (PRs, main, the edge prerelease), release, toolchain cache, upstream canary
 ```

@@ -3,7 +3,7 @@
 Protocol **v2** of the [Muon3D Slicer Engine](https://github.com/Muon-3D/muon3d-slicer-engine): the messages a
 client exchanges with the engine host, and small helpers both sides share. The normative description is
 [`docs/PROTOCOL.md`](https://github.com/Muon-3D/muon3d-slicer-engine/blob/main/docs/PROTOCOL.md); this package is
-its code. Package 2.1.x is protocol 2.1.
+its code. Package 2.2.x is protocol 2.2.
 
 - **Types:** the envelope (`Request`, `Response`, `HostState`, `EngineError`, `ErrorCode`), every op's params and
   result (`Ops`, `HelloResult`, `SliceParams`, `SliceResult`, `Toolpaths`, `CheckResult`, `ConfigDefinitions`,
@@ -13,7 +13,9 @@ its code. Package 2.1.x is protocol 2.1.
   `flattenPreset()` and `canonicalConfigJson()`, the reference way to flatten a preset from a set
   ([`docs/PROFILES.md`](https://github.com/Muon-3D/muon3d-slicer-engine/blob/main/docs/PROFILES.md)).
 - **Helpers:** `negotiate()` (does a host's `hello` suit this client), `transferablesOf()` (the buffers of a
-  message, to transfer rather than copy), `configHash()` (the hash a settings request names a cached preset by).
+  message, to transfer rather than copy), `configHash()` (the hash a settings request names a cached preset by),
+  and for painting (2.2) `checkFacetPaint()` and `checkObjectPaint()` (the checks the host runs on
+  `PlateObject.paint`; the codes are described in `docs/PROTOCOL.md`, "Paint codes").
 - **Transports:** `workerTransport()` (a Web Worker, a MessagePort, or a worker's own scope),
   `nodeWorkerTransport()` (Node `worker_threads`), `byteStreamTransport()` (anything that carries bytes: a
   WebSocket, an HTTP body, a pipe; messages framed by `encodeFrame()` / `FrameReader`).

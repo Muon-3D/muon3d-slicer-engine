@@ -9,7 +9,10 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, Gravity, PrintCheck, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, Gravity, PrintCheck, ObjectPaint, SliceFieldRequest, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import { encodeSliceField } from '../../packages/protocol/src/sliceField.ts';
+import { buildSliceField } from './sliceField.ts';
+import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
 // The bridge's shapes (engine/bridge/job.hpp, toolpaths.hpp)
@@ -50,6 +53,11 @@ export interface EngineObject {
   positions: Float32Array;
   /** The object's own settings (Orca option key -> text). */
   config?: Record<string, string>;
+  /**
+   * Painting on the soup's triangles (protocol 2.2's ObjectPaint; the ops check it). With any kind in it the
+   * engine loads the mesh as sent, with no STL repair, so that triangle i is the soup's i-th triangle.
+   */
+  paint?: ObjectPaint;
 }
 
 export interface SliceJob {
@@ -65,6 +73,8 @@ export interface SliceJob {
   log?: number;
   /** The "Before you print" checks (docs/print-checks.md). Default true. */
   printChecks?: boolean;
+  /** Also build the slice field (sliceField.ts). */
+  sliceField?: SliceFieldRequest;
 }
 
 export interface CheckJob {
@@ -82,6 +92,8 @@ export interface SliceOutput {
   warnings: EngineWarning[];
   /** `checks`: the print checks' share of `total`, when they ran. */
   timings: { load: number; slice: number; export: number; total: number; checks?: number };
+  /** With job.sliceField: the slice field file. */
+  sliceField?: Uint8Array;
   /** With SliceJob.log: Orca's log, a line each ("<level>: <message>"). */
   log?: string;
   /** With SliceJob.printChecks (the default): the "Before you print" issues. */
@@ -104,6 +116,11 @@ export interface EngineMeshInput {
   positions: Float32Array;
   /** EngineObject.config: the object's own settings (the placement check ignores them). */
   config?: Record<string, string>;
+  /**
+   * EngineObject.paint: per kind (supports, seam, fuzzySkin, filaments) the painted triangles, their codes and
+   * where each code ends. Builds before 0.4.0 ignore it, and so does the placement check.
+   */
+  paint?: ObjectPaint;
 }
 
 type EngineResult<T> = T | { error: EngineError; log?: string };
@@ -383,11 +400,17 @@ function guarded<A extends unknown[]>(callback: ((...args: A) => void) | undefin
 
 const presetJson = (config: object) => JSON.stringify(config);
 
-/** The objects as the engine takes them; `config` only where the object has settings. Exported for the tests. */
+/**
+ * The objects as the engine takes them: `config` only where the object has settings, `paint` only where it
+ * holds a kind (an object without one loads as before). Exported for the tests.
+ */
 export function meshInputs(objects: SliceJob['objects']): EngineMeshInput[] {
-  return objects.map(({ name, positions, config }) =>
-    config && Object.keys(config).length > 0 ? { name, positions, config } : { name, positions },
-  );
+  return objects.map(({ name, positions, config, paint }) => {
+    const input: EngineMeshInput = { name, positions };
+    if (config && Object.keys(config).length > 0) input.config = config;
+    if (hasPaintKinds(paint)) input.paint = paint;
+    return input;
+  });
 }
 
 /**
@@ -406,21 +429,39 @@ export function runSlice(
     presetJson(job.process),
     job.filaments.map(presetJson),
     meshInputs(job.objects),
-    job.toolpaths ?? true,
+    (job.toolpaths ?? true) || job.sliceField !== undefined,
     guarded(onProgress),
     guarded(onWarning),
     job.log ?? 0,
     job.printChecks ?? true,
   );
   if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
+  const field = job.sliceField !== undefined && result.toolpaths ? sliceFieldOf(job, result.toolpaths, result.toolpathExtras) : undefined;
   return {
     ...result,
+    ...(field !== undefined ? { sliceField: field } : {}),
+    // Built for the slice field alone when the client did not ask for them.
+    toolpaths: job.toolpaths === false ? null : result.toolpaths,
     // The engine builds them with the toolpaths whether asked or not; they are dropped here so
     // they are not posted to the page.
     toolpathExtras: job.toolpathExtras === false ? null : result.toolpathExtras,
     // The engine times its own stages; the total also covers the conversions on this side.
     timings: { ...result.timings, total: now() - started },
   };
+}
+
+function sliceFieldOf(job: SliceJob, toolpaths: BridgeToolpaths, extras: ToolpathExtras | null): Uint8Array {
+  const { description, arrays } = buildSliceField({
+    machine: job.machine,
+    process: job.process,
+    filaments: job.filaments,
+    objects: job.objects,
+    toolpaths,
+    extras,
+    request: job.sliceField ?? {},
+    generator: 'Muon3D Slicer Engine',
+  });
+  return encodeSliceField(description, arrays);
 }
 
 /** Runs Orca's placement checks for a plate. Throws like runSlice. */

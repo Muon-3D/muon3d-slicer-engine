@@ -62,9 +62,11 @@ Each asset also has a **build-provenance attestation** (Sigstore, stored by GitH
 
 The runtime's **`manifest.json`** keeps every field a local build has (`orcaVersion`, `orcaCommit`, `builtAt`,
 `host`, `variants`) and adds, as `EngineManifest` in `packages/protocol` describes: `manifest: 2`, `version`,
-`protocol`, `license`, `orca` (version, commit, tag, repository, upstream base), `build` (engine commit, emsdk,
-build time, which is the commit time), `source` (this repository, the tag, the commit and the three source assets
-with their URLs and sha256), and `files` (the sha256 and size of every other file in the folder).
+`protocol` (major and minor: `PROTOCOL` of `packages/protocol` when the host was built, which `host/build.mjs`
+records as `host.protocol` and `host.protocolMinor`; releases up to 0.4.0 wrote minor 0), `license`, `orca`
+(version, commit, tag, repository, upstream base), `build` (engine commit, emsdk, build time, which is the commit
+time), `source` (this repository, the tag, the commit and the three source assets with their URLs and sha256), and
+`files` (the sha256 and size of every other file in the folder).
 
 The runtime's **`SOURCE.md`** is the repository's `SOURCE.md` plus a "This build" section that names this release,
 its commits and its source assets. It is the "where is the source" notice that sits next to the object code

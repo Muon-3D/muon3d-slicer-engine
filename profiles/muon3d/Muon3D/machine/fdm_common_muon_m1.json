@@ -6,6 +6,7 @@
 	"instantiation": "false",
 	"gcode_flavor": "klipper",
 	"gravity": "along_build",
+	"printer_notes": "gravity = along_build",
 	"machine_max_acceleration_e": [
 		"20000",
 		"10000"

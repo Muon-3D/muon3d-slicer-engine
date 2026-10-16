@@ -25,7 +25,11 @@ export interface EngineManifest {
   name?: 'muon3d-slicer-engine';
   /** This release's version (semver), e.g. "0.1.0", or "0.1.0-edge.<commit>" for the rolling prerelease. */
   version?: string;
-  /** The protocol the host speaks. */
+  /**
+   * The protocol the host speaks, from `host.protocol` and `host.protocolMinor` (PROTOCOL in envelope.ts when the
+   * host was built). Releases up to 0.4.0 wrote minor 0 whatever the host spoke (0.3.x speak 2.1, 0.4.0 2.2);
+   * `hello` reports the host's own.
+   */
   protocol?: { major: number; minor: number };
   license?: 'AGPL-3.0-only';
   orca?: EngineManifestOrca;
@@ -87,6 +91,8 @@ export interface EngineManifestHost {
   sha256: string;
   /** The protocol major version the host speaks. */
   protocol: number;
+  /** Its minor version. Absent in hosts of releases up to 0.4.0. */
+  protocolMinor?: number;
   /**
    * Scripts the host loads on demand (the settings service), relative to manifest.json: served next to it,
    * each with its sha256. Absent in hosts before protocol 2.

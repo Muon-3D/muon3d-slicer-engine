@@ -60,6 +60,10 @@ const release = Boolean(opts.tag);
 const commit = opts.commit ?? execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const manifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'));
 if (!manifest.host) fail(`${dist}/manifest.json names no host (npm run build:host)`);
+// The protocol the host was built with (host/build.mjs records PROTOCOL of packages/protocol).
+if (!Number.isInteger(manifest.host.protocol) || !Number.isInteger(manifest.host.protocolMinor)) {
+  fail(`the host in ${dist}/manifest.json names no protocol major and minor (npm run build:host)`);
+}
 for (const variant of ['st', 'mt']) if (!manifest.variants?.[variant]) fail(`${dist}/manifest.json has no ${variant} engine`);
 
 // ---- What was built, and from what -------------------------------------------------------------------------
@@ -149,7 +153,7 @@ const released = {
   manifest: 2,
   name: 'muon3d-slicer-engine',
   version: opts.version,
-  protocol: { major: manifest.host.protocol, minor: 0 },
+  protocol: { major: manifest.host.protocol, minor: manifest.host.protocolMinor },
   license: 'AGPL-3.0-only',
   orcaVersion: manifest.orcaVersion,
   orcaCommit: manifest.orcaCommit,
