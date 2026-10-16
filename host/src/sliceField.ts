@@ -13,6 +13,10 @@ export const SLICE_FIELD_VOXEL_SIZES: readonly number[] = [1, 0.5];
 /** Raster cells along a voxel's edge (0.125 mm at 1 mm voxels): fractions are good to about 1/8. */
 const SUBSAMPLES = 8;
 
+/** Optional export limits must leave the ordinary slice usable. */
+export class SliceFieldUnavailable extends Error {}
+const MAX_FIELD_BYTES = 256 * 1024 ** 2;
+
 /** What an extrusion role counts as in the field: null for what it leaves out. */
 export type FieldClass = 'wall' | 'skin' | 'infill' | null;
 
@@ -112,6 +116,18 @@ export function buildSliceField(src: SliceFieldSource): { description: SliceFiel
   const used = [...new Set(objects.map((o) => o.infillPattern))];
   const localPattern = objects.map((o) => used.indexOf(o.infillPattern));
   const P = Math.max(1, used.length);
+
+  // Output arrays and encoded copy, XY rasters, column/slab accumulators, and triangle indexes.
+  // This bounds export allocations separately from the engine's WASM heap.
+  const estimatedBytes = 2 * voxels * (withTime ? 12 : 8)
+    + columns * (2 * SUBSAMPLES ** 2 + 4 * (32 + 4 * P))
+    + src.objects.reduce((n, o) => n + o.positions.length / 9 * 24, 0);
+  if (!Number.isSafeInteger(voxels) || !Number.isFinite(estimatedBytes) || estimatedBytes > MAX_FIELD_BYTES) {
+    throw new SliceFieldUnavailable('slice field exceeds the 256 MiB export memory budget; use fewer or closer objects, or 1 mm voxels.');
+  }
+  if (src.objects.length > 255 || paths.layerCount > 65535) {
+    throw new SliceFieldUnavailable('slice field supports at most 255 objects and 65535 layers.');
+  }
 
   const arrays: SliceFieldArrays = {
     wallFraction: new Uint8Array(voxels),

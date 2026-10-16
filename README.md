@@ -141,3 +141,5 @@ Contributions: see [`CONTRIBUTING.md`](CONTRIBUTING.md) (DCO sign-off).
 
 "OrcaSlicer" names the project this engine derives from. The OrcaSlicer project has not made, endorsed or reviewed
 this engine.
+
+Slice-field export is optional: its dense-grid allocations are estimated before allocation and limited to 256 MiB, 255 objects and 65535 layers. An export above these limits returns a slice_field warning and keeps the successful G-code; try 1 mm voxels or fewer, closer objects. This estimate covers field allocations, not the engine's WASM heap or a performance guarantee.
