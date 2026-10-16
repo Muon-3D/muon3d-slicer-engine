@@ -341,3 +341,12 @@ describe('instantiateEngineWasm', () => {
     assert.match(mismatched.detail ?? '', /Import #0/);
   });
 });
+
+test('an oversized optional field preserves the successful slice and reports why it is absent', () => {
+  const result = runSlice(fakeEngine(), { ...job, sliceField: {}, toolpaths: false,
+    objects: [{ name: 'Wide', positions: new Float32Array([0, 0, 0, 1e20, 1, 1, 0, 1, 0]) }] });
+  assert.deepEqual(result.gcode, new Uint8Array([59, 10]));
+  assert.equal(result.toolpaths, null);
+  assert.equal(result.sliceField, undefined);
+  assert.ok(result.warnings.some((w) => w.kind === 'slice_field' && /memory budget/.test(w.message)));
+});
