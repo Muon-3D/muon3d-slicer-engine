@@ -60,6 +60,7 @@ release creation, publication, deployment or printer action was performed.
    ```bash
    node scripts/fetch-engine.mjs --pin 0.5.0
    node scripts/fetch-profiles.mjs --pin 0.5.0
+   node -e "const fs=require('fs');const p='package-lock.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));delete j.packages['node_modules/@muon3d/slicer-engine-protocol'];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');"
    npm install --package-lock-only --ignore-scripts --no-audit --no-fund
    npm ci
    npm run typecheck
