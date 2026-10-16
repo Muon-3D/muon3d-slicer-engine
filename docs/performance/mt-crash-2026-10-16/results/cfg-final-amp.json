@@ -1,0 +1,4 @@
+[{"name":"pr4-before","root":"../claude-engine-mtfix-before","engine":"dist-amp"},
+ {"name":"pr4-after","root":"../claude-engine-mtfix-field","engine":"dist-amp"},
+ {"name":"pr5-before","root":"../codex48-engine-checks","engine":"dist-amp-checks"},
+ {"name":"pr5-after","root":"../claude-engine-mtfix-checks","engine":"dist-amp-checks"}]
