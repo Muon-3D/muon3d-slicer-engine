@@ -3,6 +3,7 @@
 #include <libslic3r/libslic3r.h>
 #include <libslic3r/ClipperUtils.hpp>
 #include <libslic3r/Format/STL.hpp>
+#include <libslic3r/TriangleMesh.hpp>
 #include <libslic3r/Utils.hpp>
 
 #include <boost/filesystem.hpp>
@@ -13,10 +14,12 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +29,7 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
 
 using namespace Slic3r;
 
@@ -215,7 +219,189 @@ bool heap_nearly_full()
 #endif
 }
 
+// ---- Paint (protocol 2.2) -------------------------------------------------------------------------
+
+// One kind of paint as messages name it, the highest state its codes may hold, and the volume's
+// annotation it fills.
+struct PaintKind {
+    const FacetInput &facets;
+    const char       *words;
+    int               max_state;
+    FacetsAnnotation ModelVolume::*annotation;
+};
+
+std::array<PaintKind, 4> paint_kinds(const MeshInput &object)
+{
+    return {{
+        {object.supports, "support paint", 2, &ModelVolume::supported_facets},
+        {object.seam, "seam paint", 2, &ModelVolume::seam_facets},
+        {object.fuzzy_skin, "fuzzy skin paint", 1, &ModelVolume::fuzzy_skin_facets},
+        {object.filaments, "filament paint", 32, &ModelVolume::mmu_segmentation_facets},
+    }};
+}
+
+// The value of one uppercase hexadecimal digit, or -1 (lowercase too: Orca's reader takes only 0-9 A-F).
+int hex_digit(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+// A float as the weld compares it: -0 is +0, so that two corners equal as numbers are one vertex.
+uint32_t weld_bits(float v)
+{
+    if (v == 0.f)
+        v = 0.f;
+    uint32_t bits;
+    std::memcpy(&bits, &v, sizeof bits);
+    return bits;
+}
+
+struct CornerKey {
+    uint32_t x, y, z;
+    bool     operator==(const CornerKey &other) const { return x == other.x && y == other.y && z == other.z; }
+};
+
+struct CornerKeyHash {
+    size_t operator()(const CornerKey &k) const
+    {
+        uint64_t h = 0x9e3779b97f4a7c15ull;
+        for (uint32_t v : {k.x, k.y, k.z})
+            h = (h ^ v) * 0x100000001b3ull;
+        return size_t(h ^ (h >> 29));
+    }
+};
+
+// A painted object's soup as the indexed triangle set its volume is built from, the way Orca's 3MF
+// loader builds one from a file's vertices and triangles (bbs_3mf.cpp:5108-5133): every triangle kept, in
+// the soup's order, with its corners in their order; the corners welded by exact float equality, as an
+// STL import shares vertices (vertices numbered as first met). No repair: a degenerate triangle stays, and
+// nothing is flipped, so the paint's triangle indices and codes keep their meaning. A corner with a
+// coordinate that is not a finite number fails the job: with no repair, nothing would take it out.
+indexed_triangle_set painted_mesh(const MeshInput &object, const std::string &label)
+{
+    const std::vector<float> &positions = object.positions;
+    const size_t              triangles = positions.size() / 9;
+    indexed_triangle_set      its;
+    its.indices.reserve(triangles);
+    its.vertices.reserve(triangles / 2 + 3);
+    std::unordered_map<CornerKey, int, CornerKeyHash> corners;
+    corners.reserve(triangles / 2 + 3);
+    for (size_t t = 0; t < triangles; ++t) {
+        const float *p = positions.data() + t * 9;
+        Vec3i32      face;
+        for (int c = 0; c < 3; ++c) {
+            const float *v = p + 3 * c;
+            if (!std::isfinite(v[0]) || !std::isfinite(v[1]) || !std::isfinite(v[2]))
+                throw JobFailure(CLI_DATA_FILE_ERROR,
+                                 label + " has a coordinate that is not a finite number, in triangle " + std::to_string(t) +
+                                     " (a painted object is used as sent, without repair).",
+                                 {object.name});
+            const auto [it, added] = corners.try_emplace(CornerKey{weld_bits(v[0]), weld_bits(v[1]), weld_bits(v[2])}, int(its.vertices.size()));
+            if (added)
+                its.vertices.emplace_back(v[0], v[1], v[2]);
+            face[c] = it->second;
+        }
+        its.indices.push_back(face);
+    }
+    return its;
+}
+
+// One kind's codes into the volume's annotation through Orca's own 3MF string reader, as its 3MF loader
+// does (bbs_3mf.cpp:5180-5205). check_object_paint has checked them.
+void apply_paint(FacetsAnnotation &annotation, const FacetInput &facets)
+{
+    annotation.reserve(int(facets.triangles.size()));
+    size_t from = 0;
+    for (size_t i = 0; i < facets.triangles.size(); ++i) {
+        const size_t to = facets.ends[i];
+        annotation.set_triangle_from_string(int(facets.triangles[i]), facets.codes.substr(from, to - from));
+        from = to;
+    }
+    annotation.shrink_to_fit();
+    annotation.touch();
+}
+
 } // namespace
+
+int paint_code_max_state(const std::string &codes, size_t begin, size_t end)
+{
+    size_t pos       = end;
+    size_t open      = 1; // nodes still to read
+    int    max_state = 0;
+    const auto next  = [&]() { return pos > begin ? hex_digit(codes[--pos]) : -1; };
+    while (open > 0) {
+        const int head = next();
+        if (head < 0)
+            return -1;
+        --open;
+        const int split = head & 3;
+        const int x     = head >> 2;
+        if (split == 0) {
+            int state = x;
+            if (x == 3) {
+                const int e = next();
+                if (e < 0)
+                    return -1;
+                if (e < 15) {
+                    state = e + 3;
+                } else {
+                    const int f = next();
+                    if (f < 0)
+                        return -1;
+                    state = f + 18;
+                }
+            }
+            max_state = std::max(max_state, state);
+        } else {
+            if (x > 2)
+                return -1; // the special corner is 0-2
+            open += size_t(split) + 1;
+        }
+    }
+    return pos == begin ? max_state : -1;
+}
+
+void check_object_paint(const MeshInput &object)
+{
+    if (!object.painted)
+        return;
+    const size_t triangle_count = object.positions.size() / 9;
+    for (const PaintKind &kind : paint_kinds(object)) {
+        const FacetInput &facets = kind.facets;
+        const auto        fail   = [&](const std::string &what) {
+            throw JobFailure(ENGINE_BAD_REQUEST, object.name + ": the " + kind.words + " " + what + ".", {object.name});
+        };
+        if (facets.ends.size() != facets.triangles.size())
+            fail("lists " + std::to_string(facets.triangles.size()) + " triangles and " + std::to_string(facets.ends.size()) + " code ends");
+        int64_t previous = -1;
+        size_t  from     = 0;
+        for (size_t i = 0; i < facets.triangles.size(); ++i) {
+            const uint32_t    triangle = facets.triangles[i];
+            const std::string name     = std::to_string(triangle);
+            if (int64_t(triangle) <= previous)
+                fail("lists triangle " + name + " after triangle " + std::to_string(previous) + " (they must be strictly ascending)");
+            if (triangle >= triangle_count)
+                fail("of triangle " + name + " is past the mesh, which has " + std::to_string(triangle_count) + " triangles");
+            const size_t to = facets.ends[i];
+            if (to <= from || to > facets.codes.size())
+                fail("of triangle " + name + " has no code (its end is " + std::to_string(to) + ", after " + std::to_string(from) + "; the codes are " +
+                     std::to_string(facets.codes.size()) + " long)");
+            const int state = paint_code_max_state(facets.codes, from, to);
+            if (state < 0)
+                fail("of triangle " + name + " is not a valid code");
+            if (state > kind.max_state)
+                fail("of triangle " + name + " has state " + std::to_string(state) + "; this kind's states go up to " + std::to_string(kind.max_state));
+            previous = triangle;
+            from     = to;
+        }
+        if (from != facets.codes.size())
+            fail("has text after its last code (" + std::to_string(facets.codes.size() - from) + " characters)");
+    }
+}
 
 void write_binary_stl(const std::string &path, const std::vector<float> &positions)
 {
@@ -276,20 +462,39 @@ ModelObject *load_object(Model &model, const MeshInput &object, const std::strin
                          label + " has no usable triangles: all " + std::to_string(triangles) +
                              " have a zero area or coordinates that are not finite numbers.",
                          {object.name});
-    write_binary_stl(stl_path, object.positions);
 
     const size_t count_before = model.objects.size();
     bool         loaded       = false;
-    try {
-        // Named explicitly: load_stl would otherwise name the object after the MEMFS file.
-        loaded = load_stl(stl_path.c_str(), &model, object.name.c_str());
-    } catch (const std::bad_alloc &) {
-        throw; // code 2, not a bad model
-    } catch (const std::length_error &) {
-        // admesh was left with no facets (std::vector's "vector").
-        throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});
-    } catch (const std::exception &ex) {
-        throw JobFailure(CLI_DATA_FILE_ERROR, label + " could not be read: " + ex.what(), {object.name});
+    if (object.painted) {
+        // The painted path: the mesh as sent, the paint through Orca's 3MF string reader.
+        if (object.positions.empty())
+            throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});
+        indexed_triangle_set its = painted_mesh(object, label);
+        try {
+            // As load_stl adds the mesh it read (Format/STL.cpp:38).
+            model.add_object(object.name.c_str(), stl_path.c_str(), TriangleMesh(std::move(its)));
+            ModelVolume *volume = model.objects.back()->volumes.front();
+            for (const PaintKind &kind : paint_kinds(object))
+                apply_paint(volume->*kind.annotation, kind.facets);
+            loaded = true;
+        } catch (const std::bad_alloc &) {
+            throw;
+        } catch (const std::exception &ex) {
+            throw JobFailure(CLI_DATA_FILE_ERROR, label + " could not be read: " + ex.what(), {object.name});
+        }
+    } else {
+        write_binary_stl(stl_path, object.positions);
+        try {
+            // Named explicitly: load_stl would otherwise name the object after the MEMFS file.
+            loaded = load_stl(stl_path.c_str(), &model, object.name.c_str());
+        } catch (const std::bad_alloc &) {
+            throw; // code 2, not a bad model
+        } catch (const std::length_error &) {
+            // admesh was left with no facets (std::vector's "vector").
+            throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});
+        } catch (const std::exception &ex) {
+            throw JobFailure(CLI_DATA_FILE_ERROR, label + " could not be read: " + ex.what(), {object.name});
+        }
     }
     if (!loaded || model.objects.size() != count_before + 1)
         throw JobFailure(CLI_DATA_FILE_ERROR, label + " has no usable triangles.", {object.name});

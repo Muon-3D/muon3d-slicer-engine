@@ -4,8 +4,9 @@
 //
 //   node --test test/conformance/conformance.test.ts
 //
-// The engine part (load, slice, check, config.definitions, the slice goldens of v0.1.0) runs when the
-// engine is built (ENGINE_DIR, default dist/; npm run test:engine requires it); the rest needs no wasm.
+// The engine part (load, slice, check, config.definitions, the slice goldens of v0.1.0, the painted goldens of
+// 2.2) runs when the engine is built (ENGINE_DIR, default dist/; npm run test:engine requires it); the rest needs
+// no wasm.
 // Settings: settings.view's dynamic state must come back within 5 ms at p95, messaging included.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -21,20 +22,28 @@ import { HOST_CANARY } from '../../host/src/canary.ts';
 import type { LegacyProcessFixture } from '../../tools/profiles/fixtures.ts';
 import { readFolder } from '../../tools/profiles/tree.ts';
 import { cube, engineDir, engineSkip, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
-import { PLATES, comparable } from './plates.ts';
+import { PAINTED_PLATES, PLATES, comparable } from './plates.ts';
 import { TARGETS, type Connected } from './targets.ts';
 
 const client = { name: 'conformance', version: '2.0.0' };
 const SETTINGS_P95_MS = 5;
 
+type SliceGoldens = Record<string, Record<'st' | 'mt', { sha256: string; bytes: number; layers: number }>>;
 const slices = JSON.parse(readFileSync(new URL('../goldens/slices.json', import.meta.url), 'utf8')) as {
   reference: { version: string; orcaCommit: string };
-  plates: Record<string, Record<'st' | 'mt', { sha256: string; bytes: number; layers: number }>>;
+  plates: SliceGoldens;
+  /** The painted plates (2.2; tools/goldens/record-slices-painted.mjs). */
+  painted?: { reference: { version: string; orcaCommit: string }; plates: SliceGoldens };
 };
 // The slice goldens hold for an engine built from their Orca commit (not for the upstream canary's builds).
 const builtManifest = existsSync(path.join(engineDir, 'manifest.json')) ? JSON.parse(readFileSync(path.join(engineDir, 'manifest.json'), 'utf8')) : null;
 const goldenSkip: string | false =
   builtManifest?.orcaCommit === slices.reference.orcaCommit ? false : `the engine is built from Orca ${builtManifest?.orcaCommit}, the slice goldens from ${slices.reference.orcaCommit}`;
+const paintedSkip: string | false = !slices.painted
+  ? 'no painted goldens recorded (tools/goldens/record-slices-painted.mjs)'
+  : builtManifest?.orcaCommit === slices.painted.reference.orcaCommit
+    ? false
+    : `the engine is built from Orca ${builtManifest?.orcaCommit}, the painted goldens from ${slices.painted.reference.orcaCommit}`;
 
 /** The error a request fails with (fails the test when it succeeds). */
 async function rejection(promise: Promise<unknown>): Promise<EngineRequestError> {
@@ -66,10 +75,10 @@ for (const target of TARGETS) {
 
     const settingsPresets = () => ({ machine: presets.machine, process: presets.process, filament: presets.filaments[0] });
 
-    test('hello: protocol 2.1, every op, the engine and its licence', async () => {
-      const hello = await host.connection.open(client, { minMinor: 1, required: [...OPS, Capability.sliceLog] });
+    test('hello: protocol 2.2, every op, painting, the engine and its licence', async () => {
+      const hello = await host.connection.open(client, { minMinor: 2, required: [...OPS, Capability.sliceLog, Capability.paintV1] });
       assert.deepEqual(hello.protocol, { major: PROTOCOL.major, minor: PROTOCOL.minor });
-      assert.equal(PROTOCOL.minor, 1);
+      assert.equal(PROTOCOL.minor, 2);
       for (const op of OPS) assert.ok(hello.capabilities.includes(op), op);
       for (const op of PROFILE_OPS) assert.ok(OPS.includes(op), op);
       assert.equal(hello.engine.license, 'AGPL-3.0-only');
@@ -217,6 +226,50 @@ for (const target of TARGETS) {
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
+      });
+
+      test('slice (2.2): paint without a kind ({}) keeps the STL path, so the golden plates are unchanged', { skip: goldenSkip }, async () => {
+        for (const plate of PLATES) {
+          const params = plate.params();
+          const result = await host.connection.request('slice', { ...params, objects: params.objects.map((o) => ({ ...o, paint: {} })), output: { toolpaths: false } });
+          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), slices.plates[plate.id][engineVariant].sha256, plate.id);
+        }
+      });
+
+      test(`slice (2.2): the painted plates give the G-code ${slices.painted?.reference.version ?? '(none recorded)'} recorded`, { skip: paintedSkip }, async () => {
+        for (const plate of PAINTED_PLATES) {
+          const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
+          const expected = slices.painted!.plates[plate.id][engineVariant];
+          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
+          assert.equal(result.gcode.length, expected.bytes, plate.id);
+        }
+      });
+
+      // Whether the painted path (no repair, the mesh as sent) changes the G-code of a clean mesh: recorded, not
+      // required. If it never does, a later release may drop the STL path for unpainted objects too.
+      test('slice (2.2): the painted path with empty layers against the STL path (a record)', { skip: target.name === 'in-process' ? goldenSkip : 'recorded in process only' }, async () => {
+        const same: string[] = [];
+        const differ: string[] = [];
+        for (const plate of PLATES) {
+          const params = plate.params();
+          const objects = params.objects.map((o) => ({ ...o, paint: { supports: { triangles: new Uint32Array(0), codes: '', ends: new Uint32Array(0) } } }));
+          const result = await host.connection.request('slice', { ...params, objects, output: { toolpaths: false } });
+          const sha = createHash('sha256').update(comparable(result.gcode)).digest('hex');
+          (sha === slices.plates[plate.id][engineVariant].sha256 ? same : differ).push(plate.id);
+        }
+        console.log(`# ${engineVariant}: the painted path with empty layers gives the STL path's G-code for ${same.join(', ') || 'no plate'}; other G-code for ${differ.join(', ') || 'no plate'}`);
+      });
+
+      test('slice (2.2): malformed paint fails with BadRequest, naming the object and the kind', async () => {
+        const err = await rejection(
+          host.connection.request('slice', {
+            configs: presets,
+            objects: [{ name: 'Cube.stl', mesh: { positions: cube([100, 90]) }, paint: { seam: { triangles: new Uint32Array([4]), codes: '4g', ends: new Uint32Array([2]) } } }],
+          }),
+        );
+        assert.equal(err.code, ErrorCode.BadRequest);
+        assert.equal(err.message, 'Cube.stl: the seam paint of triangle 4 is not a valid code.');
+        assert.deepEqual(err.objects, ['Cube.stl']);
       });
 
       test('slice: an indexed mesh slices like its triangle soup', { skip: goldenSkip }, async () => {

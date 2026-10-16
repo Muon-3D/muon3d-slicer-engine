@@ -2,15 +2,19 @@
 // (bridge.ts). A request the host cannot use fails with BadRequest, naming what is wrong.
 import type { Config, ConfigSet, Mesh } from '../../packages/protocol/src/data.ts';
 import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceFieldRequest, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
+import { PAINT_KINDS, checkObjectPaint, hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 import type { CheckJob, CheckOutput, EngineObject, SliceJob, SliceOutput } from './bridge.ts';
 import { SLICE_FIELD_VOXEL_SIZES } from './sliceField.ts';
 
 /** A request the host refuses (BadRequest). */
 export class BadRequest extends Error {
   readonly detail?: string;
-  constructor(message: string, detail?: string) {
+  /** The objects the request is wrong about, by name. */
+  readonly objects?: string[];
+  constructor(message: string, detail?: string, objects?: string[]) {
     super(message);
     if (detail !== undefined) this.detail = detail;
+    if (objects !== undefined) this.objects = objects;
   }
 }
 
@@ -55,15 +59,33 @@ export function soup(mesh: unknown, what: string): Float32Array {
   return out;
 }
 
-function objects(value: unknown, withConfig: boolean): EngineObject[] {
+/**
+ * `objects` as the bridge takes them. A slice (`forSlice`) also takes each object's own settings and its paint
+ * (2.2), checked here (checkObjectPaint) so that malformed paint fails the job before the engine sees any mesh.
+ * With an indexed mesh, triangle i is the i-th index triple, the order soup() expands. Paint that holds no kind
+ * is left out, so the object loads as before.
+ */
+function objects(value: unknown, forSlice: boolean): EngineObject[] {
   if (!Array.isArray(value)) throw new BadRequest('"objects" must be a list of plate objects.');
   return value.map((o: PlateObject, i) => {
     const what = `"objects[${i}]"`;
     if (!isObject(o) || typeof o.name !== 'string' || o.name === '') throw new BadRequest(`${what} needs a "name".`);
     const out: EngineObject = { name: o.name, positions: soup(o.mesh, what) };
-    if (withConfig && o.config !== undefined) {
+    if (forSlice && o.config !== undefined) {
       if (!isObject(o.config) || Object.values(o.config).some((v) => typeof v !== 'string')) throw new BadRequest(`${what}.config must map setting keys to text.`);
       if (Object.keys(o.config).length > 0) out.config = o.config;
+    }
+    if (forSlice && o.paint !== undefined) {
+      const problem = checkObjectPaint(o.paint, out.positions.length / 9, o.name);
+      if (problem) throw new BadRequest(problem.message, `${what}.paint.${problem.kind}`, [o.name]);
+      if (hasPaintKinds(o.paint)) {
+        const paint: NonNullable<EngineObject['paint']> = {};
+        for (const kind of PAINT_KINDS) {
+          const facets = o.paint[kind];
+          if (facets) paint[kind] = { triangles: facets.triangles, codes: facets.codes, ends: facets.ends };
+        }
+        out.paint = paint;
+      }
     }
     return out;
   });

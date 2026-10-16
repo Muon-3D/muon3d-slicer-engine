@@ -18,8 +18,9 @@
 // slice's last argument is the level of Orca's log to return with the result (`log`, text): 0 none,
 // 1 errors … 5 trace, on the scale of setLogLevel.
 //
-// `objects` is [{ name, positions: Float32Array, config?: { key: value } }] (the check ignores
-// `config`); presets are JSON text. Large arrays cross the
+// `objects` is [{ name, positions: Float32Array, config?: { key: value }, paint?: { supports?, seam?,
+// fuzzySkin?, filaments? } }], each paint kind { triangles: Uint32Array, codes: string, ends: Uint32Array }
+// (protocol 2.2 ObjectPaint; the check ignores `config` and `paint`); presets are JSON text. Large arrays cross the
 // boundary as one typed-array copy each way, never as JSON. Every returned typed array owns a
 // fresh ArrayBuffer (not a view of the wasm heap), so the worker can transfer it without copying.
 //
@@ -144,9 +145,48 @@ std::vector<std::pair<std::string, std::string>> object_config_from_js(const val
     return out;
 }
 
-// protocol.ts EngineObject[]. `with_config`: also each object's own settings; the placement check
-// leaves them out (it does not depend on them, and it caches loaded objects by their mesh alone).
-std::vector<muon::MeshInput> meshes_from_js(const val &objects, bool with_config)
+// One kind of an object's paint (protocol 2.2 FacetPaint: { triangles: Uint32Array, codes: string,
+// ends: Uint32Array }) into `out`; false when the kind is absent (undefined or null). Anything else fails
+// the job with BadRequest (5) naming the object and the kind; the values themselves are checked by
+// check_object_paint (model_input.hpp) before any mesh loads.
+bool facet_input_from_js(const val &paint, const char *key, const char *words, const std::string &name, muon::FacetInput &out)
+{
+    const val facets = paint[key];
+    if (facets.isUndefined() || facets.isNull())
+        return false;
+    const val triangles = facets["triangles"];
+    const val codes     = facets["codes"];
+    const val ends      = facets["ends"];
+    const val uint32    = val::global("Uint32Array");
+    if (facets.typeOf().as<std::string>() != "object" || !triangles.instanceof(uint32) || !ends.instanceof(uint32) ||
+        codes.typeOf().as<std::string>() != "string")
+        throw muon::JobFailure(muon::ENGINE_BAD_REQUEST,
+                               name + ": the " + words + " must be { triangles: Uint32Array, codes: text, ends: Uint32Array }.", {name});
+    // One TypedArray.set into wasm memory each.
+    out.triangles = emscripten::convertJSArrayToNumberVector<uint32_t>(triangles);
+    out.codes     = codes.as<std::string>();
+    out.ends      = emscripten::convertJSArrayToNumberVector<uint32_t>(ends);
+    return true;
+}
+
+// EngineObject.paint (absent or null for none) into `mesh`: `painted` when it holds any kind.
+void object_paint_from_js(const val &paint, muon::MeshInput &mesh)
+{
+    if (paint.isUndefined() || paint.isNull())
+        return;
+    if (paint.typeOf().as<std::string>() != "object" || val::global("Array").call<bool>("isArray", paint))
+        throw muon::JobFailure(muon::ENGINE_BAD_REQUEST, mesh.name + ": its paint must be { supports?, seam?, fuzzySkin?, filaments? }.", {mesh.name});
+    // Each call runs: a malformed later kind fails even when an earlier one is present.
+    const bool supports   = facet_input_from_js(paint, "supports", "support paint", mesh.name, mesh.supports);
+    const bool seam       = facet_input_from_js(paint, "seam", "seam paint", mesh.name, mesh.seam);
+    const bool fuzzy_skin = facet_input_from_js(paint, "fuzzySkin", "fuzzy skin paint", mesh.name, mesh.fuzzy_skin);
+    const bool filaments  = facet_input_from_js(paint, "filaments", "filament paint", mesh.name, mesh.filaments);
+    mesh.painted          = supports || seam || fuzzy_skin || filaments;
+}
+
+// protocol.ts EngineObject[]. `for_slice`: also each object's own settings and its paint; the placement
+// check leaves them out (it does not depend on them, and it caches loaded objects by their mesh alone).
+std::vector<muon::MeshInput> meshes_from_js(const val &objects, bool for_slice)
 {
     std::vector<muon::MeshInput> out;
     const unsigned               length = objects["length"].as<unsigned>();
@@ -157,8 +197,10 @@ std::vector<muon::MeshInput> meshes_from_js(const val &objects, bool with_config
         mesh.name = object["name"].as<std::string>();
         // One TypedArray.set into wasm memory.
         mesh.positions = emscripten::convertJSArrayToNumberVector<float>(object["positions"]);
-        if (with_config)
+        if (for_slice) {
             mesh.config = object_config_from_js(object["config"], mesh.name);
+            object_paint_from_js(object["paint"], mesh);
+        }
         out.push_back(std::move(mesh));
     }
     return out;

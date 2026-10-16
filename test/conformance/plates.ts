@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import type { Config } from '../../packages/protocol/src/data.ts';
 import type { SliceParams } from '../../packages/protocol/src/ops.ts';
 import { box, cube, cylinder } from '../fixtures.ts';
+import { bandedCylinder, facetPaint, paintAll, segmentTriangles, tShape } from '../helpers/paint.ts';
 
 interface PresetFixture {
   machine: Config;
@@ -62,6 +63,66 @@ export const PLATES: readonly Plate[] = [
     params: () => ({ configs: fixture('bbl-x1c-0.4'), objects: [{ name: 'Box.stl', mesh: mesh(box([30, 20, 12], [128, 128])) }] }),
   },
 ];
+
+/**
+ * The painted plates (protocol 2.2, PlateObject.paint), whose goldens are `painted` in test/goldens/slices.json,
+ * recorded by tools/goldens/record-slices-painted.mjs. Painted objects take the engine's painted path (the mesh
+ * as sent, the codes through Orca's 3MF string reader). Fuzzy skin has no golden: Orca seeds its noise from
+ * std::random_device (Feature/FuzzySkin/FuzzySkin.cpp), so its G-code differs on every run; test/paint.test.ts
+ * checks it by shape instead.
+ */
+export const PAINTED_PLATES: readonly Plate[] = [
+  {
+    // Tree supports with automatic overhangs, both overhangs blocked: no support at all.
+    id: 'm1-t-blockers-tree',
+    params: () => {
+      const t = tShape([100, 90]);
+      return {
+        configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'tree(auto)' }),
+        objects: [{ name: 'T.stl', mesh: mesh(t.positions), paint: { supports: paintAll([...t.faces.leftWing, ...t.faces.rightWing], '8') } }],
+      };
+    },
+  },
+  {
+    // Grid supports, enforcers only: one overhang enforced whole, the other only on split pieces of one triangle.
+    id: 'm1-t-enforcers-normal',
+    params: () => {
+      const t = tShape([100, 90]);
+      const [first] = t.faces.rightWing;
+      return {
+        configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'normal(manual)' }),
+        objects: [{ name: 'T.stl', mesh: mesh(t.positions), paint: { supports: facetPaint([...t.faces.leftWing.map((i): [number, string] => [i, '4']), [first, '0004053']]) } }],
+      };
+    },
+  },
+  {
+    // Tree supports, enforcers only, on half of each overhang (a triangle split once, one child enforced).
+    id: 'm1-t-enforcers-tree',
+    params: () => {
+      const t = tShape([100, 90]);
+      return {
+        configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'tree(manual)' }),
+        objects: [{ name: 'T.stl', mesh: mesh(t.positions), paint: { supports: facetPaint([[t.faces.leftWing[0], '401'], [t.faces.rightWing[1], '045']]) } }],
+      };
+    },
+  },
+  {
+    // An aligned seam: enforced on a strip at -X, blocked on a strip at +Y.
+    id: 'm1-cylinder-seam',
+    params: () => {
+      const c = bandedCylinder([100, 90], 15, 10, 96);
+      const strip = (from: number, to: number) => [...segmentTriangles(c, 'lower', 96, from, to), ...segmentTriangles(c, 'upper', 96, from, to)];
+      return {
+        configs: withProcess(fixture('muon3d-m1-0.4'), { seam_position: 'aligned' }),
+        objects: [{ name: 'Cylinder.stl', mesh: mesh(c.positions), paint: { seam: facetPaint([...strip(176.25, 183.75).map((i): [number, string] => [i, '4']), ...strip(75, 105).map((i): [number, string] => [i, '8'])]) } }],
+      };
+    },
+  },
+];
+
+function withProcess(configs: PresetFixture, overrides: Record<string, string>): PresetFixture {
+  return { ...configs, process: { ...configs.process, ...overrides } };
+}
 
 /** The G-code as the goldens compare it: without the header line that holds the time it was made. */
 export function comparable(gcode: Uint8Array): string {

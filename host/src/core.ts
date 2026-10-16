@@ -107,7 +107,16 @@ class Lane {
 const PROFILE_OPS: ReadonlySet<string> = new Set(['profiles.normalize', 'profiles.resolve', 'profiles.validate']);
 const ENGINE_OPS: ReadonlySet<string> = new Set(['load', 'slice', 'check', 'config.definitions', ...PROFILE_OPS]);
 const SETTINGS_OPS: ReadonlySet<string> = new Set(['settings.catalogue', 'settings.view', 'settings.edit']);
-const CAPABILITIES = [...OPS, Capability.toolpathsV1, Capability.toolpathExtras, Capability.indexedMeshes, Capability.settingsViewV1, Capability.sliceLog, Capability.sliceField];
+const CAPABILITIES = [
+  ...OPS,
+  Capability.toolpathsV1,
+  Capability.toolpathExtras,
+  Capability.indexedMeshes,
+  Capability.settingsViewV1,
+  Capability.sliceLog,
+  Capability.paintV1,
+  Capability.sliceField,
+];
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -322,8 +331,9 @@ export function createHost(options: HostOptions): Host {
   /** The error response for an exception an op threw. */
   function failed(id: number, err: unknown): void {
     if (err instanceof EngineJobError) error(id, err.error);
-    else if (err instanceof BadRequest) error(id, { code: ErrorCode.BadRequest, message: err.message, ...(err.detail ? { detail: err.detail } : {}) });
-    else if (err && typeof err === 'object' && 'code' in err && typeof (err as EngineError).code === 'number' && 'message' in err) {
+    else if (err instanceof BadRequest) {
+      error(id, { code: ErrorCode.BadRequest, message: err.message, ...(err.detail ? { detail: err.detail } : {}), ...(err.objects ? { objects: err.objects } : {}) });
+    } else if (err && typeof err === 'object' && 'code' in err && typeof (err as EngineError).code === 'number' && 'message' in err) {
       const e = err as EngineError;
       error(id, { code: e.code, message: e.message, ...(e.detail ? { detail: e.detail } : {}), ...(e.objects ? { objects: e.objects } : {}) });
     } else error(id, { code: ErrorCode.Internal, message: messageOf(err) });

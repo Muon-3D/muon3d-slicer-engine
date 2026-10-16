@@ -2,7 +2,8 @@
 // host.<hash>.js, the ES module a client starts (a Web Worker, or a Node worker_threads Worker), and the
 // chunks it loads on demand (host-service.<hash>.js: the settings service with the settings catalogue,
 // loaded on the first settings op). It records them in dist/manifest.json (`host`: the file, its sha256,
-// the protocol, the canary, and `chunks`), and copies LICENSE, NOTICE, THIRD-PARTY-NOTICES.md and SOURCE.md
+// the protocol it was built with (`protocol`, the major, and `protocolMinor`: PROTOCOL in packages/protocol),
+// the canary, and `chunks`), and copies LICENSE, NOTICE, THIRD-PARTY-NOTICES.md and SOURCE.md
 // into dist/, so they are served next to the object code.
 //
 //   npm run build:host                 # dist/host.<hash>.js, dist/host-*.<hash>.js (+ .br/.gz)
@@ -22,12 +23,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
+import { PROTOCOL } from '../packages/protocol/src/envelope.ts';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.resolve(process.env.ENGINE_DIST ?? path.join(repo, 'dist'));
 const watch = process.argv.includes('--watch');
 const SOURCE_URL = 'https://github.com/Muon-3D/muon3d-slicer-engine';
-const PROTOCOL = 2;
 
 function readOptional(file) {
   try {
@@ -173,7 +174,15 @@ function writeOutputs(outputFiles, commit, compress) {
     if (compress) execFileSync(process.execPath, [path.join(repo, 'engine/scripts/compress.mjs'), path.join(dist, f.name)], { stdio: 'inherit' });
   }
   const chunks = files.filter((f) => f !== entry).map((f) => ({ file: f.name, sha256: sha256(f.contents) }));
-  return { file: entry.name, sha256: sha256(entry.contents), protocol: PROTOCOL, canary, engineCommit: commit, chunks };
+  return {
+    file: entry.name,
+    sha256: sha256(entry.contents),
+    protocol: PROTOCOL.major,
+    protocolMinor: PROTOCOL.minor,
+    canary,
+    engineCommit: commit,
+    chunks,
+  };
 }
 
 fs.mkdirSync(dist, { recursive: true });
@@ -206,6 +215,6 @@ if (watch) {
   const host = writeOutputs(result.outputFiles, commit, true);
   writeManifest(host);
   const bytes = (name) => fs.statSync(path.join(dist, name)).size.toLocaleString('en');
-  console.log(`OK: ${path.join(dist, host.file)} (${bytes(host.file)} bytes, protocol v${PROTOCOL}, commit ${commit})`);
+  console.log(`OK: ${path.join(dist, host.file)} (${bytes(host.file)} bytes, protocol v${PROTOCOL.major}.${PROTOCOL.minor}, commit ${commit})`);
   for (const chunk of host.chunks) console.log(`    ${chunk.file} (${bytes(chunk.file)} bytes, loaded on demand)`);
 }
