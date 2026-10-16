@@ -149,7 +149,22 @@ export interface SliceParams {
      * when the slice fails. Default: none.
      */
     log?: LogLevel;
+    /** Run the "Before you print" checks: SliceResult.printChecks ('slice.printChecks'; 2.3). Default true. */
+    printChecks?: boolean;
+    /**
+     * Also return the plate's slice field ('slice.field'): `SliceResult.sliceField`, the file docs/SLICE_FIELD.md
+     * describes. Works with toolpaths off too.
+     */
+    sliceField?: SliceFieldRequest;
   };
+}
+
+/** SliceParams.output.sliceField. */
+export interface SliceFieldRequest {
+  /** Voxel edge, mm: 1 (default) or 0.5. */
+  voxelSize?: number;
+  /** Add the optional depositionTime array. Default false. */
+  depositionTime?: boolean;
 }
 
 /** Orca's log levels, most severe first. */
@@ -162,12 +177,68 @@ export interface SliceResult {
   toolpaths: Toolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
-  /** Wall-clock milliseconds per stage. */
-  timings: { load: number; slice: number; export: number; total: number };
+  /** Wall-clock milliseconds per stage; `checks`, the print checks' share of `total`, when they ran (2.2). */
+  timings: { load: number; slice: number; export: number; total: number; checks?: number };
   /** With output.log: Orca's log of the slice, a line each ("<level>: <message>"). */
   log?: string;
   /** The engine's heap after the job (it only grows). */
   heapBytes?: number;
+  /**
+   * The "Before you print" issues ('slice.printChecks'; 2.3): critical first, then by layer. Warnings only, the
+   * slice succeeded either way. Absent when output.printChecks is false, or from engines without the capability.
+   */
+  printChecks?: PrintCheck[];
+  /**
+   * Which way gravity pointed for this slice ('slice.gravity'; 2.3), in the slicer's frame where layers stack along
+   * +Z: the machine preset's `gravity`, 'against_build' (an upright printer) when it has none. The print checks
+   * that depend on it follow it (docs/print-checks.md, "Gravity").
+   */
+  gravity?: Gravity;
+  /** With output.sliceField: the slice field file (docs/SLICE_FIELD.md; read it with decodeSliceField). */
+  sliceField?: Uint8Array;
+}
+
+/**
+ * A printer's gravity, as its machine preset's `gravity` key says: 'along_build' when the part hangs from the bed
+ * and grows downwards (the Muon3D M1: gravity along +Z, the build direction), 'against_build' on an upright printer.
+ */
+export type Gravity = 'along_build' | 'against_build';
+
+/** What a print check found (docs/print-checks.md). New kinds and fixes may be added: show unknown ones plainly. */
+export type PrintCheckKind =
+  | 'unstable-part'
+  | 'floating-extrusion'
+  | 'long-bridge'
+  | 'curled-overhang'
+  | 'weak-connection'
+  | 'warp-risk'
+  | 'slender'
+  | 'thin-feature'
+  | 'layer-time'
+  | 'overhang'
+  | 'roof-gap'
+  | 'hanging-mass'
+  | 'weak-support-interface';
+
+export type PrintCheckSeverity = 'critical' | 'warning' | 'info';
+
+/** The change that most likely helps; 'orientation' is "turn it". */
+export type PrintCheckFix = 'supports' | 'brim' | 'slower-outer-walls' | 'contact-area' | 'orientation' | 'support-interface';
+
+export interface PrintCheck {
+  kind: PrintCheckKind;
+  severity: PrintCheckSeverity;
+  /** 0-based layer, as Toolpaths numbers them. */
+  layer: number;
+  /** Bed coordinates in mm; z is the layer's print height. */
+  position: Vec3;
+  /** One short line, e.g. "Bridge longer than 16 mm may sag". */
+  message: string;
+  fix: PrintCheckFix;
+  /** The object it belongs to, when one. */
+  object?: string;
+  /** The check's number (warp-risk score, deflection in mm, ...; docs/print-checks.md), when it has one. */
+  value?: number;
 }
 
 /** Print statistics, as Orca writes them into the G-code. */
@@ -310,6 +381,12 @@ export const Capability = {
   settingsViewV1: 'settings.view.v1',
   /** SliceParams.output.log, SliceResult.log and EngineError.log (2.1). */
   sliceLog: 'slice.log',
+  /** SliceParams.output.printChecks, SliceResult.printChecks and timings.checks (2.3). */
+  printChecks: 'slice.printChecks',
+  /** The machine preset's `gravity` key, read by the print checks, and SliceResult.gravity (2.3). */
+  gravity: 'slice.gravity',
+  /** SliceParams.output.sliceField and SliceResult.sliceField: the slice field file (docs/SLICE_FIELD.md). */
+  sliceField: 'slice.field',
   /** PlateObject.paint: support, seam, fuzzy skin and filament painting on a mesh's triangles (2.2). */
   paintV1: 'paint.v1',
 } as const;

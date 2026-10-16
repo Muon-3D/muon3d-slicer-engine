@@ -249,7 +249,7 @@ describe('the painted path', { skip: engineSkip }, () => {
     for (const paint of shapes) {
       const json = (config: object) => JSON.stringify(config);
       const objects = [{ name: 'Cube.stl', positions: cube([100, 90]), paint: paint as ObjectPaint }];
-      const result = engine.slice(json(presets.machine), json(presets.process), presets.filaments.map(json), objects, false, () => undefined, () => undefined, 0);
+      const result = engine.slice(json(presets.machine), json(presets.process), presets.filaments.map(json), objects, false, () => undefined, () => undefined, 0, true);
       assert.ok('error' in result, `sliced with paint ${JSON.stringify(paint)}`);
       assert.equal(result.error.code, ErrorCode.BadRequest);
       assert.match(result.error.message, /^Cube\.stl: (its paint|the seam paint) must be \{/);

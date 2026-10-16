@@ -15,6 +15,7 @@
 
 #include "cli_config.hpp"
 #include "model_input.hpp"
+#include "print_checks.hpp"
 #include "toolpaths.hpp"
 
 #include <libslic3r/libslic3r.h>
@@ -351,6 +352,13 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
     SliceResult             out;
 
     reporter.progress(1, "Loading presets");
+    Gravity gravity = Gravity::AgainstBuild;
+    try {
+        gravity = gravity_of_machine_json(request.machine_json);
+    } catch (const std::invalid_argument &ex) {
+        fail(CLI_CONFIG_FILE_ERROR, ex.what());
+    }
+    out.gravity = gravity_name(gravity);
     PreparedConfig prepared;
     try {
         prepared = prepare_config(request.machine_json, request.process_json, request.filament_jsons, job_dir.path());
@@ -549,7 +557,22 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
             out.toolpaths = build_toolpaths(gcode_result);
         }
         out.gcode_path       = gcode_path;
-        out.timings.export_ms = ms_between(sliced, Clock::now());
+        const Clock::time_point exported = Clock::now();
+        out.timings.export_ms = ms_between(sliced, exported);
+        if (request.want_print_checks) {
+            // After the export: the checks never change the G-code, and never fail the slice.
+            sink.progress(99, "Checking the print");
+            try {
+                out.print_checks = run_print_checks(print, gcode_result, gravity);
+            } catch (const CanceledException &) {
+                throw;
+            } catch (const std::bad_alloc &) {
+                throw;
+            } catch (const std::exception &ex) {
+                sink.add_warning({"print_checks", std::string("The print checks stopped: ") + ex.what(), {}});
+            }
+            out.timings.checks_ms = ms_between(exported, Clock::now());
+        }
     } catch (const JobFailure &) {
         throw;
     } catch (const CanceledException &) {

@@ -135,6 +135,20 @@ struct SliceTimings {
     double slice_ms  = 0;
     double export_ms = 0;
     double total_ms  = 0;
+    double checks_ms = 0; // the print checks (print_checks.cpp), inside total
+};
+
+// One "Before you print" issue (print_checks.hpp; protocol PrintCheck, docs/print-checks.md).
+struct PrintCheck {
+    std::string kind;     // unstable-part, floating-extrusion, long-bridge, curled-overhang, weak-connection,
+                          // warp-risk, slender, thin-feature, layer-time
+    std::string severity; // critical, warning, info
+    std::string fix;      // supports, brim, slower-outer-walls, contact-area, orientation
+    std::string object;   // empty when the issue belongs to no single object
+    std::string message;
+    int         layer = -1;  // preview layer index
+    float       x = 0, y = 0, z = 0; // bed coordinates, mm; z is the layer's print_z
+    float       value = 0;   // the check's number (docs/print-checks.md); NaN when it has none
 };
 
 struct SliceRequest {
@@ -143,6 +157,7 @@ struct SliceRequest {
     std::vector<std::string> filament_jsons;
     std::vector<MeshInput>   objects;
     bool                     want_toolpaths = true;
+    bool                     want_print_checks = true;
 };
 
 struct SliceResult {
@@ -154,6 +169,8 @@ struct SliceResult {
     std::optional<ToolpathData> toolpaths;
     std::vector<EngineWarning>  warnings;
     SliceTimings                timings;
+    std::vector<PrintCheck>     print_checks; // with want_print_checks
+    std::string                 gravity;      // the printer's: "along_build" or "against_build" (print_checks.hpp)
 };
 
 struct CheckRequest {

@@ -240,7 +240,7 @@
       "Direct Drive Standard"
     ],
     "printer_model": "Muon3D M1",
-    "printer_notes": "",
+    "printer_notes": "gravity = along_build",
     "printer_plugin_config_overrides": "",
     "printer_settings_id": "",
     "printer_structure": "undefine",
@@ -337,6 +337,7 @@
       "Auto Lift"
     ],
     "z_offset": "0",
+    "gravity": "along_build",
     "type": "machine"
   },
   "process": {

@@ -57,7 +57,8 @@ endif ()
 message(STATUS "Engine reports Orca commit ${engine_orca_commit}")
 
 add_executable(orca_engine ${ENGINE_BRIDGE_SOURCES})
-target_include_directories(orca_engine PRIVATE "${ENGINE_DIR}/bridge")
+# ORCA_PATCHED_INCLUDE_DIR: the patched Orca headers (OrcaSourcePatches.cmake), for print_checks.cpp.
+target_include_directories(orca_engine PRIVATE "${ENGINE_DIR}/bridge" "${ORCA_PATCHED_INCLUDE_DIR}")
 target_compile_definitions(orca_engine PRIVATE
     "ORCA_ENGINE_COMMIT=\"${engine_orca_commit}\""
     "ORCA_ENGINE_RESOURCES_DIR=\"/resources\"")   # where ENGINE_RESOURCE_FILES are embedded, below

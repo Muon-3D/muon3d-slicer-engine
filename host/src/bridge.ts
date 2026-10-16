@@ -9,7 +9,9 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, ObjectPaint, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, Gravity, PrintCheck, ObjectPaint, SliceFieldRequest, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import { encodeSliceField, printerGravity } from '../../packages/protocol/src/sliceField.ts';
+import { buildSliceField, SliceFieldUnavailable } from './sliceField.ts';
 import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,10 @@ export interface SliceJob {
   toolpathExtras?: boolean;
   /** Orca's log to return, down to this level: 0 none (default), 1 errors … 5 trace. */
   log?: number;
+  /** The "Before you print" checks (docs/print-checks.md). Default true. */
+  printChecks?: boolean;
+  /** Also build the slice field (sliceField.ts). */
+  sliceField?: SliceFieldRequest;
 }
 
 export interface CheckJob {
@@ -84,9 +90,16 @@ export interface SliceOutput {
   toolpaths: BridgeToolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
-  timings: { load: number; slice: number; export: number; total: number };
+  /** `checks`: the print checks' share of `total`, when they ran. */
+  timings: { load: number; slice: number; export: number; total: number; checks?: number };
+  /** With job.sliceField: the slice field file. */
+  sliceField?: Uint8Array;
   /** With SliceJob.log: Orca's log, a line each ("<level>: <message>"). */
   log?: string;
+  /** With SliceJob.printChecks (the default): the "Before you print" issues. */
+  printChecks?: PrintCheck[];
+  /** The machine preset's gravity, as the checks used it (builds before 'slice.gravity' leave it out). */
+  gravity?: Gravity;
 }
 
 export interface CheckOutput {
@@ -125,6 +138,8 @@ export interface OrcaEngineModule {
     onWarning: (warning: EngineWarning) => void,
     /** Orca's log to return with the result (`log`): 0 none, 1 errors … 5 trace. Builds before 0.3.0 ignore it. */
     logLevel: number,
+    /** Run the print checks (`printChecks`, timings.checks). */
+    printChecks: boolean,
   ): EngineResult<SliceOutput>;
   check(machineJson: string, processJson: string, filamentJsons: string[], objects: EngineMeshInput[]): EngineResult<CheckOutput>;
   /** Makes a running slice stop at Orca's next cancellation point (needs a second thread to call it). */
@@ -409,25 +424,59 @@ export function runSlice(
   onWarning?: (warning: EngineWarning) => void,
 ): SliceOutput {
   const started = now();
+  // Older field profiles recorded gravity in notes. Use that value for checks too, unless the
+  // printer supplies the explicit engine key (which the C++ validates).
+  const legacyGravity = printerGravity(job.machine.printer_notes);
+  const machine = job.machine.gravity === undefined && legacyGravity !== null
+    ? { ...job.machine, gravity: legacyGravity } : job.machine;
   const result = engine.slice(
-    presetJson(job.machine),
+    presetJson(machine),
     presetJson(job.process),
     job.filaments.map(presetJson),
     meshInputs(job.objects),
-    job.toolpaths ?? true,
+    (job.toolpaths ?? true) || job.sliceField !== undefined,
     guarded(onProgress),
     guarded(onWarning),
     job.log ?? 0,
+    job.printChecks ?? true,
   );
   if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
+  let field: Uint8Array | undefined;
+  if (job.sliceField !== undefined && result.toolpaths) {
+    try {
+      field = sliceFieldOf(job, result.toolpaths, result.toolpathExtras);
+    } catch (err) {
+      if (!(err instanceof SliceFieldUnavailable)) throw err;
+      const warning = { kind: 'slice_field', message: err.message };
+      result.warnings.push(warning);
+      guarded(onWarning)(warning);
+    }
+  }
   return {
     ...result,
+    ...(field !== undefined ? { sliceField: field } : {}),
+    // Built for the slice field alone when the client did not ask for them.
+    toolpaths: job.toolpaths === false ? null : result.toolpaths,
     // The engine builds them with the toolpaths whether asked or not; they are dropped here so
     // they are not posted to the page.
     toolpathExtras: job.toolpathExtras === false ? null : result.toolpathExtras,
     // The engine times its own stages; the total also covers the conversions on this side.
     timings: { ...result.timings, total: now() - started },
   };
+}
+
+function sliceFieldOf(job: SliceJob, toolpaths: BridgeToolpaths, extras: ToolpathExtras | null): Uint8Array {
+  const { description, arrays } = buildSliceField({
+    machine: job.machine,
+    process: job.process,
+    filaments: job.filaments,
+    objects: job.objects,
+    toolpaths,
+    extras,
+    request: job.sliceField ?? {},
+    generator: 'Muon3D Slicer Engine',
+  });
+  return encodeSliceField(description, arrays);
 }
 
 /** Runs Orca's placement checks for a plate. Throws like runSlice. */
