@@ -196,28 +196,30 @@ st and mt are wasm32, so they have at most 4 GB of memory. A plate too big for t
 slicing (code 2; the next job in a fresh worker still works).
 
 mt64 against mt, measured on 2026-10-16 (Windows 11, 24 threads, the M1 0.4 presets, toolpaths on; Node 24 and
-Chrome 155 agree within noise):
+Chrome 155 agree within noise). The first columns are before the allocator fix (mt's tbbmalloc and mimalloc's
+arenas, `engine/PATCHES.md`), the last two with it (engine 0.6.0; the plate at 8 threads, as the slicer runs it):
 
-| | mt | mt64 |
-|---|---|---|
-| `engine-<v>.wasm` | 11.75 MB (2.44 MB brotli) | 12.52 MB (2.52 MB brotli) |
-| Benchy: slice / total | 1.76 s / 2.59 s | 1.95 s / 2.90 s (+11 %, +12 %) |
-| Benchy: heap afterwards (process RSS) | 1.7 GB (1.1 GB) | 4.6-5.0 GB (1.1 GB) |
-| Two 210k-triangle bodies, no supports: slice / total | 2.76 s / 5.5-6.0 s | 3.4 s / 6.4 s (+23 %, +10 %) |
-| the same: heap afterwards | 3.6 GB (of 4) | 9.5-9.7 GB (of 16) |
-| the same with organic tree supports (Harry's OOM plate) | out of memory at 4 GB, after 3.5 s | out of memory at 16 GB, after 7-13 s |
+| | mt, before | mt64, before | mt, 0.6.0 | mt64, 0.6.0 |
+|---|---|---|---|---|
+| `engine-<v>.wasm` | 11.75 MB (2.44 MB brotli) | 12.52 MB (2.52 MB brotli) | 11.71 MB | 12.48 MB |
+| Benchy: slice / total | 1.76 s / 2.59 s | 1.95 s / 2.90 s (+11 %, +12 %) | | |
+| Benchy: heap afterwards, three Benchies in a row (engine tests) | 1.7 GB, growing (process RSS 1.1 GB) | 4.6-5.0 GB (RSS 1.1 GB) | 1.06 GB, flat | 2.6 GB, flat |
+| Two 210k-triangle bodies, no supports: slice / total | 2.76 s / 5.5-6.0 s | 3.4 s / 6.4 s (+23 %, +10 %) | | |
+| the same: heap afterwards | 3.6 GB (of 4) | 9.5-9.7 GB (of 16) | | |
+| the same with organic tree supports (Harry's OOM plate), 8 threads | out of memory at 4 GB, after 3.5 s | out of memory at 16 GB, after 7-13 s | 2.0 GB, 20.5 s | 2.9 GB, 23.1 s |
 
 - **G-code:** the golden plates of the conformance suite give mt's bytes. Other plates can differ in the order of
   some paths within a layer, with the same extrusions and filament (a Benchy: 223 of 166,928 lines move).
 - **Heap:** mimalloc (the mt builds' malloc) reserves address space by 64-bit sizes on wasm64, so mt64's heap grows
-  about 2.5 times as fast as mt's for the same work, while the memory the process actually uses (RSS) is the same.
-  Most of the 16 GB is address space, not memory.
-- **The OOM plate is not a 4 GB plate.** The single-threaded engine (dlmalloc) slices it with a 0.7 GB heap, and mt64
-  relinked with `-sMALLOC=dlmalloc` with a 1.8 GB heap (63 s instead of st's 80 s). With mimalloc both mt and mt64 run
-  through all of their address space in `TreeModelVolumes` (organic supports, the neighbours as blockers): oneTBB's
-  `scalable_allocator` gets its memory from Emscripten's `mmap`, which allocates through mimalloc
-  (`scalable_malloc` → `__mmap` → `mi_malloc_aligned` → new arenas → `sbrk`), and none of it comes back. That is
-  the mt allocator problem, which Memory64 does not solve.
+  faster than mt's for the same work, while the memory the process actually uses (RSS) is the same.
+- **The OOM plate was the mt allocator's problem, not a 4 GB plate.** The single-threaded engine (dlmalloc) slices it
+  with a 0.7 GB heap. Before the fix, mt and mt64 alike ran through all of their address space in `TreeModelVolumes`
+  (organic supports, the neighbours as blockers): oneTBB's `scalable_allocator` got its memory from Emscripten's
+  `mmap`, which allocates through mimalloc (`scalable_malloc` → `__mmap` → `mi_malloc_aligned` → new arenas →
+  `sbrk`), and mimalloc reserved a new arena for each large buffer; none of it came back. Both now take
+  `scalable_allocator` from `malloc` and put objects over 4 MiB outside mimalloc's arenas (`engine/PATCHES.md`), and
+  both slice the plate. mt64 stays for plates that need more than 4 GB even so; the slicer loads it only after mt ran
+  out of memory.
 
 ## Toolchain rules (every library and the engine must agree)
 
