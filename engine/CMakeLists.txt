@@ -3,7 +3,7 @@
 #
 # Configure (Git Bash, emsdk environment; see scripts/build.sh, which does all of this):
 #   emcmake cmake -C $ORCA_WASM_ROOT/prefix-<v>/share/orcawasm/initial-cache.cmake -G Ninja \
-#       -S engine -B $ORCA_WASM_ROOT/build-<v> -DORCA_SRC=<repository>/orca -DENGINE_VARIANT=<st|mt>
+#       -S engine -B $ORCA_WASM_ROOT/build-<v> -DORCA_SRC=<repository>/orca -DENGINE_VARIANT=<st|mt|mt64>
 #
 # Nothing under ORCA_SRC is modified: its source list is read from Orca's own CMakeLists, desktop-only
 # sources are left out or replaced by engine/stubs, missing headers come from engine/shims, and the few
@@ -22,16 +22,25 @@ list(PREPEND CMAKE_MODULE_PATH "${ENGINE_DIR}/cmake")
 
 # --- Options ---------------------------------------------------------------------------------------------------
 set(ORCA_SRC "" CACHE PATH "OrcaSlicer source tree (the orca/ submodule)")
-set(ENGINE_VARIANT "st" CACHE STRING "Engine variant: st (single-threaded) or mt (pthreads + oneTBB)")
-set_property(CACHE ENGINE_VARIANT PROPERTY STRINGS st mt)
+set(ENGINE_VARIANT "st" CACHE STRING "Engine variant: st (single-threaded), mt (pthreads + oneTBB) or mt64 (mt with Memory64)")
+set_property(CACHE ENGINE_VARIANT PROPERTY STRINGS st mt mt64)
 option(ENGINE_PCH "Build libslic3r with Orca's pchheader.hpp precompiled and force-included, as Orca does (OFF is untested)" ON)
 set(ENGINE_EXTRA_LINK_OPTIONS "" CACHE STRING "Additional emcc link options for the engine module (;-list)")
 
 if (NOT EXISTS "${ORCA_SRC}/src/libslic3r/CMakeLists.txt")
     message(FATAL_ERROR "ORCA_SRC='${ORCA_SRC}' is not an OrcaSlicer source tree. Pass -DORCA_SRC=<path>.")
 endif ()
-if (NOT ENGINE_VARIANT MATCHES "^(st|mt)$")
-    message(FATAL_ERROR "ENGINE_VARIANT must be st or mt, got '${ENGINE_VARIANT}'.")
+if (NOT ENGINE_VARIANT MATCHES "^(st|mt|mt64)$")
+    message(FATAL_ERROR "ENGINE_VARIANT must be st, mt or mt64, got '${ENGINE_VARIANT}'.")
+endif ()
+# The threaded variants: mt (wasm32) and mt64 (the same on wasm64, Memory64: a heap above 4 GB).
+set(ENGINE_THREADED OFF)
+if (ENGINE_VARIANT MATCHES "^mt")
+    set(ENGINE_THREADED ON)
+endif ()
+set(ENGINE_WASM64 OFF)
+if (ENGINE_VARIANT STREQUAL "mt64")
+    set(ENGINE_WASM64 ON)
 endif ()
 list(APPEND CMAKE_MODULE_PATH "${ORCA_SRC}/cmake/modules")   # Orca's FindNLopt, Findlibnoise, ...
 
@@ -54,10 +63,16 @@ foreach (flag -fwasm-exceptions -sSUPPORT_LONGJMP=wasm)
     endif ()
 endforeach ()
 string(FIND " ${CMAKE_CXX_FLAGS} " " -pthread " has_pthread)
-if (ENGINE_VARIANT STREQUAL "mt" AND has_pthread EQUAL -1)
-    message(FATAL_ERROR "The mt variant needs -pthread in CMAKE_CXX_FLAGS (from the mt initial cache).")
+if (ENGINE_THREADED AND has_pthread EQUAL -1)
+    message(FATAL_ERROR "The ${ENGINE_VARIANT} variant needs -pthread in CMAKE_CXX_FLAGS (from its initial cache).")
 elseif (ENGINE_VARIANT STREQUAL "st" AND NOT has_pthread EQUAL -1)
     message(FATAL_ERROR "The st variant must not be compiled with -pthread.")
+endif ()
+string(FIND " ${CMAKE_CXX_FLAGS} " " -m64 " has_m64)
+if (ENGINE_WASM64 AND (has_m64 EQUAL -1 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8))
+    message(FATAL_ERROR "The mt64 variant needs -m64 in CMAKE_C_FLAGS and CMAKE_CXX_FLAGS (from the mt64 initial cache).")
+elseif (NOT ENGINE_WASM64 AND NOT has_m64 EQUAL -1)
+    message(FATAL_ERROR "The ${ENGINE_VARIANT} variant must not be compiled with -m64.")
 endif ()
 if (ENGINE_VARIANT STREQUAL "st" AND NOT CMAKE_CXX_FLAGS MATCHES "-DBOOST_HAS_PTHREADS")
     # Without it <boost/thread.hpp> refuses to compile and Boost.Log's ABI would not match the prefix.

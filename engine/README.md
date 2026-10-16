@@ -19,7 +19,7 @@ engine/
                      placement, toolpaths), Orca's option table as JSON (config_def), Orca's preset loading
                      and profile validator on vendor folders (profiles), Orca's log for a job (log_capture),
                      and the embind API (engine.cpp)
-  scripts/           build.sh: builds one variant (st|mt) and publishes it into dist/; get-orca.sh, pin.sh
+  scripts/           build.sh: builds one variant (st|mt|mt64) and publishes it into dist/; get-orca.sh, pin.sh
   PATCHES.md         every change needed inside Orca's src/ (none in the checkout, one out-of-tree patch)
 ```
 
@@ -47,8 +47,8 @@ since it goes into the compile flags; keep it out of any synced folder, the buil
 |---|---|
 | `$ORCA_WASM_ROOT/emsdk` | Emscripten 6.0.10 (`ORCA_EMSDK` overrides it) |
 | `$ORCA_WASM_ROOT/deps-src` | pinned dependency sources (hash-checked) |
-| `$ORCA_WASM_ROOT/prefix-st`, `prefix-mt` | installed dependencies per variant |
-| `$ORCA_WASM_ROOT/build-st`, `build-mt` | engine build trees (`ENGINE_BUILD` overrides them) |
+| `$ORCA_WASM_ROOT/prefix-st`, `prefix-mt`, `prefix-mt64` | installed dependencies per variant |
+| `$ORCA_WASM_ROOT/build-st`, `build-mt`, `build-mt64` | engine build trees (`ENGINE_BUILD` overrides them) |
 
 The Orca source is the `orca/` submodule (`ORCA_SRC` overrides it); build output goes to `dist/` (`ENGINE_DIST`) and
 test output to `test-out/` (`ENGINE_TEST_OUT`).
@@ -188,12 +188,41 @@ folder of its own) and point `ORCA_EXE` at it. After that, `compare.ts` can be m
   `crossOriginIsolated` is true and the manifest lists it. Browsers honour those headers only in a secure context
   (https:// or localhost): a page opened by a LAN address over plain http has to use st.
 
-Both are wasm32, so an engine has at most 4 GB of memory. A plate too big for that fails with an error instead of
+- **mt64** (optional) — mt compiled for wasm64 (`-m64`): 64-bit pointers and a WebAssembly Memory64 memory of up to
+  16 GB. Needs what mt needs plus Memory64 (Chrome/Edge 133, Firefox 134, Node 24; not Safari, whose release has
+  no Memory64 yet). The host loads it only when a client names it (docs/PROTOCOL.md, section 4).
+
+st and mt are wasm32, so they have at most 4 GB of memory. A plate too big for that fails with an error instead of
 slicing (code 2; the next job in a fresh worker still works).
+
+mt64 against mt, measured on 2026-10-16 (Windows 11, 24 threads, the M1 0.4 presets, toolpaths on; Node 24 and
+Chrome 155 agree within noise):
+
+| | mt | mt64 |
+|---|---|---|
+| `engine-<v>.wasm` | 11.75 MB (2.44 MB brotli) | 12.52 MB (2.52 MB brotli) |
+| Benchy: slice / total | 1.76 s / 2.59 s | 1.95 s / 2.90 s (+11 %, +12 %) |
+| Benchy: heap afterwards (process RSS) | 1.7 GB (1.1 GB) | 4.6-5.0 GB (1.1 GB) |
+| Two 210k-triangle bodies, no supports: slice / total | 2.76 s / 5.5-6.0 s | 3.4 s / 6.4 s (+23 %, +10 %) |
+| the same: heap afterwards | 3.6 GB (of 4) | 9.5-9.7 GB (of 16) |
+| the same with organic tree supports (Harry's OOM plate) | out of memory at 4 GB, after 3.5 s | out of memory at 16 GB, after 7-13 s |
+
+- **G-code:** the golden plates of the conformance suite give mt's bytes. Other plates can differ in the order of
+  some paths within a layer, with the same extrusions and filament (a Benchy: 223 of 166,928 lines move).
+- **Heap:** mimalloc (the mt builds' malloc) reserves address space by 64-bit sizes on wasm64, so mt64's heap grows
+  about 2.5 times as fast as mt's for the same work, while the memory the process actually uses (RSS) is the same.
+  Most of the 16 GB is address space, not memory.
+- **The OOM plate is not a 4 GB plate.** The single-threaded engine (dlmalloc) slices it with a 0.7 GB heap, and mt64
+  relinked with `-sMALLOC=dlmalloc` with a 1.8 GB heap (63 s instead of st's 80 s). With mimalloc both mt and mt64 run
+  through all of their address space in `TreeModelVolumes` (organic supports, the neighbours as blockers): oneTBB's
+  `scalable_allocator` gets its memory from Emscripten's `mmap`, which allocates through mimalloc
+  (`scalable_malloc` → `__mmap` → `mi_malloc_aligned` → new arenas → `sbrk`), and none of it comes back. That is
+  the mt allocator problem, which Memory64 does not solve.
 
 ## Toolchain rules (every library and the engine must agree)
 
-- Compile and link: `-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1`, plus `-pthread` for mt.
+- Compile and link: `-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1`, plus `-pthread` for mt and mt64,
+  and `-m64` for mt64.
 - Defines: `CGAL_ALWAYS_ROUND_TO_NEAREST` (wasm cannot change FPU rounding; CGAL's interval filters are otherwise
   silently wrong), `CGAL_DISABLE_GMP` (Boost.Multiprecision backend), and `BOOST_HAS_PTHREADS` for st.
 - Always `-G Ninja` with `emcmake` (on Windows, Strawberry Perl's MinGW make is often on PATH), and keep `EM_CACHE`

@@ -7,6 +7,12 @@
 # engine relies on. Nothing here is Orca code; it only links against the prefix.
 cmake_minimum_required(VERSION 3.20)
 project(orcawasm_smoke C CXX)
+# mt and mt64 (mt on wasm64) are the threaded variants.
+if (ORCAWASM_VARIANT MATCHES "^mt")
+  set(SMOKE_THREADED 1)
+else ()
+  set(SMOKE_THREADED 0)
+endif ()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -26,7 +32,7 @@ set(Boost_NO_SYSTEM_PATHS TRUE)
 find_package(Boost 1.83.0 REQUIRED COMPONENTS
   system filesystem thread log log_setup locale regex chrono atomic date_time iostreams program_options nowide)
 find_package(Eigen3 5.0.1 REQUIRED)
-if (ORCAWASM_VARIANT STREQUAL "mt")
+if (ORCAWASM_VARIANT MATCHES "^mt")
   set(TBB_STATIC 1)
   find_package(TBB REQUIRED)
 endif ()
@@ -60,20 +66,20 @@ message(STATUS "smoke: Boost ${Boost_VERSION} (${Boost_DIR}), Eigen3 ${Eigen3_VE
 add_executable(smoke smoke.cpp)
 target_compile_definitions(smoke PRIVATE
   SMOKE_VARIANT="${ORCAWASM_VARIANT}"
-  $<$<STREQUAL:${ORCAWASM_VARIANT},mt>:SMOKE_MT>)
+  $<$<BOOL:${SMOKE_THREADED}>:SMOKE_MT>)
 target_link_libraries(smoke PRIVATE
   Boost::boost Boost::filesystem Boost::thread Boost::log Boost::log_setup Boost::locale Boost::nowide
   Boost::iostreams Boost::program_options
   Eigen3::Eigen ${_cereal} NLopt::nlopt Qhull::qhullcpp Qhull::qhullstatic_r CGAL::CGAL ${_noise}
   JPEG::JPEG PNG::PNG ZLIB::ZLIB
-  $<$<STREQUAL:${ORCAWASM_VARIANT},mt>:TBB::tbb>
-  $<$<STREQUAL:${ORCAWASM_VARIANT},mt>:TBB::tbbmalloc>)
+  $<$<BOOL:${SMOKE_THREADED}>:TBB::tbb>
+  $<$<BOOL:${SMOKE_THREADED}>:TBB::tbbmalloc>)
 # --profiling-funcs keeps function names in stack traces; INITIAL_MEMORY must hold the 16 MB main stack
 # (as the engine's will) plus static data.
 target_link_options(smoke PRIVATE
   -sENVIRONMENT=node -sEXIT_RUNTIME=1 -sINITIAL_MEMORY=64MB -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=16MB
   -sASSERTIONS=1 --profiling-funcs)
-if (ORCAWASM_VARIANT STREQUAL "mt")
+if (ORCAWASM_VARIANT MATCHES "^mt")
   # TBB asks for ~hardwareConcurrency workers on first use; a pool smaller than its demand deadlocks a
   # blocked caller (Hiosdra/OrcaWasm's lesson). STRICT=2 turns pool exhaustion into an abort, not a hang.
   target_link_options(smoke PRIVATE

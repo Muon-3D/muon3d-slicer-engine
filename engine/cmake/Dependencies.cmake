@@ -69,7 +69,7 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 
 # --- oneTBB ------------------------------------------------------------------------------------------------------
-if (ENGINE_VARIANT STREQUAL "mt")
+if (ENGINE_THREADED)
     find_package(TBB 2021 CONFIG REQUIRED COMPONENTS tbb)
 else ()
     # Single-threaded: the serial header shim stands in for oneTBB (see shims/tbb-serial/README.md).
@@ -85,7 +85,7 @@ endif ()
 # allocator/scalable_malloc.c (malloc), compiled into the engine (cmake/Engine.cmake). The targets are
 # Orca's, so their link lists are rewritten here rather than edited. Nothing to do for st (the serial shim).
 function(engine_without_tbbmalloc)
-    if (NOT ENGINE_VARIANT STREQUAL "mt")
+    if (NOT ENGINE_THREADED)
         return()
     endif ()
     foreach (target IN LISTS ARGN)

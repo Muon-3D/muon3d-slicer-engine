@@ -22,6 +22,7 @@
     "test:engine": "node engine/scripts/test-engine.mjs",
     "test:engine:st": "node engine/scripts/test-engine.mjs st",
     "test:engine:mt": "node engine/scripts/test-engine.mjs mt",
+    "test:engine:mt64": "node engine/scripts/test-engine.mjs mt64",
     "test:conformance": "node --test test/conformance/conformance.test.ts",
     "check": "npm run check:imports && npm run typecheck",
     "check:imports": "node tools/check-imports.mjs",

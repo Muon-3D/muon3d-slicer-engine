@@ -6,7 +6,7 @@ description: >-
   test uses Orca's CMake modules).
 inputs:
   variant:
-    description: st or mt
+    description: st, mt or mt64
     required: true
 outputs:
   cache-hit:

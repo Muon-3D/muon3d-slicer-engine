@@ -252,7 +252,7 @@ export async function loadEngine(baseUrl: string, variant: Variant, options: Loa
   return { engine, initMs: now() - started, memory };
 }
 
-/** The wasm memory: exported by 'st', imported (shared with the pthreads) by 'mt'. */
+/** The wasm memory: exported by 'st', imported (shared with the pthreads) by 'mt' and 'mt64'. */
 function findMemory(imports: WebAssembly.Imports, exports: WebAssembly.Exports): WebAssembly.Memory | null {
   const values = [...Object.values(exports), ...Object.values(imports).flatMap((module) => Object.values(module))];
   return values.find((value): value is WebAssembly.Memory => value instanceof WebAssembly.Memory) ?? null;
@@ -510,4 +510,17 @@ export function startFailure(err: unknown): { code: number; message: string; det
     return { code: 1, message: COMPILE_FAILED, detail };
   }
   return { code: 1, message: detail || 'The engine stopped while starting.' };
+}
+
+/**
+ * Whether this engine can run 'mt64': a module with a shared 64-bit memory validates (WebAssembly Memory64 with
+ * threads: Chrome 133, Firefox 134, Node 24; not Safari). The module is the header, then a memory section with one
+ * memory whose limits flags are 0x07 (has a maximum, shared, 64-bit), initial 1 page, maximum 1 page.
+ */
+export function memory64Supported(): boolean {
+  try {
+    return WebAssembly.validate(new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x04, 0x01, 0x07, 0x01, 0x01]));
+  } catch {
+    return false;
+  }
 }

@@ -63,8 +63,11 @@ function buildInfo(commit) {
   const catalogue = JSON.parse(fs.readFileSync(path.join(repo, 'data/settings-catalogue.json'), 'utf8'));
   const pin = readOptional(path.join(repo, 'engine/scripts/orca/pin.sh'));
   const orcaRepository = (/^ORCA_REPO=(\S+)/m.exec(pin)?.[1] ?? 'https://github.com/Muon-3D/OrcaSlicer').replace(/\.git$/, '').replace(/^["']|["']$/g, '');
-  const memory = /-sMAXIMUM_MEMORY=(\d+)(GB|MB)/.exec(readOptional(path.join(repo, 'engine/cmake/Engine.cmake')));
-  const maxHeapBytes = memory ? Number(memory[1]) * 1024 ** (memory[2] === 'GB' ? 3 : 2) : 4 * 1024 ** 3;
+  // The first set(ENGINE_MAXIMUM_MEMORY ...) in Engine.cmake is st's and mt's, the second (if (ENGINE_WASM64)) mt64's.
+  const engineCmake = readOptional(path.join(repo, 'engine/cmake/Engine.cmake'));
+  const memories = [...engineCmake.matchAll(/set\(ENGINE_MAXIMUM_MEMORY (\d+)(GB|MB)\)/g)].map((m) => Number(m[1]) * 1024 ** (m[2] === 'GB' ? 3 : 2));
+  const maxHeapBytes = memories[0] ?? 4 * 1024 ** 3;
+  const maxHeapBytes64 = memories[1] ?? 16 * 1024 ** 3;
   const clean = commit.replace(/-(dirty|dev)$/, '');
   return {
     version,
@@ -72,6 +75,7 @@ function buildInfo(commit) {
     source: /^[0-9a-f]{40}$/.test(clean) ? `${SOURCE_URL}/tree/${clean}` : SOURCE_URL,
     orca: { version: catalogue.orca.version, commit: catalogue.orca.commit, repository: orcaRepository },
     maxHeapBytes,
+    maxHeapBytes64,
   };
 }
 

@@ -8,7 +8,7 @@ The code of this document is [`packages/protocol`](../packages/protocol) (`@muon
 Apache-2.0): the TypeScript types of every message, and the helpers named below. The conformance suite
 ([`test/conformance`](../test/conformance)) runs every operation through every transport against those types.
 
-**Version: 2.3** (2.1 adds the profile ops and the slice log, 2.2 painting, 2.3 supports that avoid other objects and the path conflict's details; a 2.0 client works unchanged). Words such as MUST,
+**Version: 2.4** (2.1 adds the profile ops and the slice log, 2.2 painting, 2.3 supports that avoid other objects and the path conflict's details, 2.4 the `mt64` variant; a 2.0 client works unchanged). Words such as MUST,
 SHOULD and MAY are used as in RFC 2119.
 
 ## Contents
@@ -28,7 +28,7 @@ SHOULD and MAY are used as in RFC 2119.
 
 - **Messages only.** A client starts a host and exchanges messages with it. It never imports, evaluates or calls
   engine code, and never shares memory with it (no `SharedArrayBuffer`, no `Atomics` between client and host; the
-  `mt` engine's threads share memory only among themselves).
+  `mt` and `mt64` engines' threads share memory only among themselves).
 - **Coarse, stateless operations: documents in, documents out.** No handles into the engine's objects cross the
   boundary. The host may cache (configs by hash, the loaded engine), but no request depends on another's effect
   except through what the client sends.
@@ -73,8 +73,8 @@ const worker = new Worker(new URL(manifest.host.file, base), { type: 'module', n
 ```
 
 The host loads the files it needs from its own folder (the engine's `.mjs` and `.wasm`, the scripts listed in
-`manifest.host.chunks`, `manifest.json`). A server MUST serve the whole runtime folder as it is. The `mt` engine
-needs a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
+`manifest.host.chunks`, `manifest.json`). A server MUST serve the whole runtime folder as it is. The `mt` and `mt64`
+engines need a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
 require-corp`). No file of the runtime makes code from text (since 0.3.1): a Content-Security-Policy needs
 `'wasm-unsafe-eval'` in `script-src`, never `'unsafe-eval'`.
 
@@ -166,8 +166,9 @@ Orca's English text; `stage`, when present, a stable id.
 ```ts
 type HostState =
   | { state: 'idle' }                                   // the host runs; the engine is not loaded
-  | { state: 'loading'; variant: 'st' | 'mt'; loadedBytes: number; totalBytes: number; done?: boolean }
-  | { state: 'ready'; variant: 'st' | 'mt'; initMs: number; heapBytes?: number; maxHeapBytes?: number }
+  | { state: 'loading'; variant: Variant; loadedBytes: number; totalBytes: number; done?: boolean }
+  | { state: 'ready'; variant: Variant; initMs: number; heapBytes?: number; maxHeapBytes?: number }
+type Variant = 'st' | 'mt' | 'mt64';                    // 'mt64': 2.4
   | { state: 'fatal'; code: number; message: string; detail?: string };
 ```
 
@@ -175,6 +176,17 @@ type HostState =
   `config.definitions`), as variant `auto`, unless `load` came first. Settings ops never load it.
 - **Variants:** `st` runs everywhere; `mt` needs `SharedArrayBuffer` (a cross-origin isolated page, or Node) and uses
   threads. `auto` is `mt` where it can run and is built, else `st`. `hello.variants` lists what can run.
+- **`mt64`** (2.4, optional): `mt` built for wasm64, whose memory is a WebAssembly Memory64 memory. Its heap grows to
+  16 GB (`hello.limits.maxHeapBytesByVariant.mt64`) instead of the 4 GB a wasm32 engine can address, for plates that
+  run `mt` out of memory. It needs what `mt` needs and Memory64 with a shared memory: Chrome and Edge 133, Firefox
+  134, Node 24 or newer; Safari has it only in its Technology Preview, so not on iPhone or iPad. It is in a build only
+  when built (`manifest.variants.mt64`), is listed in `hello.variants` only where it can run, and is loaded only when
+  named (`load` with `variant: 'mt64'`): `auto` never picks it. It prints the same paths as `mt` with the same
+  material, but not always in the same order (section 6.5). Its costs: a larger download, slower slicing (64-bit
+  memory accesses are bounds-checked in software), a heap that grows about 2.5 times as fast as `mt`'s (its
+  allocator works with 64-bit sizes), and an address space reservation of its maximum when it starts (shared memory
+  cannot move). A client SHOULD use it only where it is needed, for example to retry a plate that ran `mt` out of
+  memory (code 2), and fall back to `st` without it.
 - **Once loaded,** the variant is fixed: a `load` of the other variant fails with `BadRequest` (start another host).
 - **`fatal`:** the engine could not load, or crashed (a trap, an abort, out of memory). Every later engine op fails
   at once with the same error; settings ops still work. The client SHOULD end the host and start a new one.
@@ -250,7 +262,7 @@ worker, their buffers are transferred, as a result's are.
 ```ts
 params: { protocol: { major: 2, minMinor?: number }, client: { name: string, version: string } }
 result: {
-  protocol: { major: 2, minor: 2 },
+  protocol: { major: 2, minor: 4 },
   engine: {
     name: string,                // "Muon3D Slicer Engine (based on OrcaSlicer)"
     version: string,             // this release, e.g. "0.4.0"
@@ -262,8 +274,12 @@ result: {
     commit: string,              // the engine repository's commit the host was built from
   },
   capabilities: string[],        // every op, and the sub-features below
-  variants: ('st' | 'mt')[],     // what can run here
-  limits: { maxThreads: number, maxHeapBytes: number },
+  variants: Variant[],           // what can run here and is built ('mt64': 2.4, section 4)
+  limits: {
+    maxThreads: number,
+    maxHeapBytes: number,        // st's and mt's
+    maxHeapBytesByVariant?: { st?: number, mt?: number, mt64?: number },   // 2.4: per variant in `variants`
+  },
   formats: { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 },
 }
 ```
@@ -292,15 +308,15 @@ always there). Unknown capability strings MUST be ignored.
 ### 6.2 `load`
 
 ```ts
-params: { variant?: 'st' | 'mt' | 'auto', threads?: number, base?: string }
-result: { variant: 'st' | 'mt', initMs: number }
+params: { variant?: Variant | 'auto', threads?: number, base?: string }
+result: { variant: Variant, initMs: number }
 ```
 
-Loads the engine now instead of on the first op that needs it (a warm-up). `threads` caps `mt`'s threads; `base`
+Loads the engine now instead of on the first op that needs it (a warm-up). `threads` caps `mt`'s and `mt64`'s threads; `base`
 names another folder with the engine files (default: the host's own). State messages report the download
 (`loading`, with bytes) and the result (`ready` or `fatal`). A second `load` answers with the first's result.
-Fails with `NotLoaded` when the engine cannot load, `BadRequest` for a variant other than the loaded one or `mt`
-where it cannot run.
+Fails with `NotLoaded` when the engine cannot load, `BadRequest` for a variant other than the loaded one, for `mt` or
+`mt64` where it cannot run (no `SharedArrayBuffer`; for `mt64`, no Memory64), or for `mt64` when the build has none.
 
 ### 6.3 `status`
 
@@ -373,7 +389,9 @@ result: {
   `from: "system"`, a `type`, overrides already applied.
 - Progress comes as `progress` messages, Orca's warnings as `warning` messages (and in `warnings`).
 - The same request gives the same G-code bytes on every host of one release, `st` and `mt` alike, the
-  `; generated by` header line (which holds the time) aside.
+  `; generated by` header line (which holds the time) aside. `mt64` gives the same bytes on every host too, and the
+  same bytes as `mt` for the conformance suite's golden plates; on other plates it can print some paths of a layer
+  in another order, with the same extrusions and the same material (a Benchy: 0.13 % of its lines).
 - **Supports and the other objects (2.3, `support.avoidObjects`).** Orca generates each object's supports seeing
   that object alone, so one object's support could run through another, and the plate then failed with -101. For
   each object whose supports are **organic tree supports** (`support_type` `tree(auto)` or `tree(manual)` with
@@ -972,7 +990,7 @@ keys and missing ones.
    (`npm run test:conformance`; the engine part with `npm run test:engine`). A client's fake engine type-checks
    against the same package.
 
-The package's version follows the protocol: 2.3.x is protocol 2.3.
+The package's version follows the protocol: 2.4.x is protocol 2.4.
 
 ## 10. A client in brief
 

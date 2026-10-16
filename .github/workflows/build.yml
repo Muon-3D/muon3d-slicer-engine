@@ -3,7 +3,7 @@
 #   changes  decides whether the engine (wasm) must be built: only when engine/, the orca pin or the CI
 #            toolchain changed. Otherwise the jobs below reuse the engine of the rolling `edge` prerelease.
 #   checks   npm run check (imports, types) and npm test, on every run
-#   engine   st and mt in parallel: toolchain (cached), engine build (ccache), the Node engine tests
+#   engine   st, mt and mt64 in parallel: toolchain (cached), engine build (ccache), the Node engine tests
 #   runtime  the host build, the engine tests if the engine was reused, a cube sliced on both variants from
 #            the assembled runtime (tools/release/assemble.mjs); the profile set (tools/profiles) with the public
 #            profile checks (OrcaSlicer's validator and profile tool, the fixtures, the Muon3D record); both
@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [st, mt]
+        variant: [st, mt, mt64]
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
@@ -184,7 +184,7 @@ jobs:
       - name: Put the engine into dist/
         run: |
           if [[ $WASM_BUILT == true ]]; then
-            node tools/release/merge-dist.mjs dist artifacts/engine-st artifacts/engine-mt
+            node tools/release/merge-dist.mjs dist artifacts/engine-st artifacts/engine-mt artifacts/engine-mt64
           else
             # engine/ did not change: the engine of the edge prerelease is the same build.
             gh release download edge --repo "$GITHUB_REPOSITORY" --pattern 'muon3d-slicer-engine-edge.tgz' --dir edge
@@ -214,9 +214,9 @@ jobs:
           fi
           node tools/release/assemble.mjs --dist dist --out "out/muon3d-slicer-engine-$version" --version "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Slice a cube with the runtime (st and mt)
+      - name: Slice a cube with the runtime (every variant it has)
         run: |
-          for variant in st mt; do
+          for variant in $(node -p 'Object.keys(require("./dist/manifest.json").variants).join(" ")'); do
             node examples/node-cli/slice.mjs --cube 20 --variant "$variant" --dist out/muon3d-slicer-engine-*/ -o "out/cube-$variant.gcode"
             grep -q '^; total layer number: 100$' "out/cube-$variant.gcode"
           done

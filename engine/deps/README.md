@@ -7,6 +7,7 @@ Emscripten 6.0.10 into one install prefix per engine variant:
 |---|---|---|
 | `$ORCA_WASM_ROOT/prefix-st` | single-threaded | Boost, Eigen, cereal, CGAL, NLopt, libnoise, Qhull, libjpeg-turbo |
 | `$ORCA_WASM_ROOT/prefix-mt` | pthreads | the same, plus oneTBB 2021.12 (`libtbb.a`, `libtbbmalloc.a`) |
+| `$ORCA_WASM_ROOT/prefix-mt64` | pthreads on wasm64 (Memory64; optional) | as `prefix-mt`, every library compiled with `-m64` |
 
 The prefixes, the sources and the build trees are large (about 250 MB per prefix, 170 MB of
 archives), so they stay under `ORCA_WASM_ROOT` (default `~/OrcaWasm`). Only the scripts, the hashes
@@ -15,7 +16,7 @@ and the smoke test are kept in this folder.
 ```
 fetch-deps.sh      downloads, hash-checks and extracts the sources into $ORCA_WASM_ROOT/deps-src
 SHA256SUMS         expected sha256 of every archive (the single source of truth for fetch-deps.sh)
-build-deps.sh      builds one prefix (VARIANT=st|mt): configure, build, install, hand-off file, smoke test
+build-deps.sh      builds one prefix (VARIANT=st|mt|mt64): configure, build, install, hand-off file, smoke test
 smoke/             a wasm program that links the whole prefix, run under node by the 'verify' step
 ```
 
@@ -39,7 +40,8 @@ VARIANT=mt bash "$PWD/engine/deps/build-deps.sh" tbb verify      # run selected 
   own recipe (the text of its `step_*` function), so a re-run rebuilds only what changed. Delete
   `prefix-<v>/.stamps` to force a rebuild.
 - **Overridable paths:** `ORCA_WASM_ROOT` (no spaces), `ORCA_SRC` (read only; used only by the
-  optional GMP step), `ORCA_EMSDK`, `JOBS` and `EM_CACHE`. `EM_CACHE` defaults to the emsdk's own
+  optional GMP step), `ORCA_EMSDK`, `JOBS`, `EM_CACHE` and `DEPS_BUILD` (the build trees, default
+  `build-deps/<variant>`; keep it inside `ORCA_WASM_ROOT`). `EM_CACHE` defaults to the emsdk's own
   cache, which must stay on the same drive as the build trees.
 - **GMP/MPFR** are fetched only with `WITH_GMP=1` (or when named: `fetch-deps.sh gmp mpfr`).
 - **Paths in the output:** every library is compiled with `-ffile-prefix-map`, which records

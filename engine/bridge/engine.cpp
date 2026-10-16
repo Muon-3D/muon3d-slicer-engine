@@ -213,7 +213,7 @@ std::vector<muon::MeshInput> meshes_from_js(const val &objects, bool for_slice)
 
 template<typename T> val typed_array(const char *type, const std::vector<T> &data)
 {
-    val array = val::global(type).new_(data.size());
+    val array = val::global(type).new_(double(data.size()));   // a Number: size_t reaches JS as a BigInt on wasm64 (mt64)
     if (!data.empty())
         array.call<void>("set", val(emscripten::typed_memory_view(data.size(), data.data())));
     return array;
@@ -363,11 +363,18 @@ val extras_to_js(const muon::ToolpathData &t)
 // The G-code stays in JS memory end to end: MEMFS keeps file contents in JS typed arrays, and
 // FS.readFile returns a fresh copy. Reading it through C++ would grow the wasm heap by the size of
 // the file for the rest of the session (wasm memory never shrinks).
-EM_JS(emscripten::EM_VAL, orca_engine_read_file, (const char *path), {
-    return Emval.toHandle(FS.readFile(UTF8ToString(path)));
+// Written for both pointer widths: on wasm64 (mt64) a pointer reaches EM_JS code as a BigInt and a
+// pointer-typed result must be one, so the path is converted with Number() and the emval handle (a small
+// integer) comes back as an int.
+EM_JS(int, orca_engine_read_file, (const char *path), {
+    return Emval.toHandle(FS.readFile(UTF8ToString(Number(path))));
 });
 
-val read_file(const std::string &path) { return val::take_ownership(orca_engine_read_file(path.c_str())); }
+val read_file(const std::string &path)
+{
+    const int handle = orca_engine_read_file(path.c_str());
+    return val::take_ownership(reinterpret_cast<emscripten::EM_VAL>(static_cast<uintptr_t>(handle)));
+}
 
 // ---------------------------------------------------------------------------------------------
 // Progress and warnings -> JS callbacks

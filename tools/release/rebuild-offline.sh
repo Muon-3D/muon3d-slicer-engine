@@ -15,7 +15,7 @@
 # =====================================================================================================
 set -euo pipefail
 
-VARIANT=${1:?usage: rebuild-offline.sh st|mt}
+VARIANT=${1:?usage: rebuild-offline.sh st|mt|mt64}
 IN=${IN:-/in}
 WORK=${WORK:-/work}
 EMSDK_DIR=${ORCA_EMSDK:-/emsdk}

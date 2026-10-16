@@ -1,4 +1,4 @@
-// tbbmalloc's C API (tbb::scalable_allocator and friends) on the engine's own malloc, for the mt engine.
+// tbbmalloc's C API (tbb::scalable_allocator and friends) on the engine's own malloc, for the mt and mt64 engines.
 //
 // Orca allocates every Points vector (Point.hpp: PointsAllocator) and the support layers' storage
 // (Support/SupportLayer.hpp) with tbb::scalable_allocator. Natively that is tbbmalloc. On wasm32,

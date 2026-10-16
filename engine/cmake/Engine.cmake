@@ -68,6 +68,15 @@ set_target_properties(orca_engine PROPERTIES
     SUFFIX ".mjs"                                      # Emscripten emits engine-<v>.mjs + engine-<v>.wasm
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
 
+# The heap's maximum. wasm32 addresses 4 GB. mt64 is linked for wasm64 (-m64, from the prefix's initial
+# cache, so in CMAKE_EXE_LINKER_FLAGS): its memory is a Memory64 memory, whose limit is 16 GB in Chrome
+# (V8 kV8MaxWasmMemory64Pages, 262144 pages, the JS API's limit) and Firefox (ArrayBuffer ByteLengthLimit).
+# A shared memory reserves its maximum as address space when it is created, not as committed memory.
+set(ENGINE_MAXIMUM_MEMORY 4GB)
+if (ENGINE_WASM64)
+    set(ENGINE_MAXIMUM_MEMORY 16GB)
+endif ()
+
 set(ENGINE_LINK_OPTIONS
     # ES6 module factory: `const Module = await createOrcaEngine({...})`.
     -sMODULARIZE=1
@@ -85,13 +94,13 @@ set(ENGINE_LINK_OPTIONS
     -sDYNAMIC_EXECUTION=0
     # FS stays reachable from JS (the worker reads the G-code file from MEMFS without another copy).
     # wasmMemory: the heap's WebAssembly.Memory, so JS can read its size (wasmMemory.buffer.byteLength,
-    # valid up to the full 4 GB) after a job or a crash. Wasm memory never shrinks, and the mt build's
+    # valid up to the full maximum) after a job or a crash. Wasm memory never shrinks, and the mt build's
     # grows with every job (mimalloc keeps per-thread pages), so the worker's owner replaces an engine
     # whose heap has grown large.
     -sEXPORTED_RUNTIME_METHODS=FS,wasmMemory
     -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=256MB
-    -sMAXIMUM_MEMORY=4GB
+    -sMAXIMUM_MEMORY=${ENGINE_MAXIMUM_MEMORY}
     -sSTACK_SIZE=16MB                                  # Orca gives its threads 16 MB stacks; deep recursion
                                                        # in Arachne / CGAL has no guard page in wasm
     --emit-symbol-map                                  # engine-<v>.mjs.symbols, to decode crash stacks
@@ -99,7 +108,7 @@ set(ENGINE_LINK_OPTIONS
     # commit or date, so the output still depends only on the sources.
     "SHELL:--extern-pre-js \"${ENGINE_DIR}/cmake/licence-banner.js\""
 )
-if (ENGINE_VARIANT STREQUAL "mt")
+if (ENGINE_THREADED)
     list(APPEND ENGINE_LINK_OPTIONS
         -pthread
         # Per-thread heaps; dlmalloc has one global lock (a Benchy takes 2.5-3.5 times as long with it). Two

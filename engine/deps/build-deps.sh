@@ -6,6 +6,7 @@
 #
 #   VARIANT=st bash engine/deps/build-deps.sh              # every step, single-threaded prefix
 #   VARIANT=mt bash engine/deps/build-deps.sh              # every step, pthreads prefix
+#   VARIANT=mt64 bash engine/deps/build-deps.sh            # every step, pthreads + Memory64 (wasm64) prefix
 #   VARIANT=mt bash engine/deps/build-deps.sh boost tbb    # selected steps only
 #   WITH_GMP=1 VARIANT=st bash ... gmp mpfr                # optional GMP/MPFR fallback (see step_gmp)
 #
@@ -16,6 +17,8 @@
 #   ORCA_WASM_ROOT  default ~/OrcaWasm. Sources in $ORCA_WASM_ROOT/deps-src, build trees in
 #                   $ORCA_WASM_ROOT/build-deps/$VARIANT (short on purpose: MAX_PATH), output in
 #                   $ORCA_WASM_ROOT/prefix-$VARIANT. No spaces (it is part of the compile flags).
+#   DEPS_BUILD      the build trees, instead of $ORCA_WASM_ROOT/build-deps/$VARIANT (keep it inside
+#                   ORCA_WASM_ROOT, so -ffile-prefix-map still maps it).
 #   ORCA_SRC        default: the orca/ submodule (read-only; only the GMP patch is taken from it).
 #   ORCA_EMSDK      default $ORCA_WASM_ROOT/emsdk (scripts/toolchain.sh).
 #   JOBS            parallel compile jobs, default nproc.
@@ -32,7 +35,10 @@
 set -euo pipefail
 
 VARIANT=${VARIANT:-st}
-[[ $VARIANT == st || $VARIANT == mt ]] || { echo "VARIANT must be st or mt" >&2; exit 2; }
+[[ $VARIANT == st || $VARIANT == mt || $VARIANT == mt64 ]] || { echo "VARIANT must be st, mt or mt64" >&2; exit 2; }
+# mt64 is mt on wasm64 (Memory64: 64-bit pointers, a heap above 4 GB). THREADED: mt and mt64.
+THREADED=0; [[ $VARIANT == mt* ]] && THREADED=1
+WASM64=0; [[ $VARIANT == *64 ]] && WASM64=1
 WITH_GMP=${WITH_GMP:-0}   # 0 (default): CGAL uses Boost.Multiprecision, no GMP/MPFR. 1: also build them.
 JOBS=${JOBS:-$(nproc)}
 
@@ -46,7 +52,7 @@ check_root "$ORCA_WASM_ROOT"
 ORCA_SRC=$(mixed_path "${ORCA_SRC:-$HERE/../../orca}")
 SRC=$ORCA_WASM_ROOT/deps-src
 PREFIX=$ORCA_WASM_ROOT/prefix-$VARIANT
-BLD=$ORCA_WASM_ROOT/build-deps/$VARIANT
+BLD=$(mixed_path "${DEPS_BUILD:-$ORCA_WASM_ROOT/build-deps/$VARIANT}")
 
 # ---- 0. Toolchain environment ---------------------------------------------------------------------
 # The emsdk's own tools first on PATH (and, on Windows, the Program Files CMake 3.31 before Strawberry
@@ -79,7 +85,11 @@ EMCC_VERSION=$(emcc --version | head -1)
 #   through the initial cache; engine/CMakeLists.txt maps the engine's own folders.
 SJLJ="-sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1"
 EH="-fwasm-exceptions $SJLJ"
-THR=""; [[ $VARIANT == mt ]] && THR="-pthread"
+# * mt64: -m64 on every compile and link (wasm64-unknown-emscripten: 64-bit size_t and pointers, Memory64).
+#   Emscripten.cmake sees it in CMAKE_C_FLAGS and sets CMAKE_SIZEOF_VOID_P=8 and the wasm64-emscripten
+#   library architecture; -sMEMORY64=1 means the same, deprecated in favour of -m64 since Emscripten 6.0.1.
+THR=""; [[ $THREADED == 1 ]] && THR="-pthread"
+[[ $WASM64 == 1 ]] && THR="$THR -m64"
 for dir in "$ORCA_WASM_ROOT" "$EM_CACHE"; do
   [[ $dir != *" "* ]] || { echo "No spaces allowed in '$dir': it is written into the compile flags." >&2; exit 2; }
 done
@@ -155,15 +165,18 @@ cmake_dep() {
 # libpng uses setjmp: the -legacysjlj variants are the ones matching our flags ('mt-' for pthreads).
 # Pre-building here keeps the engine build offline; step_handoff points FindZLIB/FindPNG at the archives.
 # libjpeg is NOT the port: Orca's GCode/Thumbnails.cpp needs libjpeg-turbo's JCS_EXT_RGBA (step_jpeg).
-png_port() { [[ $VARIANT == mt ]] && echo libpng-mt-legacysjlj || echo libpng-legacysjlj; }
-port_lib_dir() { echo "$EM_CACHE/sysroot/lib/wasm32-emscripten"; }
+png_port() { [[ $THREADED == 1 ]] && echo libpng-mt-legacysjlj || echo libpng-legacysjlj; }
+port_lib_dir() {
+  if [[ $WASM64 == 1 ]]; then echo "$EM_CACHE/sysroot/lib/wasm64-emscripten"; else echo "$EM_CACHE/sysroot/lib/wasm32-emscripten"; fi
+}
 step_ports() {
   # The archives live in the shared Emscripten cache (not the prefix), so check them too: an
   # `emcc --clear-cache` must not leave a stale stamp behind.
   if [[ -f "$(port_lib_dir)/libz.a" && -f "$(port_lib_dir)/$(png_port).a" ]] && done_already ports; then
     echo "[skip] ports"; return
   fi
-  embuilder build zlib "$(png_port)"
+  local arch=(); [[ $WASM64 == 1 ]] && arch=(--wasm64)
+  embuilder "${arch[@]}" build zlib "$(png_port)"
   mark_done ports
 }
 
@@ -252,7 +265,7 @@ step_jpeg() {
 # emcc accepts next to -fwasm-exceptions.
 # ST builds no TBB: the engine compiles libslic3r against a serial header shim (engine/shims).
 step_tbb() {
-  [[ $VARIANT == mt ]] || { echo "[skip] tbb (ST uses the serial shim)"; STEP_SKIPPED=1; return; }
+  [[ $THREADED == 1 ]] || { echo "[skip] tbb (ST uses the serial shim)"; STEP_SKIPPED=1; return; }
   done_already onetbb-2021.12.0 && { echo "[skip] onetbb-2021.12.0"; return; }
   local tsrc=$BLD/src-oneTBB-2021.12.0
   rm -rf "$tsrc"; cp -r "$SRC/oneTBB-2021.12.0" "$tsrc"          # keep deps-src pristine
@@ -318,7 +331,7 @@ step_handoff() {
 # Use:  emcmake cmake -C "$ic" -G Ninja -S <src> -B <build>
 # The flags below are the ones every dependency in this prefix was compiled with. The engine must use
 # exactly these for every C/C++ translation unit and for the final link (append, do not replace).
-set(ORCAWASM_VARIANT "$VARIANT" CACHE STRING "OrcaWasm dependency variant (st|mt)")
+set(ORCAWASM_VARIANT "$VARIANT" CACHE STRING "OrcaWasm dependency variant (st|mt|mt64)")
 set(ORCAWASM_PREFIX "$PREFIX" CACHE PATH "OrcaWasm dependency prefix")
 set(CMAKE_BUILD_TYPE Release CACHE STRING "")
 # C++ adds the engine-only defines: CGAL_ALWAYS_ROUND_TO_NEAREST (no FPU rounding modes in wasm, CGAL's
@@ -336,7 +349,7 @@ set(Boost_NO_SYSTEM_PATHS ON CACHE BOOL "")
 set(CGAL_DISABLE_GMP $([[ $WITH_GMP == 1 ]] && echo OFF || echo ON) CACHE BOOL "")
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE ON CACHE BOOL "")
 # Orca's own find modules (FindNLopt, Findlibnoise, FindTBB, Findcereal) work with this prefix; plain
-# CONFIG-mode find_package works for Boost, Eigen3, cereal, CGAL, NLopt, Qhull$([[ $VARIANT == mt ]] && echo ", TBB").
+# CONFIG-mode find_package works for Boost, Eigen3, cereal, CGAL, NLopt, Qhull$([[ $THREADED == 1 ]] && echo ", TBB").
 
 # zlib + libpng: Emscripten ports (built by the 'ports' step). These hints make the stock FindZLIB and
 # FindPNG return ZLIB::ZLIB / PNG::PNG pointing at this variant's archives, so Orca's find_package(ZLIB)
@@ -353,7 +366,7 @@ EOF
     echo "CFLAGS=$CFLAGS_V"; echo "CXXFLAGS=$CXXFLAGS_V"; echo "LDFLAGS=$LDFLAGS_V"
     echo "engine-only C++ defines=$ENGINE_DEFS"
     echo "boost 1.84.0, eigen 5.0.1, cereal 1.3.0, CGAL 5.6.3 (headers), nlopt 2.5.0, libnoise 1.0, qhull 8.0.2,"
-    echo "libjpeg-turbo 3.0.1 (jpeg8 API)$([[ $VARIANT == mt ]] && echo ', oneTBB 2021.12.0 (Clang.cmake -fexceptions patch)')"
+    echo "libjpeg-turbo 3.0.1 (jpeg8 API)$([[ $THREADED == 1 ]] && echo ', oneTBB 2021.12.0 (Clang.cmake -fexceptions patch)')"
     echo "ports: zlib 1.3.2 + $(png_port) 1.6.58 (emsdk 6.0.10 tools/ports), in $portlib"
     echo "--- source archives (sha256)"; cat "$HERE/SHA256SUMS"
     echo "--- step timings (UTC end time, step, seconds, parallel jobs)"; [[ -f $TIMINGS ]] && cat "$TIMINGS"
@@ -379,7 +392,7 @@ step_verify() {
     lib/libjpeg.a include/jpeglib.h include/jconfig.h
     share/orcawasm/initial-cache.cmake
   )
-  [[ $VARIANT == mt ]] && want+=(lib/libtbb.a lib/libtbbmalloc.a lib/cmake/TBB/TBBConfig.cmake)
+  [[ $THREADED == 1 ]] && want+=(lib/libtbb.a lib/libtbbmalloc.a lib/cmake/TBB/TBBConfig.cmake)
   [[ $WITH_GMP == 1 ]] && want+=(lib/libgmp.a include/gmp.h lib/libmpfr.a include/mpfr.h)
   for f in "${want[@]}"; do [[ -e "$PREFIX/$f" ]] || { echo "MISSING $f"; miss=1; }; done
   [[ $miss == 0 ]] || { echo "prefix incomplete" >&2; exit 1; }

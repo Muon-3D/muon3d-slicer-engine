@@ -21,7 +21,7 @@ import type { NormalizedPreset, ProfileFolder } from '../../packages/protocol/sr
 import { HOST_CANARY } from '../../host/src/canary.ts';
 import type { LegacyProcessFixture } from '../../tools/profiles/fixtures.ts';
 import { readFolder } from '../../tools/profiles/tree.ts';
-import { cube, engineDir, engineSkip, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
+import { cube, engineDir, engineSkip, goldenVariant, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
 import { NEIGHBOUR_PLATES, PAINTED_PLATES, PLATES, boxAt, capT, comparable } from './plates.ts';
 import { TARGETS, type Connected } from './targets.ts';
 
@@ -83,11 +83,11 @@ for (const target of TARGETS) {
 
     const settingsPresets = () => ({ machine: presets.machine, process: presets.process, filament: presets.filaments[0] });
 
-    test('hello: protocol 2.3, every op, painting, conflicts, the engine and its licence', async () => {
+    test('hello: protocol 2.4, every op, painting, conflicts, the variants, the engine and its licence', async () => {
       const required = [...OPS, Capability.sliceLog, Capability.paintV1, Capability.sliceConflict, Capability.supportAvoidObjects];
       const hello = await host.connection.open(client, { minMinor: 3, required });
       assert.deepEqual(hello.protocol, { major: PROTOCOL.major, minor: PROTOCOL.minor });
-      assert.equal(PROTOCOL.minor, 3);
+      assert.equal(PROTOCOL.minor, 4);
       for (const op of OPS) assert.ok(hello.capabilities.includes(op), op);
       for (const op of PROFILE_OPS) assert.ok(OPS.includes(op), op);
       assert.equal(hello.engine.license, 'AGPL-3.0-only');
@@ -97,7 +97,10 @@ for (const target of TARGETS) {
       assert.ok(hello.engine.name.includes('OrcaSlicer'));
       // What can run here: the variants built (the CI builds one per job; none for npm run build:host alone).
       if (!engineSkip) assert.ok(hello.variants.includes(engineVariant), `${engineVariant} in ${hello.variants.join(', ')}`);
-      assert.ok(hello.variants.every((v) => v === 'st' || v === 'mt'));
+      assert.ok(hello.variants.every((v) => v === 'st' || v === 'mt' || v === 'mt64'));
+      // 2.4: each variant's heap limit; mt64's is above the wasm32 4 GB.
+      for (const v of hello.variants) assert.ok((hello.limits.maxHeapBytesByVariant?.[v] ?? 0) >= hello.limits.maxHeapBytes, v);
+      if (hello.variants.includes('mt64')) assert.ok(hello.limits.maxHeapBytesByVariant!.mt64! > 4 * 1024 ** 3);
       assert.ok(hello.limits.maxThreads >= 1 && hello.limits.maxHeapBytes > 0);
       assert.deepEqual(hello.formats, { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 });
     });
@@ -231,7 +234,7 @@ for (const target of TARGETS) {
       test(`slice: the same G-code as ${slices.reference.version} for the golden plates`, { skip: goldenSkip }, async () => {
         for (const plate of PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
-          const expected = slices.plates[plate.id][engineVariant];
+          const expected = slices.plates[plate.id][goldenVariant];
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
@@ -241,14 +244,14 @@ for (const target of TARGETS) {
         for (const plate of PLATES) {
           const params = plate.params();
           const result = await host.connection.request('slice', { ...params, objects: params.objects.map((o) => ({ ...o, paint: {} })), output: { toolpaths: false } });
-          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), slices.plates[plate.id][engineVariant].sha256, plate.id);
+          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), slices.plates[plate.id][goldenVariant].sha256, plate.id);
         }
       });
 
       test(`slice (2.2): the painted plates give the G-code ${slices.painted?.reference.version ?? '(none recorded)'} recorded`, { skip: paintedSkip }, async () => {
         for (const plate of PAINTED_PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
-          const expected = slices.painted!.plates[plate.id][engineVariant];
+          const expected = slices.painted!.plates[plate.id][goldenVariant];
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
@@ -257,7 +260,7 @@ for (const target of TARGETS) {
       test(`slice (2.3): plates whose objects are out of each other's supports' reach give the G-code of ${slices.neighbours?.reference.version ?? '(none recorded)'}`, { skip: neighbourSkip }, async () => {
         for (const plate of NEIGHBOUR_PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
-          const expected = slices.neighbours!.plates[plate.id][engineVariant];
+          const expected = slices.neighbours!.plates[plate.id][goldenVariant];
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
@@ -301,7 +304,7 @@ for (const target of TARGETS) {
           const objects = params.objects.map((o) => ({ ...o, paint: { supports: { triangles: new Uint32Array(0), codes: '', ends: new Uint32Array(0) } } }));
           const result = await host.connection.request('slice', { ...params, objects, output: { toolpaths: false } });
           const sha = createHash('sha256').update(comparable(result.gcode)).digest('hex');
-          (sha === slices.plates[plate.id][engineVariant].sha256 ? same : differ).push(plate.id);
+          (sha === slices.plates[plate.id][goldenVariant].sha256 ? same : differ).push(plate.id);
         }
         console.log(`# ${engineVariant}: the painted path with empty layers gives the STL path's G-code for ${same.join(', ') || 'no plate'}; other G-code for ${differ.join(', ') || 'no plate'}`);
       });
@@ -336,7 +339,7 @@ for (const target of TARGETS) {
           objects: [{ name: 'Cube.stl', mesh: { positions: new Float32Array(vertices), indices: new Uint32Array(indices) } }],
           output: { toolpaths: false },
         });
-        assert.equal(createHash('sha256').update(comparable(indexed.gcode)).digest('hex'), slices.plates['m1-cube'][engineVariant].sha256);
+        assert.equal(createHash('sha256').update(comparable(indexed.gcode)).digest('hex'), slices.plates['m1-cube'][goldenVariant].sha256);
       });
 
       test("Orca's own refusals pass through with its negative codes", async () => {
