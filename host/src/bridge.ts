@@ -11,7 +11,7 @@
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
 import type { GcodeStats, ObjectPaint, SliceFieldRequest, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
 import { encodeSliceField } from '../../packages/protocol/src/sliceField.ts';
-import { buildSliceField } from './sliceField.ts';
+import { buildSliceField, SliceFieldUnavailable } from './sliceField.ts';
 import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
@@ -426,7 +426,17 @@ export function runSlice(
     job.log ?? 0,
   );
   if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
-  const field = job.sliceField !== undefined && result.toolpaths ? sliceFieldOf(job, result.toolpaths, result.toolpathExtras) : undefined;
+  let field: Uint8Array | undefined;
+  if (job.sliceField !== undefined && result.toolpaths) {
+    try {
+      field = sliceFieldOf(job, result.toolpaths, result.toolpathExtras);
+    } catch (err) {
+      if (!(err instanceof SliceFieldUnavailable)) throw err;
+      const warning = { kind: 'slice_field', message: err.message };
+      result.warnings.push(warning);
+      guarded(onWarning)(warning);
+    }
+  }
   return {
     ...result,
     ...(field !== undefined ? { sliceField: field } : {}),

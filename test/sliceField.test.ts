@@ -212,3 +212,11 @@ it('refuses malformed array layouts before constructing typed views', () => {
   assert.throws(() => decodeSliceField(make((h) => { h.arrays.wallFraction!.offset += 1; })), /offset|align/);
   assert.throws(() => decodeSliceField(make((h) => { h.arrays.skinFraction!.offset = h.arrays.wallFraction!.offset; })), /overlap/);
 });
+
+// A far-separated placement must be refused before allocating its dense bounding grid.
+it('refuses oversized field grids before allocating arrays', () => {
+  const positions = new Float32Array([0, 0, 0, 1e20, 1, 1, 0, 1, 0]);
+  const toolpaths = { layerCount: 0, layerZ: new Float32Array() } as BridgeToolpaths;
+  assert.throws(() => buildSliceField({ machine: {}, process: {}, filaments: [],
+    objects: [{ name: 'Wide', positions }], toolpaths, extras: null, request: {} }), /slice field.*memory budget/);
+});
