@@ -4,7 +4,7 @@
 import type { OpName, OpParams, SliceConflict, ToolpathExtras, Toolpaths } from './ops.ts';
 
 /** The protocol these types describe. */
-export const PROTOCOL = { major: 2, minor: 3 } as const;
+export const PROTOCOL = { major: 2, minor: 4 } as const;
 
 /** Client -> host. `id` is chosen by the client: an integer > 0, unique among its open requests on one connection. */
 export interface Request<K extends OpName = OpName> {
@@ -59,8 +59,13 @@ export type Response = ResultResponse | ErrorResponse | ProgressResponse | Warni
 /** Any message of protocol v2. */
 export type Message = Request | Response;
 
-/** The engine build: 'st' single-threaded, 'mt' with threads (needs SharedArrayBuffer: a cross-origin isolated page). */
-export type Variant = 'st' | 'mt';
+/**
+ * The engine build: 'st' single-threaded, 'mt' with threads (needs SharedArrayBuffer: a cross-origin isolated page),
+ * 'mt64' (protocol 2.4, optional) 'mt' with a 64-bit memory (WebAssembly Memory64), whose heap grows to 16 GB
+ * instead of 4 GB: it also needs a browser with Memory64 (Chrome 133, Firefox 134; not Safari), and is only loaded
+ * when asked for. A client that does not know a variant ignores it.
+ */
+export type Variant = 'st' | 'mt' | 'mt64';
 
 export type HostState =
   /** The host runs; the engine (wasm) is not loaded. Settings ops never need it. */

@@ -3,6 +3,7 @@
 //
 //   npm run build:engine            # st, then mt
 //   npm run build:engine -- mt      # one variant
+//   npm run build:engine -- mt64    # the optional Memory64 variant (its prefix: VARIANT=mt64 build-deps.sh)
 //
 // The environment passes through (ORCA_WASM_ROOT, ORCA_SRC, ORCA_EMSDK, JOBS, ...; see build.sh).
 // GIT_BASH overrides the bash to use.
@@ -34,8 +35,8 @@ function findBash() {
 const args = process.argv.slice(2);
 const variants = args.length ? args : ['st', 'mt'];
 for (const variant of variants) {
-  if (variant !== 'st' && variant !== 'mt') {
-    console.error(`usage: npm run build:engine [-- st|mt ...] (got "${variant}")`);
+  if (variant !== 'st' && variant !== 'mt' && variant !== 'mt64') {
+    console.error(`usage: npm run build:engine [-- st|mt|mt64 ...] (got "${variant}")`);
     process.exit(2);
   }
 }

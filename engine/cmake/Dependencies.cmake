@@ -69,7 +69,7 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 
 # --- oneTBB ------------------------------------------------------------------------------------------------------
-if (ENGINE_VARIANT STREQUAL "mt")
+if (ENGINE_THREADED)
     find_package(TBB 2021 CONFIG REQUIRED COMPONENTS tbb tbbmalloc)
 else ()
     # Single-threaded: the serial header shim stands in for oneTBB (see shims/tbb-serial/README.md).

@@ -4,7 +4,7 @@
 //
 // Environment:
 //   ENGINE_DIR          folder with engine-<variant>.mjs/.wasm          (default dist/)
-//   ENGINE_VARIANT      st | mt                                         (default st)
+//   ENGINE_VARIANT      st | mt | mt64                                  (default st)
 //   ENGINE_TEST_OUT     where G-code and CLI runs are written           (default test-out/)
 //   ENGINE_TEST_BENCHY  an STL of 3DBenchy for the Benchy tests         (default test/fixtures/local/benchy.stl;
 //                       skipped without it: 3DBenchy is not redistributed here)
@@ -21,6 +21,8 @@ import { parseStl } from './helpers/stl.ts';
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repoRoot, 'dist'));
 export const variant = (process.env.ENGINE_VARIANT ?? 'st') as EngineVariant;
+/** The variant whose goldens this one must match: mt64 (mt with Memory64) gives mt's G-code byte for byte. */
+export const goldenVariant: 'st' | 'mt' = variant === 'mt64' ? 'mt' : variant;
 export const outDir = path.resolve(process.env.ENGINE_TEST_OUT ?? path.join(repoRoot, 'test-out'));
 
 export const engineModulePath = path.join(engineDir, `engine-${variant}.mjs`);

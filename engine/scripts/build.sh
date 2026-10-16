@@ -4,9 +4,10 @@
 #
 #   bash engine/scripts/build.sh st                    # single-threaded engine (or VARIANT=st, the default)
 #   bash engine/scripts/build.sh mt                    # pthreads + oneTBB engine
+#   bash engine/scripts/build.sh mt64                  # mt on wasm64 (Memory64, a heap up to 16 GB); optional
 #   bash engine/scripts/build.sh st libslic3r          # build other targets only; nothing is published
 #   NINJA_ARGS="-k 0" bash engine/scripts/build.sh st libslic3r   # keep going after errors
-#   npm run build:engine [-- st|mt]                    # the same from npm, on any shell (both variants by default)
+#   npm run build:engine [-- st|mt|mt64]               # the same from npm, on any shell (st and mt by default)
 #
 # Needs the orca/ submodule (scripts/get-orca.sh) and the dependency prefix from engine/deps/build-deps.sh
 # for the same variant; the whole sequence from an empty machine is in engine/scripts/README.md.
@@ -18,7 +19,7 @@
 #   it was built from the same Orca commit, and so is the host entry that host/build.mjs writes).
 #
 # Environment:
-#   VARIANT         st (default) or mt; a first argument st|mt takes precedence
+#   VARIANT         st (default), mt or mt64; a first argument st|mt|mt64 takes precedence
 #   ORCA_WASM_ROOT  default ~/OrcaWasm (no spaces): prefixes in prefix-$VARIANT
 #   ORCA_SRC        default: the orca/ submodule (read only)
 #   ENGINE_DIST     where to publish, default dist/ in this repository
@@ -31,9 +32,9 @@
 # =====================================================================================================
 set -euo pipefail
 
-if [[ ${1:-} == st || ${1:-} == mt ]]; then VARIANT=$1; shift; fi
+if [[ ${1:-} == st || ${1:-} == mt || ${1:-} == mt64 ]]; then VARIANT=$1; shift; fi
 VARIANT=${VARIANT:-st}
-[[ $VARIANT == st || $VARIANT == mt ]] || { echo "VARIANT must be st or mt" >&2; exit 2; }
+[[ $VARIANT == st || $VARIANT == mt || $VARIANT == mt64 ]] || { echo "VARIANT must be st, mt or mt64" >&2; exit 2; }
 JOBS=${JOBS:-$(nproc)}
 TARGETS=("$@")
 read -r -a NINJA_EXTRA <<< "${NINJA_ARGS:-}"

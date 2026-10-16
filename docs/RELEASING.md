@@ -35,11 +35,11 @@ then publishes. Between releases, every push to `main` updates the rolling `edge
    To try the whole pipeline first, push a release candidate tag `v0.1.0-rc.1`: it runs every job but `publish`
    and leaves a verified draft (a prerelease), which can then be deleted with its tag.
 5. **Watch `Release`** (`gh run watch`). It takes about 35 minutes: the two clean engine builds, the source assets,
-   the draft, then the offline rebuilds of both variants in parallel.
+   the draft, then the offline rebuilds of every variant (st, mt, mt64) in parallel.
 6. **Check the result:** `bash tools/release/verify-release.sh v0.1.0` downloads every asset, checks
    `SHA256SUMS` and the runtime's `manifest.json` (the host's chunks too), checks the profile set
    (`tools/profiles/check.ts`) and its pairing with the engine, validates the M1 presets through the runtime's settings
-   service (`examples/settings-cli`), and slices a cube on both variants from the runtime tarball.
+   service (`examples/settings-cli`), and slices a cube on st, mt and mt64 from the runtime tarball.
 
 If a job fails before `publish`, nothing is public but the tag and possibly a **draft** release. Fix the cause on
 `main` and release the next patch version; a draft left behind can be deleted. (Re-running the workflow for the same
@@ -85,10 +85,10 @@ added to `fetch-deps.sh` without an entry in the generator stops it.
 
 | Job | Does |
 |---|---|
-| `engine` (st, mt) | Checks that the tag is `v` + `package.json`'s version; builds the engine in a fresh tree without ccache (the dependency prefixes come from the toolchain cache, keyed on their recipe); `SOURCE_DATE_EPOCH` is the commit time; runs the engine tests |
+| `engine` (st, mt, mt64) | Checks that the tag is `v` + `package.json`'s version; builds the engine in a fresh tree without ccache (the dependency prefixes come from the toolchain cache, keyed on their recipe); `SOURCE_DATE_EPOCH` is the commit time; runs the engine tests |
 | `sources` | `THIRD-PARTY-NOTICES.md` is current; the three source assets (`tools/release/source-bundles.sh`) |
-| `draft` | Merges the two builds, builds the host, assembles the runtime (`tools/release/assemble.mjs`), packs it reproducibly, builds and checks the profile set (`tools/profiles`: OrcaSlicer's validator on the tree, every preset against OrcaSlicer's loader, the Muon3D record) and packs it, packs the protocol package, writes `SHA256SUMS`, slices a cube on both variants from the tarball, attests every asset, and creates a **draft** release |
-| `verify` (st, mt) | Downloads the draft's assets and checks them (`tools/release/verify-release.sh`); rebuilds its variant from the three source assets alone in `emscripten/emsdk:6.0.10` (plus CMake, Ninja, bsdtar), **with the network off and an empty Emscripten cache** (`tools/release/rebuild-offline.sh`), and requires the same sha256 for the `.wasm` and the `.mjs`; the st job also rebuilds the host and its chunks from the source bundle (`npm ci` needs the network) and requires the same sha256 |
+| `draft` | Merges the three builds, builds the host, assembles the runtime (`tools/release/assemble.mjs`), packs it reproducibly, builds and checks the profile set (`tools/profiles`: OrcaSlicer's validator on the tree, every preset against OrcaSlicer's loader, the Muon3D record) and packs it, packs the protocol package, writes `SHA256SUMS`, slices a cube on each variant from the tarball, attests every asset, and creates a **draft** release |
+| `verify` (st, mt, mt64) | Downloads the draft's assets and checks them (`tools/release/verify-release.sh`); rebuilds its variant from the three source assets alone in `emscripten/emsdk:6.0.10` (plus CMake, Ninja, bsdtar), **with the network off and an empty Emscripten cache** (`tools/release/rebuild-offline.sh`), and requires the same sha256 for the `.wasm` and the `.mjs`; the st job also rebuilds the host and its chunks from the source bundle (`npm ci` needs the network) and requires the same sha256 |
 | `publish` | Adds the verification to the notes and publishes the release |
 
 ## The `edge` prerelease

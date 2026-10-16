@@ -30,13 +30,18 @@ export interface HelloResult {
   engine: EngineInfo;
   /** Every op this host serves, and the sub-features it has (CAPABILITIES). Unknown strings: ignore. */
   capabilities: string[];
-  /** The variants that can run here: 'mt' only where threads can (a cross-origin isolated page, Node) and it is built. */
+  /**
+   * The variants that can run here and are built: 'mt' only where threads can (a cross-origin isolated page, Node);
+   * 'mt64' (2.4) only where threads and Memory64 can.
+   */
   variants: Variant[];
   limits: {
     /** Threads 'mt' would use. */
     maxThreads: number;
-    /** The engine's heap can grow to this. */
+    /** The engine's heap can grow to this ('st' and 'mt'). */
     maxHeapBytes: number;
+    /** (2.4) What each variant in `variants` can grow its heap to: 'mt64' past `maxHeapBytes`. */
+    maxHeapBytesByVariant?: Partial<Record<Variant, number>>;
   };
   /** The data formats this host produces. */
   formats: { definitions: number; catalogue: number; toolpaths: number; settingsView: number };
@@ -61,9 +66,9 @@ export interface EngineInfo {
 }
 
 export interface LoadParams {
-  /** Default 'auto': 'mt' where it can run and is built, else 'st'. */
+  /** Default 'auto': 'mt' where it can run and is built, else 'st'. 'auto' never picks 'mt64': name it. */
   variant?: Variant | 'auto';
-  /** 'mt': the most threads to use (default: every core). */
+  /** 'mt' and 'mt64': the most threads to use (default: every core). */
   threads?: number;
   /** URL of the folder with engine-<variant>.mjs/.wasm; default the host's own folder. */
   base?: string;

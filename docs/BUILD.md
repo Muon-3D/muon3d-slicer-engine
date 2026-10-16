@@ -29,8 +29,10 @@ bash engine/scripts/get-orca.sh --check               # orca/ is at the pin, unc
 bash engine/deps/fetch-deps.sh                        # third-party sources, hash-checked
 VARIANT=st bash "$PWD/engine/deps/build-deps.sh"      # dependency prefixes
 VARIANT=mt bash "$PWD/engine/deps/build-deps.sh"
+VARIANT=mt64 bash "$PWD/engine/deps/build-deps.sh"    # optional: the Memory64 variant (below)
 npm ci
 npm run build                                         # engine st, mt and the host, into dist/
+npm run build:engine -- mt64                          # optional: engine mt64, into dist/
 npm run test:engine
 node examples/node-cli/slice.mjs --cube 20 -o cube.gcode
 ```
@@ -73,6 +75,39 @@ The bundle is not a git checkout: the scripts take the engine and Orca commits f
 before it publishes a release. The host rebuilds from the bundle with `npm ci && npm run build:host` (its only
 network use is `npm ci`, for esbuild).
 
+## The mt64 variant (Memory64)
+
+`mt64` is `mt` compiled for wasm64 (`-m64`, `wasm64-unknown-emscripten`): 64-bit pointers and `size_t`, and a
+WebAssembly Memory64 memory whose maximum is 16 GB instead of 4 GB. It exists for plates that run `mt` out of
+memory; the host loads it only when a client asks for it (docs/PROTOCOL.md, section 4). It is built like `mt`, from a
+prefix of its own:
+
+```bash
+VARIANT=mt64 bash "$PWD/engine/deps/build-deps.sh"     # $ORCA_WASM_ROOT/prefix-mt64, build trees in build-deps/mt64
+bash engine/scripts/build.sh mt64                      # $ORCA_WASM_ROOT/build-mt64 -> dist/engine-mt64.{mjs,wasm}
+npm run test:engine:mt64                               # Node 24 or newer
+```
+
+- **Flags:** every dependency, the engine and the link get `-m64` on top of `mt`'s flags (`engine/deps/build-deps.sh`
+  puts it in the initial cache; Emscripten.cmake then sets `CMAKE_SIZEOF_VOID_P` 8 and the `wasm64-emscripten`
+  library folder, which also holds the zlib and libpng ports built with `embuilder --wasm64`). `-sMEMORY64=1` is the
+  older spelling, deprecated since Emscripten 6.0.1. `-sMEMORY64=2` (wasm64 lowered to wasm32) is not used: it keeps
+  the 4 GB limit. The link sets `-sMAXIMUM_MEMORY=16GB` (`engine/cmake/Engine.cmake`), the most Chrome (V8's
+  `kV8MaxWasmMemory64Pages`, 262144 pages) and Firefox (`ArrayBuffer` `ByteLengthLimit`) give a Memory64 memory.
+  `EMBIND_AOT` and `DYNAMIC_EXECUTION=0` stay: for the link-time run that lists the embind wrappers, Emscripten
+  lowers the module to wasm32 itself, so the emsdk's node runs it.
+- **Orca:** nothing to patch. wasm64 has the same type sizes as Orca's 64-bit desktop builds, so the wasm32 fix
+  (`engine/PATCHES.md`) is not needed there and is harmless. The dependencies built unchanged.
+- **The bridge:** on wasm64, embind passes `size_t` (and any 64-bit integer) to JavaScript as a BigInt, and EM_JS
+  code receives pointers as BigInts. The bridge gives JavaScript Numbers (`typed_array()` sizes the array with a
+  `double`) and its one EM_JS function converts its pointer with `Number()` and returns an `int` handle, which
+  works on both widths; st's and mt's G-code is unchanged by it.
+- **Separate Emscripten cache:** the wasm64 system libraries go into `sysroot/lib/wasm64-emscripten` of the same
+  cache as the other variants. To keep a long first build from holding the cache's lock while other builds run,
+  `EM_CACHE` can point at a cache of its own on the same drive; seed it with `emcc --check`, one compile, and the
+  `ports/` folder of the emsdk's cache (`docs/BUILD.md`, offline rebuild, does the same).
+- **Size and speed** (measured on Windows, 2026-10-16): see `engine/README.md`, "Variants".
+
 ## Reproducibility
 
 The same Orca commit, the same engine commit and Emscripten 6.0.10 give byte-identical `engine-<variant>.wasm` and
@@ -94,7 +129,7 @@ embedded with LF line ends. Checked:
 
 | Workflow | When | Does |
 |---|---|---|
-| `build.yml` | every pull request, every push to `main` | `checks` (`npm run check`, the host build, `npm test` with the protocol conformance suite on the host without the engine, the protocol package packed) always. `engine` (st and mt in parallel: toolchain, engine build, engine tests with the conformance suite's engine part, the `THIRD-PARTY-NOTICES.md` check) only when `engine/` (docs aside), the `orca` pin, `tools/ci/` or the workflow changed; otherwise the next job reuses the `edge` engine. `runtime`: the host, the engine tests on a reused engine, the runtime assembled and a cube sliced on both variants, and the profile set built and checked (docs/PROFILES.md, "Building and checking a set"): the preset fixtures, OrcaSlicer's profile validator and `orca_profile_tool.py check`, every preset against OrcaSlicer's loader, the Muon3D record. On `main`, `edge`: the rolling prerelease. A newer push to the same branch cancels the older run |
+| `build.yml` | every pull request, every push to `main` | `checks` (`npm run check`, the host build, `npm test` with the protocol conformance suite on the host without the engine, the protocol package packed) always. `engine` (st, mt and mt64 in parallel: toolchain, engine build, engine tests with the conformance suite's engine part, the `THIRD-PARTY-NOTICES.md` check) only when `engine/` (docs aside), the `orca` pin, `tools/ci/` or the workflow changed; otherwise the next job reuses the `edge` engine. `runtime`: the host, the engine tests on a reused engine, the runtime assembled and a cube sliced on both variants, and the profile set built and checked (docs/PROFILES.md, "Building and checking a set"): the preset fixtures, OrcaSlicer's profile validator and `orca_profile_tool.py check`, every preset against OrcaSlicer's loader, the Muon3D record. On `main`, `edge`: the rolling prerelease. A newer push to the same branch cancels the older run |
 | `toolchain.yml` | the dependency recipe changes on `main` | warms the toolchain cache for both variants |
 | `release.yml` | a tag `v*` | the release (docs/RELEASING.md) |
 | `upstream-canary.yml` | Mondays, or by hand | builds and tests both variants against upstream OrcaSlicer (the head of PR #13777, and `main`) instead of the pin; opens or updates an `upstream-canary` issue when that fails |

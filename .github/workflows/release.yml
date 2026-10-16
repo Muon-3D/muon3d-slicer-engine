@@ -1,6 +1,6 @@
 # A release, on a pushed tag v<version> (docs/RELEASING.md):
 #
-#   engine    st and mt built from clean (no ccache, fresh build trees), engine tests
+#   engine    st, mt and mt64 (mt with Memory64) built from clean (no ccache, fresh build trees), engine tests
 #   sources   the source assets (tools/release/source-bundles.sh) and the THIRD-PARTY-NOTICES.md check
 #   draft     the runtime (tools/release/assemble.mjs), the profile set (tools/profiles), SHA256SUMS, the
 #             build-provenance attestation, a cube sliced from the runtime tarball; a draft GitHub release with
@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        variant: [st, mt]
+        variant: [st, mt, mt64]
     env:
       VARIANT: ${{ matrix.variant }}
     steps:
@@ -129,7 +129,7 @@ jobs:
       - name: Assemble the runtime and the profile set
         run: |
           version=${TAG#v}
-          node tools/release/merge-dist.mjs dist artifacts/release-engine-st artifacts/release-engine-mt
+          node tools/release/merge-dist.mjs dist artifacts/release-engine-st artifacts/release-engine-mt artifacts/release-engine-mt64
           npm run build:host
           node tools/release/assemble.mjs --dist dist --out "out/muon3d-slicer-engine-$version" --version "$version" \
             --tag "$TAG" --sources artifacts/release-sources/sources.json
@@ -153,11 +153,11 @@ jobs:
           npm run pack:protocol -- assets
           (cd assets && sha256sum * > ../SHA256SUMS) && mv SHA256SUMS assets/
           cat assets/SHA256SUMS
-      - name: Slice a cube from the runtime tarball (st and mt)
+      - name: Slice a cube from the runtime tarball (st, mt and mt64)
         run: |
           version=${TAG#v}
           mkdir -p check && tar -xzf "assets/muon3d-slicer-engine-$version.tgz" -C check
-          for variant in st mt; do
+          for variant in st mt mt64; do
             node examples/node-cli/slice.mjs --cube 20 --variant "$variant" --dist "check/muon3d-slicer-engine-$version" -o "check/cube-$variant.gcode"
             grep -q '^; total layer number: 100$' "check/cube-$variant.gcode"
           done
@@ -217,7 +217,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [st, mt]
+        variant: [st, mt, mt64]
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -300,7 +300,7 @@ jobs:
             echo
             echo "## Verified"
             echo
-            echo "- Every asset matches \`SHA256SUMS\`, every runtime file matches \`manifest.json\`, and a 20 mm cube slices on st and mt from the runtime tarball."
+            echo "- Every asset matches \`SHA256SUMS\`, every runtime file matches \`manifest.json\`, and a 20 mm cube slices on st, mt and mt64 from the runtime tarball."
             cat result/*.md
             echo
             echo "Run: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
