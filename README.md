@@ -14,9 +14,10 @@ statistics, toolpaths for a preview, and Orca's warnings and error codes. Its se
 settings forms as documents: the tabs' layout for the mode and the printer, which settings Orca hides or greys out
 for the current values, Orca's checks and questions, and what an edit changes along with it.
 
-**Status:** pre-release (`0.x`). The host speaks **protocol v2** (2.2): a handshake with capabilities, the licence and
-the source; slicing (with Orca's log on request, and support, seam, fuzzy skin and filament painting on the objects'
-triangles, read by Orca's own 3MF paint reader), placement checks, Orca's option table and settings catalogue; the
+**Status:** pre-release (`0.x`). The host speaks **protocol v2** (2.3): a handshake with capabilities, the licence and
+the source; slicing (with Orca's log on request, support, seam, fuzzy skin and filament painting on the objects'
+triangles, read by Orca's own 3MF paint reader, organic tree supports that go around the plate's other objects, and
+a path conflict's layer and cause), placement checks, Orca's option table and settings catalogue; the
 settings service (`settings.view`, `settings.edit`); and Orca's own preset code on vendor profiles
 (`profiles.normalize`, `profiles.resolve`, `profiles.validate`). Each release also publishes a **profile set**:
 OrcaSlicer's printer, process and filament presets, normalised by the engine and packed for a static site

@@ -15,6 +15,7 @@
 
 #include "cli_config.hpp"
 #include "model_input.hpp"
+#include "neighbours.hpp"
 #include "toolpaths.hpp"
 
 #include <libslic3r/libslic3r.h>
@@ -458,6 +459,11 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
         final_nozzle_volume_type_opt->values.resize(new_extruder_count, nvtStandard);
     }
 
+    // Not in the CLI: the plate's other objects as support blockers of each object with organic tree
+    // supports, so that its branches go around them (neighbours.hpp). Nothing changes on a plate where no
+    // object is within reach of another's supports.
+    const std::vector<BlockedObject> blocked = add_neighbour_blockers(model, new_print_config);
+
     // ---- OS:6750-6816: apply and validate.
     print.apply(model, new_print_config);
     // PrintObject::m_id (Print.hpp) has no initialiser and only GCode::set_object_info assigns it,
@@ -495,15 +501,38 @@ SliceResult run_slice(SliceRequest request, JobReporter &reporter)
         const Clock::time_point sliced = Clock::now();
         out.timings.slice_ms           = ms_between(loaded, sliced);
 
-        // OS:6898-6902
+        // Not in the CLI: overhangs over a neighbour that an object's tree support left out because its
+        // branches found no way past that neighbour (neighbours.hpp).
+        for (EngineWarning &warning : find_dropped_supports(print, blocked))
+            sink.add_warning(std::move(warning));
+
+        // OS:6898-6902. The error also says where the paths cross and whose support it was (protocol 2.3),
+        // and, when the toolpaths were asked for, carries them: the G-code is exported anyway, as the GUI
+        // does to preview a conflict.
         if (!print.get_conflict_string().empty()) {
-            std::vector<std::string> objects;
+            EngineError              error{CLI_GCODE_PATH_CONFLICTS, print.get_conflict_string(), {}, std::nullopt, nullptr};
             if (const ConflictResultOpt conflict = print.get_conflict_result()) {
                 for (const std::string &name : {conflict->_objName1, conflict->_objName2})
                     if (!name.empty())
-                        objects.push_back(name);
+                        error.objects.push_back(name);
+                if (request.want_toolpaths) {
+                    try {
+                        sink.set_gcode_layers(count_gcode_layers(print));
+                        const std::string out_dir = job_dir.path() + "/out";
+                        boost::filesystem::create_directories(out_dir);
+                        print.export_gcode(out_dir + "/plate_1.gcode", &gcode_result, nullptr);
+                        error.toolpaths = std::make_shared<ToolpathData>(build_toolpaths(gcode_result));
+                    } catch (const CanceledException &) {
+                        throw;
+                    } catch (const std::bad_alloc &) {
+                        throw;
+                    } catch (const std::exception &) {
+                        error.toolpaths.reset(); // the conflict is reported without a preview
+                    }
+                }
+                error.conflict = describe_conflict(print, *conflict, error.toolpaths ? &error.toolpaths->layer_z : nullptr);
             }
-            fail(CLI_GCODE_PATH_CONFLICTS, print.get_conflict_string(), objects);
+            throw JobFailure(std::move(error));
         }
 
         // OS:6906-6939: warnings raised while slicing. Critical empty-layer and overlap warnings

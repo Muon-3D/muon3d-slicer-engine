@@ -9,7 +9,7 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, ObjectPaint, ToolpathExtras, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, ObjectPaint, ToolpathExtras, Toolpaths, Vec3 } from '../../packages/protocol/src/index.ts';
 import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,10 @@ export interface EngineMeshInput {
   paint?: ObjectPaint;
 }
 
-type EngineResult<T> = T | { error: EngineError; log?: string };
+/** An error as the engine returns it: a failed slice's toolpaths (2.3: a path conflict) are in the bridge's shape. */
+export type BridgeEngineError = Omit<EngineError, 'toolpaths'> & { toolpaths?: BridgeToolpaths };
+
+type EngineResult<T> = T | { error: BridgeEngineError; log?: string };
 
 /** What `await createOrcaEngine()` resolves to. */
 export interface OrcaEngineModule {
@@ -398,6 +401,31 @@ export function meshInputs(objects: SliceJob['objects']): EngineMeshInput[] {
   });
 }
 
+/** The bridge's toolpaths as protocol v2's (format 1). */
+export function protocolToolpaths(paths: BridgeToolpaths): Toolpaths {
+  return {
+    format: 1,
+    layerCount: paths.layerCount,
+    layerZ: paths.layerZ,
+    extrusions: paths.extrusions,
+    travels: paths.travels,
+    roles: paths.roles.map((name, i) => ({ name, lengthMm: paths.roleLength[i] ?? 0 })),
+    lineWidth: paths.lineWidth,
+    bounds: paths.bounds,
+  };
+}
+
+/** The engine's error as the protocol's: toolpaths converted, and toolpathExtras dropped unless `extras`. */
+export function protocolError(error: BridgeEngineError, extras = true): EngineError {
+  const { toolpaths, toolpathExtras, ...rest } = error;
+  const out: EngineError = rest;
+  if (toolpaths) {
+    out.toolpaths = protocolToolpaths(toolpaths);
+    if (extras && toolpathExtras) out.toolpathExtras = toolpathExtras;
+  }
+  return out;
+}
+
 /**
  * Slices a plate. Throws EngineJobError when Orca rejects the job (bad preset, object outside the
  * plate, …); any other exception means the engine itself failed (see engineFailure).
@@ -419,7 +447,10 @@ export function runSlice(
     guarded(onWarning),
     job.log ?? 0,
   );
-  if ('error' in result) throw new EngineJobError(result.log !== undefined ? { ...result.error, log: result.log } : result.error);
+  if ('error' in result) {
+    const error = protocolError(result.error, job.toolpathExtras !== false);
+    throw new EngineJobError(result.log !== undefined ? { ...error, log: result.log } : error);
+  }
   return {
     ...result,
     // The engine builds them with the toolpaths whether asked or not; they are dropped here so
@@ -433,7 +464,7 @@ export function runSlice(
 /** Runs Orca's placement checks for a plate. Throws like runSlice. */
 export function runCheck(engine: OrcaEngineModule, job: CheckJob): CheckOutput {
   const result = engine.check(presetJson(job.machine), presetJson(job.process), job.filaments.map(presetJson), meshInputs(job.objects));
-  if ('error' in result) throw new EngineJobError(result.error);
+  if ('error' in result) throw new EngineJobError(protocolError(result.error));
   return result;
 }
 

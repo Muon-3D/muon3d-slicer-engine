@@ -115,6 +115,8 @@ const CAPABILITIES = [
   Capability.settingsViewV1,
   Capability.sliceLog,
   Capability.paintV1,
+  Capability.sliceConflict,
+  Capability.supportAvoidObjects,
 ];
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -170,7 +172,7 @@ export function createHost(options: HostOptions): Host {
     }
   };
   const result = (id: number, value: unknown, transfer: ArrayBuffer[] = []) => send({ v: 2, id, kind: 'result', result: value }, transfer);
-  const error = (id: number, e: EngineError) => send({ v: 2, id, kind: 'error', error: e });
+  const error = (id: number, e: EngineError) => send({ v: 2, id, kind: 'error', error: e }, transferablesOf(e));
   const setState = (next: HostState) => {
     state = next;
     send({ v: 2, id: 0, kind: 'state', state: next });

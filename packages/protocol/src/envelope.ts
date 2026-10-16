@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // The envelope of protocol v2: requests, responses, errors, progress, warnings and the host's state.
 // docs/PROTOCOL.md is the normative description.
-import type { OpName, OpParams } from './ops.ts';
+import type { OpName, OpParams, SliceConflict, ToolpathExtras, Toolpaths } from './ops.ts';
 
 /** The protocol these types describe. */
-export const PROTOCOL = { major: 2, minor: 2 } as const;
+export const PROTOCOL = { major: 2, minor: 3 } as const;
 
 /** Client -> host. `id` is chosen by the client: an integer > 0, unique among its open requests on one connection. */
 export interface Request<K extends OpName = OpName> {
@@ -110,6 +110,15 @@ export interface EngineError {
   detail?: string;
   /** A slice that failed: Orca's log, when the request asked for one (SliceParams.output.log, capability 'slice.log'). */
   log?: string;
+  /** Code -101 (G-code path conflict, 2.3, capability 'slice.conflict'): where the two objects' paths cross, and whose support it was. */
+  conflict?: SliceConflict;
+  /**
+   * A slice that failed a check after its toolpaths were made (2.3: a path conflict), when it asked for toolpaths: the plate's
+   * toolpaths, for a preview of what went wrong (Toolpaths.layerZ[conflict.layer] is the conflict's layer). No G-code comes with them.
+   */
+  toolpaths?: Toolpaths;
+  /** With `toolpaths`, when the request did not turn them off (SliceParams.output.toolpathExtras). */
+  toolpathExtras?: ToolpathExtras;
 }
 
 /** `kind` is an open set: Orca's warning step names, 'object_outside', 'exclusion_volume_path', ... */

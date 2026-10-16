@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -21,10 +22,26 @@ constexpr int ENGINE_OUT_OF_MEMORY  = 2;
 constexpr int ENGINE_CANCELLED      = 3;
 constexpr int ENGINE_BAD_REQUEST    = 5;
 
+struct ToolpathData;
+
+// A G-code path conflict between two objects (Orca's -101; protocol 2.3 SliceConflict): the objects as Orca
+// names them, the print Z (mm) of the layer where their paths cross, that layer's index among the plate's
+// layers (Toolpaths.layerZ), and the object whose support hit the other ("" when neither's did).
+struct ConflictInfo {
+    std::string objects[2];
+    double      z     = 0;
+    int         layer = 0;
+    std::string support_of;
+};
+
 struct EngineError {
     int                      code = 0;
     std::string              message;
     std::vector<std::string> objects;
+    // Protocol 2.3: a path conflict's details, and the toolpaths of a slice that failed only that check
+    // (exported anyway, for a preview of the conflict).
+    std::optional<ConflictInfo>   conflict;
+    std::shared_ptr<ToolpathData> toolpaths;
 };
 
 struct EngineWarning {
@@ -38,7 +55,7 @@ class JobFailure : public std::exception {
 public:
     explicit JobFailure(EngineError error) : m_error(std::move(error)) {}
     JobFailure(int code, std::string message, std::vector<std::string> objects = {})
-        : m_error{code, std::move(message), std::move(objects)} {}
+        : m_error{code, std::move(message), std::move(objects), std::nullopt, nullptr} {}
     const char        *what() const noexcept override { return m_error.message.c_str(); }
     const EngineError &error() const { return m_error; }
 

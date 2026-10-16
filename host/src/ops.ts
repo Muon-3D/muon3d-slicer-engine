@@ -3,7 +3,7 @@
 import type { Config, ConfigSet, Mesh } from '../../packages/protocol/src/data.ts';
 import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
 import { PAINT_KINDS, checkObjectPaint, hasPaintKinds } from '../../packages/protocol/src/paint.ts';
-import type { CheckJob, CheckOutput, EngineObject, SliceJob, SliceOutput } from './bridge.ts';
+import { protocolToolpaths, type CheckJob, type CheckOutput, type EngineObject, type SliceJob, type SliceOutput } from './bridge.ts';
 
 /** A request the host refuses (BadRequest). */
 export class BadRequest extends Error {
@@ -121,16 +121,7 @@ export function sliceResult(output: SliceOutput, heapBytes: number | undefined):
   const result: SliceResult = {
     gcode: output.gcode,
     stats: output.stats,
-    toolpaths: paths && {
-      format: 1,
-      layerCount: paths.layerCount,
-      layerZ: paths.layerZ,
-      extrusions: paths.extrusions,
-      travels: paths.travels,
-      roles: paths.roles.map((name, i) => ({ name, lengthMm: paths.roleLength[i] ?? 0 })),
-      lineWidth: paths.lineWidth,
-      bounds: paths.bounds,
-    },
+    toolpaths: paths && protocolToolpaths(paths),
     toolpathExtras: output.toolpathExtras,
     warnings: output.warnings,
     timings: output.timings,

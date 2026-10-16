@@ -108,6 +108,21 @@ What `build.sh` publishes into `dist/`:
   loader it never flips a mesh whose volume is negative, which would turn the codes' corners. An object without
   paint keeps the STL path, so its G-code is unchanged; for the golden plates the painted path with empty layers
   gives the same G-code as well (recorded by the conformance suite, not required).
+- **Other objects as support blockers** (protocol 2.3, `bridge/neighbours.cpp`). Orca generates each object's
+  supports from that object alone, so a branch could pass through a neighbour and the plate failed the conflict check
+  (-101). Before `Print::apply`, `add_neighbour_blockers` adds to each object with organic tree supports every other
+  object instance within reach of its branches (`organic_support_reach`, on bounding boxes) as `SUPPORT_BLOCKER`
+  volumes sharing the neighbour's mesh, transformed into the object's coordinates: once where it stands, and once
+  moved by the clearance (`organic_support_clearance`) in 8-24 directions, which together grow it in XY, since
+  TreeModelVolumes keeps a branch only a radius from a blocker and the support's first layer is widened afterwards
+  regardless. Organic supports route around blockers (TreeModelVolumes adds them to every collision area); no other
+  support type does, so those are left alone. Nothing is added on a plate with nothing in reach, whose G-code is
+  therefore unchanged (the neighbour goldens, recorded with 0.4.0). After `Print::process`, `find_dropped_supports`
+  looks near the neighbours for overhangs without support and support that starts in mid-air, which is what
+  TreeSupport3D leaves of a branch it could not route (it only prints "Potentially lost branch!" and logs), and warns
+  `support_dropped`. A -101 still raised is described by `describe_conflict` (the layer of
+  `ConflictResult::_height`, and whose support extrusions cross the other object's `lslices` there), and with
+  toolpaths requested the G-code is exported anyway for them. Orca is not changed.
 - **`configDefinitions()`** (`bridge/config_def.cpp`) returns Orca's option table as JSON text: every option of
   `print_config_def` (type, labels, tooltip, unit, limits, enum values, labels and every name `deserialize`
   accepts, default in Orca's text form, mode, GUI type) plus the key sets libslic3r defines (preset scopes,

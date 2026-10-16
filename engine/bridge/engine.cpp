@@ -24,7 +24,8 @@
 // boundary as one typed-array copy each way, never as JSON. Every returned typed array owns a
 // fresh ArrayBuffer (not a view of the wasm heap), so the worker can transfer it without copying.
 //
-// Errors never escape as exceptions: they come back as { error: { code, message, objects? } }
+// Errors never escape as exceptions: they come back as { error: { code, message, objects?, conflict?,
+// toolpaths?, toolpathExtras? } }
 // with the codes of protocol.ts EngineError; running out of memory is { code: 2 }, on every
 // thread (see ensure_initialised). A wasm trap or abort() does escape; the worker reports that as
 // code 1 (or 2 for out of memory) and the engine instance is gone.
@@ -244,6 +245,11 @@ std::string trimmed(const std::string &text)
     return end == std::string::npos ? std::string() : text.substr(0, end + 1);
 }
 
+val toolpaths_to_js(const muon::ToolpathData &t);
+val extras_to_js(const muon::ToolpathData &t);
+
+// protocol.ts EngineError. 2.3: `conflict` ({ objects: [a, b], z, layer, supportOf: name or null }) for a
+// path conflict, and `toolpaths` / `toolpathExtras` when a failed slice still has them (as a slice's result).
 val error_to_js(const muon::EngineError &error)
 {
     val out = val::object();
@@ -251,6 +257,19 @@ val error_to_js(const muon::EngineError &error)
     out.set("message", trimmed(error.message));
     if (!error.objects.empty())
         out.set("objects", strings_to_js(error.objects));
+    if (error.conflict) {
+        const muon::ConflictInfo &c = *error.conflict;
+        val conflict = val::object();
+        conflict.set("objects", strings_to_js({c.objects[0], c.objects[1]}));
+        conflict.set("z", c.z);
+        conflict.set("layer", c.layer);
+        conflict.set("supportOf", c.support_of.empty() ? val::null() : val(c.support_of));
+        out.set("conflict", conflict);
+    }
+    if (error.toolpaths) {
+        out.set("toolpaths", toolpaths_to_js(*error.toolpaths));
+        out.set("toolpathExtras", extras_to_js(*error.toolpaths));
+    }
     return out;
 }
 
