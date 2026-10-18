@@ -330,3 +330,22 @@ jobs:
           } >> notes.md
           for variant in st mt mt64; do gh release delete-asset "$TAG" "verify-$variant.md" --yes; done
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false -f make_latest=true -F body=@notes.md --jq .html_url
+
+  cleanup-failed-draft:
+    needs: [prepare, engine, sources, draft, verify, publish]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.engine.result == 'failure' || needs.engine.result == 'cancelled' ||
+       needs.sources.result == 'failure' || needs.sources.result == 'cancelled' ||
+       needs.draft.result == 'failure' || needs.draft.result == 'cancelled' ||
+       needs.verify.result == 'failure' || needs.verify.result == 'cancelled' ||
+       needs.publish.result == 'failure' || needs.publish.result == 'cancelled')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Remove the failed run's draft release
+        # Keep the pushed release tag so a corrected workflow can be re-run for it.
+        run: gh release delete "$TAG" --yes

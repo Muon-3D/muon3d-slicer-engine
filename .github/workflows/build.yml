@@ -176,9 +176,13 @@ jobs:
     if: always() && needs.changes.result == 'success' && (needs.transfer.result == 'success' || needs.transfer.result == 'skipped') && (needs.engine.result == 'success' || needs.engine.result == 'skipped')
     runs-on: ubuntu-24.04
     permissions:
+      # GitHub downgrades this token to read-only for pull requests from forks. Write access is used only by
+      # the main-push transfer step below; no write-token step runs pull-request code.
       contents: write
     env:
-      WASM_BUILT: ${{ needs.changes.outputs.wasm }}
+      # Pull requests deliberately exercise the already-published edge engine, even when their changes would
+      # cause main to rebuild it. This avoids giving fork code a release hand-off and is the accepted PR coverage gap.
+      WASM_BUILT: ${{ needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -267,9 +271,6 @@ jobs:
       - name: Transfer the edge files through the private draft
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: gh release upload "ci-$GITHUB_RUN_ID" muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$GITHUB_REPOSITORY"
-      - name: Remove the private transfer draft after a manual build
-        if: env.WASM_BUILT == 'true' && github.event_name != 'push'
-        run: gh release delete "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
 
   edge:
     needs: runtime
@@ -316,4 +317,15 @@ jobs:
             gh release create edge muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$repo" --prerelease --latest=false \
               --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
           fi
-          gh release delete "ci-$GITHUB_RUN_ID" --repo "$repo" --cleanup-tag --yes
+
+  cleanup:
+    needs: [transfer, engine, runtime, edge]
+    if: always() && needs.transfer.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Remove the private transfer draft
+        run: gh release delete "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
