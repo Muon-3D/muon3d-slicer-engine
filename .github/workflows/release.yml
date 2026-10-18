@@ -28,7 +28,25 @@ env:
   TAG: ${{ github.ref_name }}
 
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Create the draft used for inter-job files
+        run: |
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\"")
+          if [[ -n $existing ]]; then
+            read -r id draft <<<"$existing"
+            [[ $draft == true ]] || { echo "::error::$TAG is already published"; exit 1; }
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          fi
+          gh release create "$TAG" --draft --verify-tag --title "$TAG (build in progress)" --notes "Build in progress."
+
   engine:
+    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy:
@@ -37,6 +55,9 @@ jobs:
         variant: [st, mt, mt64]
     env:
       VARIANT: ${{ matrix.variant }}
+      GH_TOKEN: ${{ github.token }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: The tag names package.json's version
@@ -61,17 +82,19 @@ jobs:
       - run: npm ci
       - name: Engine tests (${{ matrix.variant }})
         run: npm run test:engine -- "$VARIANT"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-engine-${{ matrix.variant }}
-          path: |
-            dist/engine-${{ matrix.variant }}.*
-            dist/manifest.json
-          if-no-files-found: error
+      - name: Transfer the engine through the draft release
+        run: |
+          tar -czf "release-engine-${VARIANT}.tgz" -C dist "engine-${VARIANT}.mjs" "engine-${VARIANT}.wasm" manifest.json
+          gh release upload "$TAG" "release-engine-${VARIANT}.tgz"
 
   sources:
+    needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - run: bash engine/scripts/get-orca.sh
@@ -96,12 +119,10 @@ jobs:
         run: |
           HOST_METAFILE=$RUNNER_TEMP/host-meta.json bash tools/release/source-bundles.sh sources "${TAG#v}"
           ls -l sources
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-sources
-          path: sources
-          compression-level: 0
-          if-no-files-found: error
+      - name: Transfer the sources through the draft release
+        run: |
+          tar -cf release-sources.tar sources
+          gh release upload "$TAG" release-sources.tar
 
   draft:
     needs: [engine, sources]
@@ -121,9 +142,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
+      - name: Download inter-job files from the draft release
+        run: |
+          mkdir -p artifacts
+          gh release download "$TAG" --pattern 'release-*' --dir artifacts
+          for variant in st mt mt64; do
+            mkdir -p "artifacts/release-engine-$variant"
+            tar -xzf "artifacts/release-engine-$variant.tgz" -C "artifacts/release-engine-$variant"
+          done
+          tar -xf artifacts/release-sources.tar -C artifacts
+          rm artifacts/*.tar artifacts/*.tgz
       - name: OrcaSlicer at the pin (the profile tree)
         run: bash engine/scripts/get-orca.sh
       - name: Assemble the runtime and the profile set
@@ -198,15 +226,11 @@ jobs:
             echo "\`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`. The runtime's \`SOURCE.md\` says where the"
             echo "Corresponding Source of this build is; \`docs/BUILD.md\` has the steps to rebuild it, offline, from the three source assets."
           } > notes.md
-          # A draft left by an earlier run of this tag goes; a published release stops the run.
-          existing=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\"")
-          if [[ -n $existing ]]; then
-            read -r id draft <<<"$existing"
-            [[ $draft == true ]] || { echo "::error::$TAG is already published"; exit 1; }
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
-          fi
           rc=(); [[ $TAG == *-rc.* ]] && rc=(--prerelease)
-          gh release create "$TAG" assets/* --draft "${rc[@]}" --verify-tag --title "$title" --notes-file notes.md
+          gh release delete-asset "$TAG" release-sources.tar --yes
+          for variant in st mt mt64; do gh release delete-asset "$TAG" "release-engine-$variant.tgz" --yes; done
+          gh release upload "$TAG" assets/*
+          gh release edit "$TAG" "${rc[@]}" --title "$title" --notes-file notes.md
 
   verify:
     needs: draft
@@ -270,10 +294,10 @@ jobs:
           got=$(node -p "JSON.stringify([require('./out/manifest.json').host.sha256, ...(require('./out/manifest.json').host.chunks ?? []).map((c) => c.sha256)])")
           [[ $want == "$got" ]] || { echo "::error::host rebuilt from the source bundle: $got, released $want"; exit 1; }
           echo "- \`$(node -p "require('$manifest').host.file")\` and the chunks it loads rebuilt byte for byte from the source bundle (with its locked npm dependencies)." > ../../result/host.md
-      - uses: actions/upload-artifact@v7
-        with:
-          name: verify-${{ matrix.variant }}
-          path: result
+      - name: Transfer the verification result through the draft release
+        run: |
+          cat result/*.md > "verify-$VARIANT.md"
+          gh release upload "$TAG" "verify-$VARIANT.md"
 
   publish:
     needs: verify
@@ -286,11 +310,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: verify-*
-          merge-multiple: true
-          path: result
+      - name: Download the verification results from the draft release
+        run: |
+          mkdir result
+          gh release download "$TAG" --pattern 'verify-*.md' --dir result
       - name: Publish the release
         run: |
           id=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id")
@@ -305,4 +328,24 @@ jobs:
             echo
             echo "Run: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
           } >> notes.md
+          for variant in st mt mt64; do gh release delete-asset "$TAG" "verify-$variant.md" --yes; done
           gh api -X PATCH "repos/$GH_REPO/releases/$id" -F draft=false -f make_latest=true -F body=@notes.md --jq .html_url
+
+  cleanup-failed-draft:
+    needs: [prepare, engine, sources, draft, verify, publish]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.engine.result == 'failure' || needs.engine.result == 'cancelled' ||
+       needs.sources.result == 'failure' || needs.sources.result == 'cancelled' ||
+       needs.draft.result == 'failure' || needs.draft.result == 'cancelled' ||
+       needs.verify.result == 'failure' || needs.verify.result == 'cancelled' ||
+       needs.publish.result == 'failure' || needs.publish.result == 'cancelled')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Remove the failed run's draft release
+        # Keep the pushed release tag so a corrected workflow can be re-run for it.
+        run: gh release delete "$TAG" --yes
