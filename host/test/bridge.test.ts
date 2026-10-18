@@ -9,6 +9,7 @@ import type { CheckOutput, SliceJob, SliceOutput } from '../src/bridge.ts';
 import {
   EngineJobError,
   EngineStartError,
+  SharedHeapReserve,
   engineFailure,
   engineHeap,
   instantiateEngineWasm,
@@ -240,6 +241,75 @@ test('engineHeap asks the bridge where the build can, else reads the memory', ()
   });
   assert.deepEqual(engineHeap(broken, memory), { bytes: 2 * 65536 });
   assert.equal(engineHeap(fakeEngine(), null), null);
+});
+
+describe('SharedHeapReserve: the mt heap grows between jobs, not during one', () => {
+  const PAGE = 65536;
+  const shared = (pages: number, maximum = 64) => new WebAssembly.Memory({ initial: pages, maximum, shared: true });
+
+  it('is only for a shared memory', () => {
+    assert.equal(SharedHeapReserve.for(new WebAssembly.Memory({ initial: 1 }), 64 * PAGE), null);
+    assert.equal(SharedHeapReserve.for(null, 64 * PAGE), null);
+    assert.ok(SharedHeapReserve.for(shared(1), 64 * PAGE) instanceof SharedHeapReserve);
+  });
+
+  it('grows the heap to the reserve before a job, and not again while jobs fit', () => {
+    const memory = shared(2);
+    const reserve = new SharedHeapReserve(memory, 64 * PAGE, 8 * PAGE);
+    reserve.prepare();
+    assert.equal(memory.buffer.byteLength, 8 * PAGE);
+    for (let i = 0; i < 3; i++) assert.deepEqual(reserve.job(() => 'sliced'), { value: 'sliced', grew: null });
+    assert.equal(memory.buffer.byteLength, 8 * PAGE, 'jobs that fit leave the heap as it was');
+  });
+
+  it('reports a job that grew the heap itself, and keeps that much free above it for the next', () => {
+    const memory = shared(2);
+    const reserve = new SharedHeapReserve(memory, 64 * PAGE, 8 * PAGE);
+    assert.deepEqual(reserve.job(() => memory.grow(4)).grew, { from: 8 * PAGE, to: 12 * PAGE });
+    reserve.prepare();
+    assert.equal(memory.buffer.byteLength, 16 * PAGE, 'the job grew 4 pages: 4 more are free before the next');
+    assert.equal(reserve.job(() => 0).grew, null);
+    reserve.prepare();
+    assert.equal(memory.buffer.byteLength, 16 * PAGE, 'no compounding while jobs fit');
+  });
+
+  it('never grows past the maximum, and a refused growth leaves the job to grow it', (t) => {
+    const warn = t.mock.method(console, 'warn', () => undefined);
+    const memory = shared(2, 6);
+    const reserve = new SharedHeapReserve(memory, 64 * PAGE, 8 * PAGE);
+    reserve.prepare();
+    assert.equal(memory.buffer.byteLength, 2 * PAGE, 'the browser refused');
+    assert.equal(warn.mock.callCount(), 1);
+    const capped = shared(2);
+    new SharedHeapReserve(capped, 5 * PAGE, 8 * PAGE).prepare();
+    assert.equal(capped.buffer.byteLength, 5 * PAGE, 'the engine maximum caps the reserve');
+  });
+
+  it('puts the growth on a crash, which engineFailure names', () => {
+    const memory = shared(2);
+    const reserve = new SharedHeapReserve(memory, 64 * PAGE, 4 * PAGE);
+    const trap = new WebAssembly.RuntimeError('memory access out of bounds');
+    assert.throws(
+      () =>
+        reserve.job(() => {
+          memory.grow(2);
+          throw trap;
+        }),
+      (err) => err === trap,
+    );
+    const failure = engineFailure(trap);
+    assert.equal(failure.message, 'The slicing engine crashed: memory access out of bounds');
+    assert.match(failure.detail ?? '', /^the engine's shared heap grew from \d+ MB to \d+ MB while its threads ran/);
+    const quiet = new WebAssembly.RuntimeError('unreachable');
+    assert.throws(
+      () =>
+        reserve.job(() => {
+          throw quiet;
+        }),
+      (err) => err === quiet,
+    );
+    assert.equal(engineFailure(quiet).detail, undefined, 'no growth, nothing added');
+  });
 });
 
 test('startFailure says why the engine could not start in a sentence, with the raw text as detail', () => {

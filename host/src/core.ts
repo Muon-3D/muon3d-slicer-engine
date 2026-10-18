@@ -13,7 +13,7 @@ import { transferablesOf } from '../../packages/protocol/src/helpers.ts';
 import type { EngineManifest } from '../../packages/protocol/src/manifest.ts';
 import { Capability, OPS, type HelloResult, type LoadParams, type LoadResult, type OpName } from '../../packages/protocol/src/ops.ts';
 import type { Transport } from '../../packages/protocol/src/transport.ts';
-import type { LoadEngineOptions, LoadedEngine, OrcaEngineModule } from './bridge.ts';
+import type { LoadEngineOptions, LoadedEngine, OrcaEngineModule, SharedHeapReserve } from './bridge.ts';
 import { BadRequest } from './badRequest.ts';
 import { memory64Supported } from './memory64.ts';
 import { BUILD, engineInfo, type BuildInfo } from './info.ts';
@@ -152,6 +152,8 @@ export function createHost(options: HostOptions): Host {
   let state: HostState = { state: 'idle' };
   let engine: OrcaEngineModule | null = null;
   let memory: WebAssembly.Memory | null = null;
+  /** 'mt': grows the shared heap between jobs, never during one (bridge.ts SharedHeapReserve). */
+  let heapReserve: SharedHeapReserve | null = null;
   let loaded: LoadResult | null = null;
   let loading: Promise<LoadResult> | null = null;
   /** Set once the engine could not load or crashed: every later engine op fails with it. */
@@ -242,6 +244,10 @@ export function createHost(options: HostOptions): Host {
         });
         engine = l.engine;
         memory = l.memory;
+        if (variant === 'mt') {
+          heapReserve = runtime!.SharedHeapReserve.for(memory, build.maxHeapBytes);
+          heapReserve?.prepare();
+        }
         loaded = { variant, initMs: l.initMs };
         const h = heap();
         setState({ state: 'ready', variant, initMs: l.initMs, ...(h ? { heapBytes: h.bytes, ...(h.maxBytes ? { maxHeapBytes: h.maxBytes } : {}) } : {}) });
@@ -263,7 +269,11 @@ export function createHost(options: HostOptions): Host {
   /** Runs one engine job; a crash (not Orca refusing the job) kills the engine for good. */
   function engineJob<T>(run: (engine: OrcaEngineModule) => T): T {
     try {
-      return run(engine!);
+      if (!heapReserve) return run(engine!);
+      const { value, grew } = heapReserve.job(() => run(engine!));
+      // The job took the risk the reserve is there to avoid; say so, so that it is seen.
+      if (grew) console.warn(`Engine host: ${runtime!.heapGrowthDetail(grew)}.`);
+      return value;
     } catch (err) {
       if (err instanceof runtime!.EngineJobError || err instanceof BadRequest) throw err;
       dead = runtime!.engineFailure(err, heap());

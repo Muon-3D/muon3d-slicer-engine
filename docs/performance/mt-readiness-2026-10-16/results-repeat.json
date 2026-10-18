@@ -1,0 +1,74 @@
+[
+  {
+    "label": "mt-full-00-field",
+    "branch": "field",
+    "exit": 1,
+    "seconds": 174.48,
+    "timings": [
+      {
+        "target": "in-process",
+        "p50": 3.84,
+        "p95": 7.03
+      },
+      {
+        "target": "byte-stream",
+        "p50": 5.33,
+        "p95": 9.68
+      },
+      {
+        "target": "node-worker",
+        "p50": 4.89,
+        "p95": 9.16
+      },
+      {
+        "target": "built-host",
+        "p50": 4.04,
+        "p95": 6.88
+      }
+    ],
+    "counts": {
+      "tests": 156,
+      "pass": 148,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "crashes": []
+  },
+  {
+    "label": "mt-full-00-main-control",
+    "branch": "main-control",
+    "exit": 1,
+    "seconds": 178.92,
+    "timings": [
+      {
+        "target": "in-process",
+        "p50": 4.68,
+        "p95": 7.47
+      },
+      {
+        "target": "byte-stream",
+        "p50": 6.77,
+        "p95": 13.03
+      },
+      {
+        "target": "node-worker",
+        "p50": 4.95,
+        "p95": 9.72
+      },
+      {
+        "target": "built-host",
+        "p50": 3.5,
+        "p95": 6.24
+      }
+    ],
+    "counts": {
+      "tests": 150,
+      "pass": 142,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 6
+    },
+    "crashes": []
+  }
+]
