@@ -1,6 +1,6 @@
 {
   "name": "muon3d-slicer-engine",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "private": true,
   "description": "The Muon3D Slicer Engine (based on OrcaSlicer): OrcaSlicer's libslic3r compiled to WebAssembly, with a host that serves protocol v2 (slicing, placement checks, OrcaSlicer's settings forms and vendor profiles) over a Web Worker, Node worker_threads or a byte stream; and OrcaSlicer's printer profiles packed for a static site.",
   "license": "AGPL-3.0-only",
@@ -22,6 +22,7 @@
     "test:engine": "node engine/scripts/test-engine.mjs",
     "test:engine:st": "node engine/scripts/test-engine.mjs st",
     "test:engine:mt": "node engine/scripts/test-engine.mjs mt",
+    "test:engine:mt64": "node engine/scripts/test-engine.mjs mt64",
     "test:conformance": "node --test test/conformance/conformance.test.ts",
     "check": "npm run check:imports && npm run typecheck",
     "check:imports": "node tools/check-imports.mjs",

@@ -14,7 +14,7 @@
 //   --at <x>,<y>       where to centre the model on the bed, in mm (default: the printable area's centre)
 //   --name <name>      the object's name in the G-code (default: the STL's file name, or Cube.stl)
 //   -o, --out <file>   where to write the G-code (default: the model's name with .gcode, in the current folder)
-//   --variant st|mt    engine variant (default st)
+//   --variant st|mt|mt64  engine variant (default st; mt64 needs Node 24)
 //   --dist <folder>    the built engine and host, or a release's runtime folder (default dist/ of this repository)
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,12 +41,12 @@ const { values: opts, positionals } = parseArgs({
 
 function usage(message) {
   if (message) console.error(`slice: ${message}`);
-  console.error('usage: node examples/node-cli/slice.mjs <model.stl | --cube <mm>> [--presets <json>] [--at x,y] [--name <name>] [-o <file>] [--variant st|mt] [--dist <folder>]');
+  console.error('usage: node examples/node-cli/slice.mjs <model.stl | --cube <mm>> [--presets <json>] [--at x,y] [--name <name>] [-o <file>] [--variant st|mt|mt64] [--dist <folder>]');
   process.exit(message ? 2 : 0);
 }
 if (opts.help) usage();
 if ((positionals.length !== 1) === !opts.cube) usage('give one STL file, or --cube <mm>');
-if (opts.variant !== 'st' && opts.variant !== 'mt') usage('--variant must be st or mt');
+if (!['st', 'mt', 'mt64'].includes(opts.variant)) usage('--variant must be st, mt or mt64');
 
 // ---- The job: presets and one placed object ---------------------------------------------------------
 const presets = JSON.parse(fs.readFileSync(opts.presets, 'utf8'));

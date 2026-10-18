@@ -69,8 +69,8 @@ find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 
 # --- oneTBB ------------------------------------------------------------------------------------------------------
-if (ENGINE_VARIANT STREQUAL "mt")
-    find_package(TBB 2021 CONFIG REQUIRED COMPONENTS tbb tbbmalloc)
+if (ENGINE_THREADED)
+    find_package(TBB 2021 CONFIG REQUIRED COMPONENTS tbb)
 else ()
     # Single-threaded: the serial header shim stands in for oneTBB (see shims/tbb-serial/README.md).
     add_library(engine_tbb_serial INTERFACE)
@@ -79,6 +79,25 @@ else ()
     add_library(TBB::tbb ALIAS engine_tbb_serial)
     add_library(TBB::tbbmalloc ALIAS engine_tbbmalloc_serial)
 endif ()
+
+# engine_without_tbbmalloc(<target>...): the mt engine has no tbbmalloc. Orca's targets that link
+# TBB::tbbmalloc (libslic3r, clipper) get TBB's headers only; tbb::scalable_allocator's C API is
+# allocator/scalable_malloc.c (malloc), compiled into the engine (cmake/Engine.cmake). The targets are
+# Orca's, so their link lists are rewritten here rather than edited. Nothing to do for st (the serial shim).
+function(engine_without_tbbmalloc)
+    if (NOT ENGINE_THREADED)
+        return()
+    endif ()
+    foreach (target IN LISTS ARGN)
+        foreach (property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+            get_target_property(libs ${target} ${property})
+            if (libs)
+                string(REPLACE "TBB::tbbmalloc" "TBB::tbb" libs "${libs}")
+                set_target_properties(${target} PROPERTIES ${property} "${libs}")
+            endif ()
+        endforeach ()
+    endforeach ()
+endfunction ()
 
 # --- Libraries bundled in Orca's deps_src/ ----------------------------------------------------------------------
 # Only what libslic3r needs; Orca's deps_src/CMakeLists.txt also adds GUI-only ones (imgui, hidapi, ...).
@@ -100,6 +119,7 @@ foreach (dir IN LISTS ENGINE_DEPS_SRC_HEADER_ONLY ENGINE_DEPS_SRC_LIBRARIES)
     add_subdirectory("${ORCA_SRC}/deps_src/${dir}" "${CMAKE_BINARY_DIR}/deps_src/${dir}")
 endforeach ()
 engine_silence_warnings(admesh clipper Clipper2 expat glu-libtess libnest2d mcut miniz_static qoi semver)
+engine_without_tbbmalloc(clipper)
 
 # Orca's top-level CMakeLists falls back to the bundled expat the same way when no system expat exists.
 set(EXPAT_INCLUDE_DIRS "${ORCA_SRC}/deps_src/expat")

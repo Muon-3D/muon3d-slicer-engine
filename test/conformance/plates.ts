@@ -120,6 +120,67 @@ export const PAINTED_PLATES: readonly Plate[] = [
   },
 ];
 
+/** A box standing on `z0` (box() stands on the bed). */
+export function boxAt(size: [number, number, number], center: [number, number], z0: number): Float32Array {
+  const b = box(size, center);
+  for (let i = 2; i < b.length; i += 3) b[i] += z0;
+  return b;
+}
+
+/**
+ * The T of the neighbour plates: a 10 x 10 x 40 mm pillar with a 60 x 12 x 4 mm cap on top, centred on `center`; the cap's
+ * arms are overhangs 40 mm up.
+ */
+export function capT(center: [number, number]): Float32Array {
+  const pillar = boxAt([10, 10, 40], center, 0);
+  const cap = boxAt([60, 12, 4], center, 40);
+  const out = new Float32Array(pillar.length + cap.length);
+  out.set(pillar);
+  out.set(cap, pillar.length);
+  return out;
+}
+
+/**
+ * Plates with several objects whose supports never come near another object (2.3): their G-code must be what the engine
+ * gave before the plate's other objects became support blockers (`neighbours` in test/goldens/slices.json, recorded by
+ * tools/goldens/record-slices-neighbours.mjs with the v0.4.0 release).
+ */
+export const NEIGHBOUR_PLATES: readonly Plate[] = [
+  {
+    // Organic tree supports, the block out of the T's reach (organic_support_reach: about 57 mm here; it is 77 mm away in Y).
+    id: 'm1-t-far-block-tree',
+    params: () => ({
+      configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'tree(auto)' }),
+      objects: [
+        { name: 'Tee.stl', mesh: mesh(capT([130, 130])) },
+        { name: 'Block.stl', mesh: mesh(box([14, 14, 20], [40, 40])) },
+      ],
+    }),
+  },
+  {
+    // Grid supports, two Ts 30 mm apart: only organic tree supports avoid other objects.
+    id: 'm1-two-t-normal',
+    params: () => ({
+      configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'normal(auto)' }),
+      objects: [
+        { name: 'Tee.stl', mesh: mesh(capT([100, 70])) },
+        { name: 'Tee_2.stl', mesh: mesh(capT([100, 112])) },
+      ],
+    }),
+  },
+  {
+    // Tree supports in the "Tree Hybrid" style (not organic), a block 20 mm from the T.
+    id: 'm1-t-block-tree-hybrid',
+    params: () => ({
+      configs: withProcess(fixture('muon3d-m1-0.4'), { enable_support: '1', support_type: 'tree(auto)', support_style: 'tree_hybrid' }),
+      objects: [
+        { name: 'Tee.stl', mesh: mesh(capT([100, 90])) },
+        { name: 'Block.stl', mesh: mesh(box([10, 10, 10], [100, 60])) },
+      ],
+    }),
+  },
+];
+
 function withProcess(configs: PresetFixture, overrides: Record<string, string>): PresetFixture {
   return { ...configs, process: { ...configs.process, ...overrides } };
 }

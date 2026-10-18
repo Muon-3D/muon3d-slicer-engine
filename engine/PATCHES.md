@@ -16,6 +16,8 @@ generated in the build tree (see "Out-of-tree source patches" below).
 | libigl's CGAL boolean code needs `Epeck_with_sqrt`, which a GMP-free CGAL cannot provide | `shims/cgal/` (compile-only placeholder, searched before CGAL for `libslic3r_cgal` only) |
 | libslic3r's `FlushVolCalc.cpp` calls `RGB2HSV()`, which Orca defines in the GUI library (`src/slic3r/Utils/ColorSpaceConvert.cpp`, includes `<wx/colordlg.h>`) | That Orca file is compiled unchanged into libslic3r with a minimal `wxColour` stand-in, `shims/wx/` (`cmake/Libslic3r.cmake`) |
 | oneTBB in the single-threaded engine | `shims/tbb-serial/` |
+| tbbmalloc in the multithreaded engines (mt, mt64): Orca allocates every `Points` (`Point.hpp`) and the support layers (`Support/SupportLayer.hpp`) with `tbb::scalable_allocator`; on wasm32 tbbmalloc pools that memory per thread on top of mimalloc and held most of the mt heap | `allocator/scalable_malloc.c` (tbbmalloc's C API on `malloc`); `cmake/Dependencies.cmake` (`engine_without_tbbmalloc`) drops `TBB::tbbmalloc` from the link lists of Orca's `libslic3r` and `clipper` |
+| mimalloc (the mt and mt64 engines' `malloc`) reserves a new arena, never released on wasm, for each large buffer it cannot place in the arenas it has (organic tree supports: 20-50 MB buffers over and over) | `allocator/mimalloc_options.c`: `arena_max_object_size` 4 MiB, so larger objects come from and go back to emmalloc |
 
 If an edit under `src/` ever becomes unavoidable, it must be tiny, guarded by
 `#ifdef __EMSCRIPTEN__`, and recorded below with the file, the reason, and how it was verified.

@@ -3,7 +3,7 @@
 Protocol **v2** of the [Muon3D Slicer Engine](https://github.com/Muon-3D/muon3d-slicer-engine): the messages a
 client exchanges with the engine host, and small helpers both sides share. The normative description is
 [`docs/PROTOCOL.md`](https://github.com/Muon-3D/muon3d-slicer-engine/blob/main/docs/PROTOCOL.md); this package is
-its code. Package 2.2.x is protocol 2.2.
+its code. Package 2.3.x is protocol 2.3.
 
 - **Types:** the envelope (`Request`, `Response`, `HostState`, `EngineError`, `ErrorCode`), every op's params and
   result (`Ops`, `HelloResult`, `SliceParams`, `SliceResult`, `Toolpaths`, `CheckResult`, `ConfigDefinitions`,

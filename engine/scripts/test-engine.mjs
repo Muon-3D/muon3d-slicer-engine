@@ -1,10 +1,11 @@
-// `npm run test:engine`: the engine tests (test/engine.test.ts, test/settingsOverrides.e2e.test.ts, test/sliceField.e2e.test.ts and the
+// `npm run test:engine`: the engine tests (test/engine.test.ts, test/paint.test.ts, test/neighbours.test.ts, test/settingsOverrides.e2e.test.ts, test/sliceField.e2e.test.ts and the
 // protocol conformance suite, test/conformance/conformance.test.ts, whose engine part needs the build)
 // against the built engine, once per variant. Unlike a bare `node --test test/engine.test.ts`, a variant
 // that is not built fails instead of skipping its suite.
 //
 //   npm run test:engine             # st, then mt
 //   npm run test:engine:mt          # one variant (also: npm run test:engine -- mt)
+//   npm run test:engine:mt64        # the Memory64 variant: needs Node 24 or newer (memory64 on by default)
 //
 // ENGINE_DIR (default dist/), ENGINE_TEST_OUT and ENGINE_TEST_BENCHY pass through (test/fixtures.ts).
 // The presets are committed fixtures (test/fixtures/presets), so no Orca checkout is needed.
@@ -19,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repo, 'dist'));
-const TESTS = ['test/engine.test.ts', 'test/paint.test.ts', 'test/settingsOverrides.e2e.test.ts', 'test/sliceField.e2e.test.ts', 'test/conformance/conformance.test.ts'];
+const TESTS = ['test/engine.test.ts', 'test/paint.test.ts', 'test/neighbours.test.ts', 'test/settingsOverrides.e2e.test.ts', 'test/sliceField.e2e.test.ts', 'test/conformance/conformance.test.ts'];
 const args = process.argv.slice(2);
 // Options (e.g. --test-name-pattern=Benchy) go to node --test; the rest name variants.
 const testOptions = args.filter((arg) => arg.startsWith('--'));
@@ -28,9 +29,16 @@ if (variants.length === 0) variants.push('st', 'mt');
 
 let failed = false;
 for (const variant of variants) {
-  if (variant !== 'st' && variant !== 'mt') {
-    console.error(`usage: npm run test:engine [-- st|mt ...] (got "${variant}")`);
+  if (variant !== 'st' && variant !== 'mt' && variant !== 'mt64') {
+    console.error(`usage: npm run test:engine [-- st|mt|mt64 ...] (got "${variant}")`);
     process.exit(2);
+  }
+  // Memory64 as Emscripten emits it (the final proposal) is in Node from 24 on, without a flag; Node 22 has only an
+  // earlier draft behind --experimental-wasm-memory64 (Emscripten 6.0.10, tools/link.py; MDN browser-compat-data).
+  if (variant === 'mt64' && Number(process.versions.node.split('.')[0]) < 24) {
+    console.error(`engine-mt64 needs Node 24 or newer (Memory64); this is Node ${process.versions.node}.`);
+    failed = true;
+    continue;
   }
   if (!fs.existsSync(path.join(engineDir, `engine-${variant}.mjs`))) {
     console.error(`engine-${variant}.mjs is not in ${engineDir}: build it first (npm run build:engine -- ${variant}).`);

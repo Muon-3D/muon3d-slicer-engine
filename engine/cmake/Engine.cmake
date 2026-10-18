@@ -68,6 +68,15 @@ set_target_properties(orca_engine PROPERTIES
     SUFFIX ".mjs"                                      # Emscripten emits engine-<v>.mjs + engine-<v>.wasm
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
 
+# The heap's maximum. wasm32 addresses 4 GB. mt64 is linked for wasm64 (-m64, from the prefix's initial
+# cache, so in CMAKE_EXE_LINKER_FLAGS): its memory is a Memory64 memory, whose limit is 16 GB in Chrome
+# (V8 kV8MaxWasmMemory64Pages, 262144 pages, the JS API's limit) and Firefox (ArrayBuffer ByteLengthLimit).
+# A shared memory reserves its maximum as address space when it is created, not as committed memory.
+set(ENGINE_MAXIMUM_MEMORY 4GB)
+if (ENGINE_WASM64)
+    set(ENGINE_MAXIMUM_MEMORY 16GB)
+endif ()
+
 set(ENGINE_LINK_OPTIONS
     # ES6 module factory: `const Module = await createOrcaEngine({...})`.
     -sMODULARIZE=1
@@ -85,13 +94,13 @@ set(ENGINE_LINK_OPTIONS
     -sDYNAMIC_EXECUTION=0
     # FS stays reachable from JS (the worker reads the G-code file from MEMFS without another copy).
     # wasmMemory: the heap's WebAssembly.Memory, so JS can read its size (wasmMemory.buffer.byteLength,
-    # valid up to the full 4 GB) after a job or a crash. Wasm memory never shrinks, and the mt build's
+    # valid up to the full maximum) after a job or a crash. Wasm memory never shrinks, and the mt build's
     # grows with every job (mimalloc keeps per-thread pages), so the worker's owner replaces an engine
     # whose heap has grown large.
     -sEXPORTED_RUNTIME_METHODS=FS,wasmMemory
     -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=256MB
-    -sMAXIMUM_MEMORY=4GB
+    -sMAXIMUM_MEMORY=${ENGINE_MAXIMUM_MEMORY}
     -sSTACK_SIZE=16MB                                  # Orca gives its threads 16 MB stacks; deep recursion
                                                        # in Arachne / CGAL has no guard page in wasm
     --emit-symbol-map                                  # engine-<v>.mjs.symbols, to decode crash stacks
@@ -99,14 +108,17 @@ set(ENGINE_LINK_OPTIONS
     # commit or date, so the output still depends only on the sources.
     "SHELL:--extern-pre-js \"${ENGINE_DIR}/cmake/licence-banner.js\""
 )
-if (ENGINE_VARIANT STREQUAL "mt")
+if (ENGINE_THREADED)
     list(APPEND ENGINE_LINK_OPTIONS
         -pthread
-        # Per-thread heaps; dlmalloc has one global lock (a Benchy takes ~6 s with it, as long as st). The
-        # price: the heap grows by ~100-150 MB per Benchy at 24 threads and never shrinks. Measured 2026-09-25,
-        # none of mimalloc's own remedies bounds that: mi_collect(true) after each job, page_reclaim_on_free
-        # = 1, page_full_retain = 0, arena_reserve 4 MiB or 256 MiB, arena_max_object_size 1 GiB. So the
-        # client caps the threads and replaces an engine whose heap has grown (wasmMemory above).
+        # Per-thread heaps; dlmalloc has one global lock (a Benchy takes 2.5-3.5 times as long with it). Two
+        # things keep mimalloc's heap close to what is in use (measured 2026-10-16, Harry's two-part plate
+        # with organic supports: 0.5.0 ran the 4 GB heap out at any thread count, now 2.0 GB at 8 threads):
+        # tbb::scalable_allocator is malloc (allocator/scalable_malloc.c, no tbbmalloc), and objects over
+        # 4 MiB bypass mimalloc's arenas (allocator/mimalloc_options.c). mimalloc's other settings
+        # (page_reclaim_on_free, page_full_retain, purge_delay, a smaller arena_reserve, no arenas at all)
+        # did not help. The heap still never shrinks, so the client replaces an engine whose heap has grown
+        # (wasmMemory above).
         -sMALLOC=mimalloc
         # Workers are started up front: a thread blocked in slicing cannot wait for a new Worker to be
         # created, and TBB may use every hardware thread plus the callers. STRICT=2 makes running out an
@@ -117,6 +129,15 @@ if (ENGINE_VARIANT STREQUAL "mt")
         # Growable memory with threads makes JS re-check the heap views on every access; where the
         # browser has resizable ArrayBuffers (detected at runtime) that overhead goes away.
         -sGROWABLE_ARRAYBUFFERS=1)
+    target_sources(orca_engine PRIVATE
+        "${ENGINE_DIR}/allocator/scalable_malloc.c"
+        "${ENGINE_DIR}/allocator/mimalloc_options.c")
+    # mimalloc.h (mi_option_set) from the Emscripten that links the engine's mimalloc.
+    set_source_files_properties("${ENGINE_DIR}/allocator/mimalloc_options.c" PROPERTIES
+        INCLUDE_DIRECTORIES "${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include")
+    if (NOT EXISTS "${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include/mimalloc.h")
+        message(FATAL_ERROR "No mimalloc.h under ${EMSCRIPTEN_ROOT_PATH}/system/lib/mimalloc/include.")
+    endif ()
 else ()
     list(APPEND ENGINE_LINK_OPTIONS -sMALLOC=dlmalloc)
 endif ()

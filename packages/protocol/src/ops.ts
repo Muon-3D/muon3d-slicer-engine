@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// The operations of protocol v2 (2.2): their params and results, and the capability names a host lists in
+// The operations of protocol v2 (2.3): their params and results, and the capability names a host lists in
 // `hello`. docs/PROTOCOL.md describes each.
 import type { SettingsCatalogue } from './catalogue.ts';
 import type { ConfigPatch, ConfigSet, Mesh, Vec3 } from './data.ts';
@@ -30,13 +30,18 @@ export interface HelloResult {
   engine: EngineInfo;
   /** Every op this host serves, and the sub-features it has (CAPABILITIES). Unknown strings: ignore. */
   capabilities: string[];
-  /** The variants that can run here: 'mt' only where threads can (a cross-origin isolated page, Node) and it is built. */
+  /**
+   * The variants that can run here and are built: 'mt' only where threads can (a cross-origin isolated page, Node);
+   * 'mt64' (2.4) only where threads and Memory64 can.
+   */
   variants: Variant[];
   limits: {
     /** Threads 'mt' would use. */
     maxThreads: number;
-    /** The engine's heap can grow to this. */
+    /** The engine's heap can grow to this ('st' and 'mt'). */
     maxHeapBytes: number;
+    /** (2.4) What each variant in `variants` can grow its heap to: 'mt64' past `maxHeapBytes`. */
+    maxHeapBytesByVariant?: Partial<Record<Variant, number>>;
   };
   /** The data formats this host produces. */
   formats: { definitions: number; catalogue: number; toolpaths: number; settingsView: number };
@@ -61,9 +66,9 @@ export interface EngineInfo {
 }
 
 export interface LoadParams {
-  /** Default 'auto': 'mt' where it can run and is built, else 'st'. */
+  /** Default 'auto': 'mt' where it can run and is built, else 'st'. 'auto' never picks 'mt64': name it. */
   variant?: Variant | 'auto';
-  /** 'mt': the most threads to use (default: every core). */
+  /** 'mt' and 'mt64': the most threads to use (default: every core). */
   threads?: number;
   /** URL of the folder with engine-<variant>.mjs/.wasm; default the host's own folder. */
   base?: string;
@@ -163,6 +168,24 @@ export interface SliceFieldRequest {
   voxelSize?: number;
   /** Add the optional depositionTime array. Default false. */
   depositionTime?: boolean;
+}
+
+/**
+ * A G-code path conflict (EngineError.conflict, code -101, 2.3): two objects' extrusions cross on one layer, so the plate
+ * cannot be printed as it is placed.
+ */
+export interface SliceConflict {
+  /** The two objects, as OrcaSlicer names them (an object's name, or "WipeTower"); both are the same name for two copies. */
+  objects: [string, string];
+  /** Print height (mm) of the layer where their paths cross. */
+  z: number;
+  /** That layer's index among the plate's layers, 0 first: the index into Toolpaths.layerZ of the error's toolpaths. */
+  layer: number;
+  /**
+   * The object whose support crossed the other object there (its support extrusions on that layer run inside the other's
+   * outline), or null: walls against walls, support against support, or the wipe tower.
+   */
+  supportOf: string | null;
 }
 
 /** Orca's log levels, most severe first. */
@@ -302,7 +325,7 @@ export const OPS_2_0: readonly OpName[] = [
 /** The ops protocol 2.1 adds: a host that serves one lists it in `hello.capabilities`. */
 export const PROFILE_OPS: readonly OpName[] = ['profiles.normalize', 'profiles.resolve', 'profiles.validate'];
 
-/** Every op of protocol 2.2 (2.2 adds none; painting is a field of slice), in the order docs/PROTOCOL.md lists them. */
+/** Every op of protocol 2.3 (2.2 and 2.3 add none: painting is a field of slice, the conflict one of its error), in the order docs/PROTOCOL.md lists them. */
 export const OPS: readonly OpName[] = [...OPS_2_0, ...PROFILE_OPS];
 
 /** Ops that need the engine (wasm): the host loads it on the first of them ('auto' variant). */
@@ -329,5 +352,12 @@ export const Capability = {
   sliceField: 'slice.field',
   /** PlateObject.paint: support, seam, fuzzy skin and filament painting on a mesh's triangles (2.2). */
   paintV1: 'paint.v1',
+  /** EngineError.conflict, and a conflicting slice's toolpaths in its error (2.3). */
+  sliceConflict: 'slice.conflict',
+  /**
+   * Organic tree supports go around the plate's other objects instead of through them, and a slice warns ('support_dropped')
+   * when some could find no way past one (2.3).
+   */
+  supportAvoidObjects: 'support.avoidObjects',
 } as const;
 

@@ -21,8 +21,8 @@ import type { NormalizedPreset, ProfileFolder } from '../../packages/protocol/sr
 import { HOST_CANARY } from '../../host/src/canary.ts';
 import type { LegacyProcessFixture } from '../../tools/profiles/fixtures.ts';
 import { readFolder } from '../../tools/profiles/tree.ts';
-import { cube, engineDir, engineSkip, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
-import { PAINTED_PLATES, PLATES, comparable } from './plates.ts';
+import { cube, engineDir, engineSkip, goldenVariant, m1Presets, repoRoot, variant as engineVariant, type Presets } from '../fixtures.ts';
+import { NEIGHBOUR_PLATES, PAINTED_PLATES, PLATES, boxAt, capT, comparable } from './plates.ts';
 import { TARGETS, type Connected } from './targets.ts';
 
 const client = { name: 'conformance', version: '2.0.0' };
@@ -34,6 +34,8 @@ const slices = JSON.parse(readFileSync(new URL('../goldens/slices.json', import.
   plates: SliceGoldens;
   /** The painted plates (2.2; tools/goldens/record-slices-painted.mjs). */
   painted?: { reference: { version: string; orcaCommit: string }; plates: SliceGoldens };
+  /** Plates whose objects are out of each other's supports' reach (2.3; tools/goldens/record-slices-neighbours.mjs). */
+  neighbours?: { reference: { version: string; orcaCommit: string }; plates: SliceGoldens };
 };
 // The slice goldens hold for an engine built from their Orca commit (not for the upstream canary's builds).
 const builtManifest = existsSync(path.join(engineDir, 'manifest.json')) ? JSON.parse(readFileSync(path.join(engineDir, 'manifest.json'), 'utf8')) : null;
@@ -44,6 +46,12 @@ const paintedSkip: string | false = !slices.painted
   : builtManifest?.orcaCommit === slices.painted.reference.orcaCommit
     ? false
     : `the engine is built from Orca ${builtManifest?.orcaCommit}, the painted goldens from ${slices.painted.reference.orcaCommit}`;
+
+const neighbourSkip: string | false = !slices.neighbours
+  ? 'no neighbour goldens recorded (tools/goldens/record-slices-neighbours.mjs)'
+  : builtManifest?.orcaCommit === slices.neighbours.reference.orcaCommit
+    ? false
+    : `the engine is built from Orca ${builtManifest?.orcaCommit}, the neighbour goldens from ${slices.neighbours.reference.orcaCommit}`;
 
 /** The error a request fails with (fails the test when it succeeds). */
 async function rejection(promise: Promise<unknown>): Promise<EngineRequestError> {
@@ -75,10 +83,11 @@ for (const target of TARGETS) {
 
     const settingsPresets = () => ({ machine: presets.machine, process: presets.process, filament: presets.filaments[0] });
 
-    test('hello: protocol 2.2, every op, painting, the engine and its licence', async () => {
-      const hello = await host.connection.open(client, { minMinor: 2, required: [...OPS, Capability.sliceLog, Capability.paintV1] });
+    test('hello: protocol 2.4, every op, painting, conflicts, the variants, the engine and its licence', async () => {
+      const required = [...OPS, Capability.sliceLog, Capability.paintV1, Capability.sliceConflict, Capability.supportAvoidObjects];
+      const hello = await host.connection.open(client, { minMinor: 3, required });
       assert.deepEqual(hello.protocol, { major: PROTOCOL.major, minor: PROTOCOL.minor });
-      assert.equal(PROTOCOL.minor, 2);
+      assert.equal(PROTOCOL.minor, 4);
       for (const op of OPS) assert.ok(hello.capabilities.includes(op), op);
       for (const op of PROFILE_OPS) assert.ok(OPS.includes(op), op);
       assert.equal(hello.engine.license, 'AGPL-3.0-only');
@@ -88,7 +97,10 @@ for (const target of TARGETS) {
       assert.ok(hello.engine.name.includes('OrcaSlicer'));
       // What can run here: the variants built (the CI builds one per job; none for npm run build:host alone).
       if (!engineSkip) assert.ok(hello.variants.includes(engineVariant), `${engineVariant} in ${hello.variants.join(', ')}`);
-      assert.ok(hello.variants.every((v) => v === 'st' || v === 'mt'));
+      assert.ok(hello.variants.every((v) => v === 'st' || v === 'mt' || v === 'mt64'));
+      // 2.4: each variant's heap limit; mt64's is above the wasm32 4 GB.
+      for (const v of hello.variants) assert.ok((hello.limits.maxHeapBytesByVariant?.[v] ?? 0) >= hello.limits.maxHeapBytes, v);
+      if (hello.variants.includes('mt64')) assert.ok(hello.limits.maxHeapBytesByVariant!.mt64! > 4 * 1024 ** 3);
       assert.ok(hello.limits.maxThreads >= 1 && hello.limits.maxHeapBytes > 0);
       assert.deepEqual(hello.formats, { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 });
     });
@@ -222,7 +234,7 @@ for (const target of TARGETS) {
       test(`slice: the same G-code as ${slices.reference.version} for the golden plates`, { skip: goldenSkip }, async () => {
         for (const plate of PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
-          const expected = slices.plates[plate.id][engineVariant];
+          const expected = slices.plates[plate.id][goldenVariant];
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
@@ -232,17 +244,54 @@ for (const target of TARGETS) {
         for (const plate of PLATES) {
           const params = plate.params();
           const result = await host.connection.request('slice', { ...params, objects: params.objects.map((o) => ({ ...o, paint: {} })), output: { toolpaths: false } });
-          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), slices.plates[plate.id][engineVariant].sha256, plate.id);
+          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), slices.plates[plate.id][goldenVariant].sha256, plate.id);
         }
       });
 
       test(`slice (2.2): the painted plates give the G-code ${slices.painted?.reference.version ?? '(none recorded)'} recorded`, { skip: paintedSkip }, async () => {
         for (const plate of PAINTED_PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
-          const expected = slices.painted!.plates[plate.id][engineVariant];
+          const expected = slices.painted!.plates[plate.id][goldenVariant];
           assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
           assert.equal(result.gcode.length, expected.bytes, plate.id);
         }
+      });
+
+      test(`slice (2.3): plates whose objects are out of each other's supports' reach give the G-code of ${slices.neighbours?.reference.version ?? '(none recorded)'}`, { skip: neighbourSkip }, async () => {
+        for (const plate of NEIGHBOUR_PLATES) {
+          const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
+          const expected = slices.neighbours!.plates[plate.id][goldenVariant];
+          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
+          assert.equal(result.gcode.length, expected.bytes, plate.id);
+        }
+      });
+
+      test('slice (2.3): a path conflict fails with -101, says where and whose support, and carries the toolpaths', { skip: goldenSkip }, async () => {
+        // Grid supports do not avoid other objects: the T's support under its left arm runs through the block.
+        const params: SliceParams = {
+          configs: { ...presets, process: { ...presets.process, enable_support: '1', support_type: 'normal(auto)' } },
+          objects: [
+            { name: 'Tee.stl', mesh: { positions: capT([100, 90]) } },
+            { name: 'Block.stl', mesh: { positions: boxAt([14, 14, 20], [78, 90], 0) } },
+          ],
+        };
+        const err = await rejection(host.connection.request('slice', params));
+        assert.equal(err.code, -101);
+        assert.deepEqual([...(err.objects ?? [])].sort(), ['Block.stl', 'Tee.stl']);
+        assert.ok(err.conflict, 'conflict');
+        assert.deepEqual([...err.conflict.objects].sort(), ['Block.stl', 'Tee.stl']);
+        assert.equal(err.conflict.supportOf, 'Tee.stl');
+        assert.ok(err.conflict.z > 0 && err.conflict.z <= 20.001, `z ${err.conflict.z}`);
+        assert.ok(err.toolpaths, 'toolpaths');
+        assert.equal(err.toolpaths.format, 1);
+        assert.ok(err.toolpaths.layerZ instanceof Float32Array);
+        assert.ok(Math.abs(err.toolpaths.layerZ[err.conflict.layer] - err.conflict.z) < 1e-3, `layer ${err.conflict.layer}`);
+        assert.ok(err.toolpathExtras?.feedrate instanceof Float32Array);
+        // Without toolpaths asked for, none come with the error.
+        const bare = await rejection(host.connection.request('slice', { ...params, output: { toolpaths: false } }));
+        assert.equal(bare.code, -101);
+        assert.equal(bare.conflict?.supportOf, 'Tee.stl');
+        assert.equal(bare.toolpaths, undefined);
       });
 
       // Whether the painted path (no repair, the mesh as sent) changes the G-code of a clean mesh: recorded, not
@@ -255,7 +304,7 @@ for (const target of TARGETS) {
           const objects = params.objects.map((o) => ({ ...o, paint: { supports: { triangles: new Uint32Array(0), codes: '', ends: new Uint32Array(0) } } }));
           const result = await host.connection.request('slice', { ...params, objects, output: { toolpaths: false } });
           const sha = createHash('sha256').update(comparable(result.gcode)).digest('hex');
-          (sha === slices.plates[plate.id][engineVariant].sha256 ? same : differ).push(plate.id);
+          (sha === slices.plates[plate.id][goldenVariant].sha256 ? same : differ).push(plate.id);
         }
         console.log(`# ${engineVariant}: the painted path with empty layers gives the STL path's G-code for ${same.join(', ') || 'no plate'}; other G-code for ${differ.join(', ') || 'no plate'}`);
       });
@@ -290,7 +339,7 @@ for (const target of TARGETS) {
           objects: [{ name: 'Cube.stl', mesh: { positions: new Float32Array(vertices), indices: new Uint32Array(indices) } }],
           output: { toolpaths: false },
         });
-        assert.equal(createHash('sha256').update(comparable(indexed.gcode)).digest('hex'), slices.plates['m1-cube'][engineVariant].sha256);
+        assert.equal(createHash('sha256').update(comparable(indexed.gcode)).digest('hex'), slices.plates['m1-cube'][goldenVariant].sha256);
       });
 
       test("Orca's own refusals pass through with its negative codes", async () => {

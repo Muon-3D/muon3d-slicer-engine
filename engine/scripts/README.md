@@ -39,6 +39,8 @@ VARIANT=st JOBS=12 bash "$PWD/engine/deps/build-deps.sh" &   # dependency prefix
 VARIANT=mt JOBS=12 bash "$PWD/engine/deps/build-deps.sh" &
 wait
 npm run build:engine          # engine st, then mt (~3 min each with a warm tree), published into dist/
+# optional, the Memory64 variant (docs/BUILD.md, "The mt64 variant"):
+#   VARIANT=mt64 JOBS=12 bash "$PWD/engine/deps/build-deps.sh" && npm run build:engine -- mt64
 npm run build:host            # the worker host, dist/host.<hash>.js
 npm run test:engine           # engine tests, st then mt
 npm test                      # every test (host, settings rules, catalogue, engine st)

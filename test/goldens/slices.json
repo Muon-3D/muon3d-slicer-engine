@@ -163,5 +163,62 @@
     }
    }
   }
+ },
+ "neighbours": {
+  "reference": {
+   "version": "0.4.0",
+   "orcaCommit": "2d1163eb6f5228de605150e3b4800081947070eb",
+   "recordedWith": "the engine 0.4.0 (st and mt alike), before the plate's other objects became support blockers"
+  },
+  "plates": {
+   "m1-t-far-block-tree": {
+    "st": {
+     "sha256": "6adcd182d7902b365fe7ecd569d47ae81e3aae6bc5e0f7a5f0af9a4c7c319f71",
+     "bytes": 3963060,
+     "layers": 220,
+     "printTimeText": "30m 42s",
+     "filamentMm": 3622.78
+    },
+    "mt": {
+     "sha256": "6adcd182d7902b365fe7ecd569d47ae81e3aae6bc5e0f7a5f0af9a4c7c319f71",
+     "bytes": 3963060,
+     "layers": 220,
+     "printTimeText": "30m 42s",
+     "filamentMm": 3622.78
+    }
+   },
+   "m1-two-t-normal": {
+    "st": {
+     "sha256": "b5999d5b15ff50288e8ac24931972d405d367a68c416eb93e4ce6ae93f163be8",
+     "bytes": 1257382,
+     "layers": 342,
+     "printTimeText": "40m 9s",
+     "filamentMm": 8087.66
+    },
+    "mt": {
+     "sha256": "b5999d5b15ff50288e8ac24931972d405d367a68c416eb93e4ce6ae93f163be8",
+     "bytes": 1257382,
+     "layers": 342,
+     "printTimeText": "40m 9s",
+     "filamentMm": 8087.66
+    }
+   },
+   "m1-t-block-tree-hybrid": {
+    "st": {
+     "sha256": "125ed7530ee53eddd0d7eab21334b2e1c2062caf810caa059b3e248c3225441e",
+     "bytes": 735363,
+     "layers": 342,
+     "printTimeText": "25m 13s",
+     "filamentMm": 3848.2
+    },
+    "mt": {
+     "sha256": "125ed7530ee53eddd0d7eab21334b2e1c2062caf810caa059b3e248c3225441e",
+     "bytes": 735363,
+     "layers": 342,
+     "printTimeText": "25m 13s",
+     "filamentMm": 3848.2
+    }
+   }
+  }
  }
 }

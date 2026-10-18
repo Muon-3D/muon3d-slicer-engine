@@ -8,7 +8,7 @@ The code of this document is [`packages/protocol`](../packages/protocol) (`@muon
 Apache-2.0): the TypeScript types of every message, and the helpers named below. The conformance suite
 ([`test/conformance`](../test/conformance)) runs every operation through every transport against those types.
 
-**Version: 2.2** (2.1 adds the profile ops and the slice log, 2.2 painting; a 2.0 client works unchanged). Words such as MUST,
+**Version: 2.4** (2.1 adds the profile ops and the slice log, 2.2 painting, 2.3 supports that avoid other objects and the path conflict's details, 2.4 the `mt64` variant; a 2.0 client works unchanged). Words such as MUST,
 SHOULD and MAY are used as in RFC 2119.
 
 ## Contents
@@ -28,7 +28,7 @@ SHOULD and MAY are used as in RFC 2119.
 
 - **Messages only.** A client starts a host and exchanges messages with it. It never imports, evaluates or calls
   engine code, and never shares memory with it (no `SharedArrayBuffer`, no `Atomics` between client and host; the
-  `mt` engine's threads share memory only among themselves).
+  `mt` and `mt64` engines' threads share memory only among themselves).
 - **Coarse, stateless operations: documents in, documents out.** No handles into the engine's objects cross the
   boundary. The host may cache (configs by hash, the loaded engine), but no request depends on another's effect
   except through what the client sends.
@@ -73,8 +73,8 @@ const worker = new Worker(new URL(manifest.host.file, base), { type: 'module', n
 ```
 
 The host loads the files it needs from its own folder (the engine's `.mjs` and `.wasm`, the scripts listed in
-`manifest.host.chunks`, `manifest.json`). A server MUST serve the whole runtime folder as it is. The `mt` engine
-needs a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
+`manifest.host.chunks`, `manifest.json`). A server MUST serve the whole runtime folder as it is. The `mt` and `mt64`
+engines need a cross-origin isolated page (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
 require-corp`). No file of the runtime makes code from text (since 0.3.1): a Content-Security-Policy needs
 `'wasm-unsafe-eval'` in `script-src`, never `'unsafe-eval'`.
 
@@ -166,8 +166,9 @@ Orca's English text; `stage`, when present, a stable id.
 ```ts
 type HostState =
   | { state: 'idle' }                                   // the host runs; the engine is not loaded
-  | { state: 'loading'; variant: 'st' | 'mt'; loadedBytes: number; totalBytes: number; done?: boolean }
-  | { state: 'ready'; variant: 'st' | 'mt'; initMs: number; heapBytes?: number; maxHeapBytes?: number }
+  | { state: 'loading'; variant: Variant; loadedBytes: number; totalBytes: number; done?: boolean }
+  | { state: 'ready'; variant: Variant; initMs: number; heapBytes?: number; maxHeapBytes?: number }
+type Variant = 'st' | 'mt' | 'mt64';                    // 'mt64': 2.4
   | { state: 'fatal'; code: number; message: string; detail?: string };
 ```
 
@@ -175,6 +176,17 @@ type HostState =
   `config.definitions`), as variant `auto`, unless `load` came first. Settings ops never load it.
 - **Variants:** `st` runs everywhere; `mt` needs `SharedArrayBuffer` (a cross-origin isolated page, or Node) and uses
   threads. `auto` is `mt` where it can run and is built, else `st`. `hello.variants` lists what can run.
+- **`mt64`** (2.4, optional): `mt` built for wasm64, whose memory is a WebAssembly Memory64 memory. Its heap grows to
+  16 GB (`hello.limits.maxHeapBytesByVariant.mt64`) instead of the 4 GB a wasm32 engine can address, for plates that
+  run `mt` out of memory. It needs what `mt` needs and Memory64 with a shared memory: Chrome and Edge 133, Firefox
+  134, Node 24 or newer; Safari has it only in its Technology Preview, so not on iPhone or iPad. It is in a build only
+  when built (`manifest.variants.mt64`), is listed in `hello.variants` only where it can run, and is loaded only when
+  named (`load` with `variant: 'mt64'`): `auto` never picks it. It prints the same paths as `mt` with the same
+  material, but not always in the same order (section 6.5). Its costs: a larger download, slower slicing (64-bit
+  memory accesses are bounds-checked in software), a heap that grows about 2.5 times as fast as `mt`'s (its
+  allocator works with 64-bit sizes), and an address space reservation of its maximum when it starts (shared memory
+  cannot move). A client SHOULD use it only where it is needed, for example to retry a plate that ran `mt` out of
+  memory (code 2), and fall back to `st` without it.
 - **Once loaded,** the variant is fixed: a `load` of the other variant fails with `BadRequest` (start another host).
 - **`fatal`:** the engine could not load, or crashed (a trap, an abort, out of memory). Every later engine op fails
   at once with the same error; settings ops still work. The client SHOULD end the host and start a new one.
@@ -185,7 +197,18 @@ type HostState =
 ## 5. Errors
 
 ```ts
-interface EngineError { code: number; message: string; objects?: string[]; detail?: string; log?: string }
+interface EngineError {
+  code: number; message: string; objects?: string[]; detail?: string; log?: string;
+  conflict?: SliceConflict;                         // 2.3, 'slice.conflict': with code -101
+  toolpaths?: Toolpaths; toolpathExtras?: ToolpathExtras;   // 2.3, 'slice.conflict': a -101 slice that asked for toolpaths
+}
+interface SliceConflict {
+  objects: [string, string];   // the two objects as Orca names them ("WipeTower" for the prime tower); equal for two copies
+  z: number;                   // print height (mm) of the layer where their paths cross
+  layer: number;               // that layer's index, 0 first: the index into toolpaths.layerZ
+  supportOf: string | null;    // the object whose support crossed the other object there, or null (walls, support
+                               // against support, the prime tower)
+}
 ```
 
 | Code | Name | Meaning |
@@ -203,9 +226,18 @@ interface EngineError { code: number; message: string; objects?: string[]; detai
 Negative codes are Orca refusing a job; the engine stays loaded. `message` is Orca's English text and `objects`
 names the objects it concerns. Codes seen today: -5 bad config, -17 incompatible process, -18 invalid values, -50
 nothing on the plate, -51 validation error, -52 partly outside the plate, -63/-64 collisions (also exclusion
-volumes), -100 slicing error, -102 unprintable area. New codes may appear: a client SHOULD treat an unknown negative
+volumes), -100 slicing error, -101 G-code paths of two objects cross, -102 unprintable area. New codes may appear: a client SHOULD treat an unknown negative
 code as "Orca refused the job" and show `message`. A failed `slice` that asked for a log (`output.log`, 2.1) carries it
 in `log`.
+
+**-101, a path conflict (2.3, `slice.conflict`).** Orca checks, after slicing, that no two objects' extrusions cross
+on any layer (`message`: "Found gcode path conflicts between object A and B"). The error then also carries
+`conflict`: the two objects, the layer (`z`, and `layer`, its index among the plate's layers) and `supportOf`, the
+object whose *support* ran into the other (the engine tests each object's support extrusions on that layer against
+the other's outline on it); null when neither's did. When the slice asked for toolpaths (the default), the G-code is
+made anyway and the error carries its `toolpaths` (and `toolpathExtras`, unless turned off), as a `slice` result
+would, so a client can show the plate at `toolpaths.layerZ[conflict.layer]`; no G-code comes with them. Over a
+worker, their buffers are transferred, as a result's are.
 
 ## 6. Operations
 
@@ -230,7 +262,7 @@ in `log`.
 ```ts
 params: { protocol: { major: 2, minMinor?: number }, client: { name: string, version: string } }
 result: {
-  protocol: { major: 2, minor: 2 },
+  protocol: { major: 2, minor: 4 },
   engine: {
     name: string,                // "Muon3D Slicer Engine (based on OrcaSlicer)"
     version: string,             // this release, e.g. "0.4.0"
@@ -242,8 +274,12 @@ result: {
     commit: string,              // the engine repository's commit the host was built from
   },
   capabilities: string[],        // every op, and the sub-features below
-  variants: ('st' | 'mt')[],     // what can run here
-  limits: { maxThreads: number, maxHeapBytes: number },
+  variants: Variant[],           // what can run here and is built ('mt64': 2.4, section 4)
+  limits: {
+    maxThreads: number,
+    maxHeapBytes: number,        // st's and mt's
+    maxHeapBytesByVariant?: { st?: number, mt?: number, mt64?: number },   // 2.4: per variant in `variants`
+  },
   formats: { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 },
 }
 ```
@@ -263,6 +299,8 @@ A client SHOULD say `hello` first and check the answer (`negotiate(hello, { minM
 | `slice.log` | (2.1) `SliceParams.output.log`, `SliceResult.log` and `EngineError.log` |
 | `slice.field` | `SliceParams.output.sliceField` and `SliceResult.sliceField` (docs/SLICE_FIELD.md) |
 | `paint.v1` | (2.2) `PlateObject.paint`: support, seam, fuzzy skin and filament painting on an object's triangles |
+| `slice.conflict` | (2.3) `EngineError.conflict`, and a conflicting slice's `toolpaths` in its error (section 5) |
+| `support.avoidObjects` | (2.3) organic tree supports go around the plate's other objects; the `support_dropped` warning (6.5) |
 | `cancel.cooperative` | (not yet served) a running request can be cancelled and the engine stays loaded |
 
 A client MUST send an op, or a field, only when `hello` lists its capability (the 2.0 ops and fields above are
@@ -271,15 +309,15 @@ always there). Unknown capability strings MUST be ignored.
 ### 6.2 `load`
 
 ```ts
-params: { variant?: 'st' | 'mt' | 'auto', threads?: number, base?: string }
-result: { variant: 'st' | 'mt', initMs: number }
+params: { variant?: Variant | 'auto', threads?: number, base?: string }
+result: { variant: Variant, initMs: number }
 ```
 
-Loads the engine now instead of on the first op that needs it (a warm-up). `threads` caps `mt`'s threads; `base`
+Loads the engine now instead of on the first op that needs it (a warm-up). `threads` caps `mt`'s and `mt64`'s threads; `base`
 names another folder with the engine files (default: the host's own). State messages report the download
 (`loading`, with bytes) and the result (`ready` or `fatal`). A second `load` answers with the first's result.
-Fails with `NotLoaded` when the engine cannot load, `BadRequest` for a variant other than the loaded one or `mt`
-where it cannot run.
+Fails with `NotLoaded` when the engine cannot load, `BadRequest` for a variant other than the loaded one, for `mt` or
+`mt64` where it cannot run (no `SharedArrayBuffer`; for `mt64`, no Memory64), or for `mt64` when the build has none.
 
 ### 6.3 `status`
 
@@ -354,7 +392,32 @@ result: {
   `from: "system"`, a `type`, overrides already applied.
 - Progress comes as `progress` messages, Orca's warnings as `warning` messages (and in `warnings`).
 - The same request gives the same G-code bytes on every host of one release, `st` and `mt` alike, the
-  `; generated by` header line (which holds the time) aside.
+  `; generated by` header line (which holds the time) aside. `mt64` gives the same bytes on every host too, and the
+  same bytes as `mt` for the conformance suite's golden plates; on other plates it can print some paths of a layer
+  in another order, with the same extrusions and the same material (a Benchy: 0.13 % of its lines).
+- **Supports and the other objects (2.3, `support.avoidObjects`).** Orca generates each object's supports seeing
+  that object alone, so one object's support could run through another, and the plate then failed with -101. For
+  each object whose supports are **organic tree supports** (`support_type` `tree(auto)` or `tree(manual)` with
+  `support_style` `default` or `organic`; `grid` and `snug` become organic with tree supports, as in Orca) and may be generated (`enable_support`, `enforce_support_layers`, or
+  support paint), the engine adds every other object within reach of its branches as a support blocker, where it
+  stands on the plate, so the branches go around it. Other copies of the same object count as other objects.
+  - *Within reach*: the objects' bounding boxes on the bed come closer than the object's height x (tan
+    `tree_support_branch_angle_organic` + tan `tree_support_branch_diameter_angle`), plus
+    `tree_support_branch_diameter_organic` or the tree's 7.5 mm base, whichever is wider, `support_object_xy_distance`,
+    `tree_support_brim_width`, the raft's `raft_first_layer_expansion` with a raft, and 5 mm. A plate where no object
+    is within reach of another's organic supports, or that has none, slices exactly as before, byte for byte.
+  - *Clearance*: the branches stay `support_object_xy_distance` + `raft_first_layer_expansion` (+ `raft_expansion`
+    with a raft) + 0.2 mm from the other object (Orca widens the support's first layer without looking at other
+    objects). Where the other object is thinner than 1 mm, the clearance can be smaller there.
+  - Other support types (`normal`, and the tree styles `tree_slim`, `tree_strong`, `tree_hybrid`) behave as before,
+    and a support that runs into another object still fails the slice with -101 (with its `conflict`).
+  - Where branches can find no way past another object, Orca drops them. The slice then succeeds with a warning of
+    kind `support_dropped`, naming the object and the objects in the way ("Some of the tree support of "Tee.stl" found
+    no way down past "Block.stl": from Z = 40.20 mm, about 213 mm2 of overhang have no support. Move the objects
+    apart, or change the support settings."). The engine looks, for `tree(auto)` with `enable_support`, at two
+    signs near the other objects: overhangs with no support under them, and support that starts in mid-air (the
+    upper part of a dropped branch). It does not look away from the other objects, and it reports an overhang over
+    another object that Orca would have left unsupported anyway.
 - `output.log` (2.1) returns Orca's log of the slice down to that level: its records go to the result instead of the
   host's console. `info` and below are long (Orca logs every step). A slice Orca refuses carries the log in the
   error's `log`.
@@ -935,7 +998,7 @@ keys and missing ones.
    (`npm run test:conformance`; the engine part with `npm run test:engine`). A client's fake engine type-checks
    against the same package.
 
-The package's version follows the protocol: 2.2.x is protocol 2.2.
+The package's version follows the protocol: 2.4.x is protocol 2.4.
 
 ## 10. A client in brief
 

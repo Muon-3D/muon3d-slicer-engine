@@ -8,8 +8,10 @@ export interface BuildInfo {
   commit: string;
   source: string;
   orca: { version: string; commit: string; repository: string };
-  /** The engine's -sMAXIMUM_MEMORY (engine/cmake/Engine.cmake). */
+  /** The engine's -sMAXIMUM_MEMORY for st and mt (engine/cmake/Engine.cmake). */
   maxHeapBytes: number;
+  /** The same for mt64 (Memory64). Absent in hosts before protocol 2.4. */
+  maxHeapBytes64?: number;
 }
 
 declare const __ENGINE_BUILD__: BuildInfo | undefined;
@@ -20,6 +22,7 @@ const DEV: BuildInfo = {
   source: 'https://github.com/Muon-3D/muon3d-slicer-engine',
   orca: { version: 'unknown', commit: 'unknown', repository: 'https://github.com/Muon-3D/OrcaSlicer' },
   maxHeapBytes: 4 * 1024 ** 3,
+  maxHeapBytes64: 16 * 1024 ** 3,
 };
 
 export const BUILD: BuildInfo = typeof __ENGINE_BUILD__ !== 'undefined' ? __ENGINE_BUILD__ : DEV;

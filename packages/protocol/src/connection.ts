@@ -15,6 +15,9 @@ export class EngineRequestError extends Error implements EngineError {
   readonly objects?: string[];
   readonly detail?: string;
   readonly log?: string;
+  readonly conflict?: EngineError['conflict'];
+  readonly toolpaths?: EngineError['toolpaths'];
+  readonly toolpathExtras?: EngineError['toolpathExtras'];
   constructor(error: EngineError) {
     super(error.message);
     this.name = 'EngineRequestError';
@@ -22,6 +25,9 @@ export class EngineRequestError extends Error implements EngineError {
     if (error.objects) this.objects = error.objects;
     if (error.detail !== undefined) this.detail = error.detail;
     if (error.log !== undefined) this.log = error.log;
+    if (error.conflict) this.conflict = error.conflict;
+    if (error.toolpaths) this.toolpaths = error.toolpaths;
+    if (error.toolpathExtras) this.toolpathExtras = error.toolpathExtras;
   }
 }
 

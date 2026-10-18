@@ -15,6 +15,7 @@ import { Capability, OPS, type HelloResult, type LoadParams, type LoadResult, ty
 import type { Transport } from '../../packages/protocol/src/transport.ts';
 import type { LoadEngineOptions, LoadedEngine, OrcaEngineModule } from './bridge.ts';
 import { BadRequest } from './badRequest.ts';
+import { memory64Supported } from './memory64.ts';
 import { BUILD, engineInfo, type BuildInfo } from './info.ts';
 import type { ProfileOp } from './profiles.ts';
 
@@ -22,6 +23,8 @@ export interface HostEnvironment {
   kind: 'browser' | 'node' | 'other';
   /** 'mt' can run: SharedArrayBuffer is available (a cross-origin isolated page, or Node). */
   threads: boolean;
+  /** A shared Memory64 memory validates here: with `threads`, 'mt64' can run (default: detected, memory64Supported). */
+  memory64: boolean;
   hardwareConcurrency: number;
 }
 
@@ -104,6 +107,8 @@ const CAPABILITIES = [
   Capability.sliceLog,
   Capability.paintV1,
   Capability.sliceField,
+  Capability.sliceConflict,
+  Capability.supportAvoidObjects,
 ];
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -135,6 +140,7 @@ export function createHost(options: HostOptions): Host {
   const env: HostEnvironment = {
     kind: options.environment?.kind ?? 'other',
     threads: options.environment?.threads ?? typeof SharedArrayBuffer === 'function',
+    memory64: options.environment?.memory64 ?? memory64Supported(),
     hardwareConcurrency: options.environment?.hardwareConcurrency ?? (globalThis.navigator?.hardwareConcurrency || 1),
   };
   const build = options.build ?? BUILD;
@@ -161,7 +167,7 @@ export function createHost(options: HostOptions): Host {
     }
   };
   const result = (id: number, value: unknown, transfer: ArrayBuffer[] = []) => send({ v: 2, id, kind: 'result', result: value }, transfer);
-  const error = (id: number, e: EngineError) => send({ v: 2, id, kind: 'error', error: e });
+  const error = (id: number, e: EngineError) => send({ v: 2, id, kind: 'error', error: e }, transferablesOf(e));
   const setState = (next: HostState) => {
     state = next;
     send({ v: 2, id: 0, kind: 'state', state: next });
@@ -172,8 +178,10 @@ export function createHost(options: HostOptions): Host {
   async function builtVariants(): Promise<Variant[]> {
     const m = await readManifest();
     const built = m?.variants ? (Object.keys(m.variants) as Variant[]) : (['st', 'mt'] as Variant[]);
-    return (['st', 'mt'] as Variant[]).filter((v) => built.includes(v) && (v === 'st' || env.threads));
+    return (['st', 'mt', 'mt64'] as Variant[]).filter((v) => built.includes(v) && canRun(v));
   }
+  const canRun = (v: Variant) => v === 'st' || (env.threads && (v === 'mt' || env.memory64));
+  const maxHeapBytesOf = (v: Variant) => (v === 'mt64' ? (build.maxHeapBytes64 ?? 16 * 1024 ** 3) : build.maxHeapBytes);
 
   async function hello(params: unknown): Promise<HelloResult> {
     const p = params as { protocol?: { major?: unknown } } | undefined;
@@ -184,12 +192,17 @@ export function createHost(options: HostOptions): Host {
         detail: String(PROTOCOL.major),
       });
     }
+    const variants = await builtVariants();
     return {
       protocol: { major: PROTOCOL.major, minor: PROTOCOL.minor },
       engine: engineInfo(options.base, build),
       capabilities: CAPABILITIES,
-      variants: await builtVariants(),
-      limits: { maxThreads: env.hardwareConcurrency, maxHeapBytes: build.maxHeapBytes },
+      variants,
+      limits: {
+        maxThreads: env.hardwareConcurrency,
+        maxHeapBytes: build.maxHeapBytes,
+        maxHeapBytesByVariant: Object.fromEntries(variants.map((v) => [v, maxHeapBytesOf(v)])),
+      },
       formats: { definitions: 1, catalogue: 2, toolpaths: 1, settingsView: 1 },
     };
   }
@@ -200,11 +213,11 @@ export function createHost(options: HostOptions): Host {
     return h ? { ...state, heapBytes: h.bytes, ...(h.maxBytes ? { maxHeapBytes: h.maxBytes } : {}) } : state;
   }
 
-  /** Loads the engine once (later calls share the load); 'auto' is 'mt' where it can run and is built. */
+  /** Loads the engine once (later calls share the load); 'auto' is 'mt' where it can run and is built ('mt64' only by name). */
   async function ensureEngine(params: LoadParams = {}): Promise<LoadResult> {
     if (dead) throw dead;
     const requested = params.variant ?? 'auto';
-    if (requested !== 'auto' && requested !== 'st' && requested !== 'mt') throw new BadRequest(`"variant" must be st, mt or auto.`);
+    if (requested !== 'auto' && requested !== 'st' && requested !== 'mt' && requested !== 'mt64') throw new BadRequest(`"variant" must be st, mt, mt64 or auto.`);
     if (loaded) {
       if (requested !== 'auto' && requested !== loaded.variant) {
         throw new BadRequest(`The engine is already loaded as ${loaded.variant}: start a new host for ${requested}.`);
@@ -214,12 +227,14 @@ export function createHost(options: HostOptions): Host {
     if (loading) return loading;
     loading = (async () => {
       const variants = await builtVariants();
-      if (requested === 'mt' && !env.threads) throw new BadRequest("'mt' needs SharedArrayBuffer (a cross-origin isolated page).");
+      if ((requested === 'mt' || requested === 'mt64') && !env.threads) throw new BadRequest(`'${requested}' needs SharedArrayBuffer (a cross-origin isolated page).`);
+      if (requested === 'mt64' && !env.memory64) throw new BadRequest("'mt64' needs WebAssembly Memory64 (Chrome 133, Firefox 134 or newer; not Safari).");
+      if (requested === 'mt64' && !variants.includes('mt64')) throw new BadRequest("'mt64' is not part of this build.");
       const variant: Variant = requested === 'auto' ? (variants.includes('mt') ? 'mt' : 'st') : requested;
       const base = params.base ?? options.base;
       const wasmBytes = (await readManifest())?.variants?.[variant]?.wasmBytes;
       setState({ state: 'loading', variant, loadedBytes: 0, totalBytes: wasmBytes ?? 0 });
-      if (variant === 'mt' && params.threads) limitThreads(params.threads);
+      if (variant !== 'st' && params.threads) limitThreads(params.threads);
       try {
         const l = await (options.loadEngine ?? runtime!.loadEngine)(base, variant, {
           ...(wasmBytes ? { wasmBytes } : {}),

@@ -77,7 +77,7 @@ printf '%s\n' "${FLAGS[@]}" "${INCLUDES[@]}" | sed 's/\\/\//g' > "$GEN/flags.rsp
 
 FILES=("$@")
 if [[ ${#FILES[@]} -eq 0 ]]; then
-  FILES=(cli_config.cpp model_input.cpp toolpaths.cpp slice_job.cpp placement.cpp engine.cpp)
+  FILES=(cli_config.cpp model_input.cpp neighbours.cpp toolpaths.cpp slice_job.cpp placement.cpp engine.cpp)
 fi
 status=0
 for f in "${FILES[@]}"; do
