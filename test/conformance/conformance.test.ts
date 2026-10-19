@@ -258,12 +258,17 @@ for (const target of TARGETS) {
       });
 
       test(`slice (2.3): plates whose objects are out of each other's supports' reach give the G-code of ${slices.neighbours?.reference.version ?? '(none recorded)'}`, { skip: neighbourSkip }, async () => {
+        // Every plate is sliced before anything is asserted, so a changed G-code (a new config line, say) shows all of the
+        // new hashes at once instead of the first plate's.
+        const got: Record<string, { sha256: string; bytes: number }> = {};
+        const want: Record<string, { sha256: string; bytes: number }> = {};
         for (const plate of NEIGHBOUR_PLATES) {
           const result = await host.connection.request('slice', { ...plate.params(), output: { toolpaths: false } });
           const expected = slices.neighbours!.plates[plate.id][goldenVariant];
-          assert.equal(createHash('sha256').update(comparable(result.gcode)).digest('hex'), expected.sha256, plate.id);
-          assert.equal(result.gcode.length, expected.bytes, plate.id);
+          got[plate.id] = { sha256: createHash('sha256').update(comparable(result.gcode)).digest('hex'), bytes: result.gcode.length };
+          want[plate.id] = { sha256: expected.sha256, bytes: expected.bytes };
         }
+        assert.deepEqual(got, want);
       });
 
       test('slice (2.3): a path conflict fails with -101, says where and whose support, and carries the toolpaths', { skip: goldenSkip }, async () => {
