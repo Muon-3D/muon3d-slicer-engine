@@ -423,11 +423,14 @@ export function protocolToolpaths(paths: BridgeToolpaths): Toolpaths {
   };
 }
 
-/** The engine's error as the protocol's: toolpaths converted, and toolpathExtras dropped unless `extras`. */
-export function protocolError(error: BridgeEngineError, extras = true): EngineError {
+/**
+ * The engine's error as the protocol's: toolpaths converted, dropped unless `withToolpaths` (the slice asked for them; a
+ * slice-field request builds them internally and must not leak them), and toolpathExtras dropped unless `extras`.
+ */
+export function protocolError(error: BridgeEngineError, extras = true, withToolpaths = true): EngineError {
   const { toolpaths, toolpathExtras, ...rest } = error;
   const out: EngineError = rest;
-  if (toolpaths) {
+  if (toolpaths && withToolpaths) {
     out.toolpaths = protocolToolpaths(toolpaths);
     if (extras && toolpathExtras) out.toolpathExtras = toolpathExtras;
   }
@@ -456,7 +459,7 @@ export function runSlice(
     job.log ?? 0,
   );
   if ('error' in result) {
-    const error = protocolError(result.error, job.toolpathExtras !== false);
+    const error = protocolError(result.error, job.toolpathExtras !== false, job.toolpaths !== false);
     throw new EngineJobError(result.log !== undefined ? { ...error, log: result.log } : error);
   }
   let field: Uint8Array | undefined;

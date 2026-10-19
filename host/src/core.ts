@@ -244,10 +244,10 @@ export function createHost(options: HostOptions): Host {
         });
         engine = l.engine;
         memory = l.memory;
-        if (variant === 'mt') {
-          heapReserve = runtime!.SharedHeapReserve.for(memory, build.maxHeapBytes);
-          heapReserve?.prepare();
-        }
+        // Every threaded variant has a shared memory ('mt' and 'mt64'); for() returns null for 'st'. The V8 Atomics race on
+        // freshly grown shared memory is the same for both pointer widths, so each gets its own variant's maximum.
+        heapReserve = runtime!.SharedHeapReserve.for(memory, maxHeapBytesOf(variant));
+        heapReserve?.prepare();
         loaded = { variant, initMs: l.initMs };
         const h = heap();
         setState({ state: 'ready', variant, initMs: l.initMs, ...(h ? { heapBytes: h.bytes, ...(h.maxBytes ? { maxHeapBytes: h.maxBytes } : {}) } : {}) });

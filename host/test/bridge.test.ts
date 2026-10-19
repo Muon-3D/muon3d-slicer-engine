@@ -14,6 +14,7 @@ import {
   engineHeap,
   instantiateEngineWasm,
   meshInputs,
+  protocolError,
   runCheck,
   runSlice,
   startFailure,
@@ -419,4 +420,21 @@ test('an oversized optional field preserves the successful slice and reports why
   assert.equal(result.toolpaths, null);
   assert.equal(result.sliceField, undefined);
   assert.ok(result.warnings.some((w) => w.kind === 'slice_field' && /memory budget/.test(w.message)));
+});
+
+test('a conflict error carries its toolpaths only when the slice asked for them (a slice field builds them internally)', () => {
+  const toolpaths = {
+    layerCount: 1,
+    layerZ: new Float32Array([0.2]),
+    extrusions: { positions: new Float32Array(6), layerStart: new Uint32Array([0, 1]), count: 1, roleIndex: new Uint8Array(1), width: new Uint8Array([42]), height: new Uint8Array([20]) },
+    travels: { positions: new Float32Array(0), layerStart: new Uint32Array([0, 0]), count: 0 },
+    roles: ['Outer wall'],
+    roleLength: [1],
+    lineWidth: 0.42,
+    bounds: { min: [0, 0, 0.2], max: [1, 0, 0.2] },
+  } as unknown as Parameters<typeof protocolError>[0]['toolpaths'];
+  const error = { code: -101, message: 'conflict', toolpaths } as Parameters<typeof protocolError>[0];
+  assert.ok(protocolError(error).toolpaths, 'asked for: carried');
+  assert.equal(protocolError(error, true, false).toolpaths, undefined, 'not asked for: dropped');
+  assert.equal(protocolError(error, true, false).toolpathExtras, undefined);
 });

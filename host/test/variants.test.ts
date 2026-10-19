@@ -19,7 +19,7 @@ const manifest = (variants: Variant[]): EngineManifest => ({
 });
 
 /** A host over a fake engine: requests in, the first answer to each id out. */
-function host(environment: Partial<HostEnvironment>, built: Variant[]) {
+function host(environment: Partial<HostEnvironment>, built: Variant[], memoryOf: () => WebAssembly.Memory | null = () => null) {
   const answers = new Map<number, (r: Response) => void>();
   const loads: Variant[] = [];
   const h = createHost({
@@ -31,7 +31,7 @@ function host(environment: Partial<HostEnvironment>, built: Variant[]) {
     readManifest: async () => manifest(built),
     loadEngine: async (_base, variant) => {
       loads.push(variant);
-      return { engine: {} as OrcaEngineModule, initMs: 1, memory: null };
+      return { engine: {} as OrcaEngineModule, initMs: 1, memory: memoryOf() };
     },
   });
   let id = 0;
@@ -71,6 +71,19 @@ describe('engine variants (2.4)', () => {
     const named = host({ threads: true, memory64: true }, ['st', 'mt', 'mt64']);
     assert.equal(((await named.request('load', { variant: 'mt64' })) as { result: { variant: string } }).result.variant, 'mt64');
     assert.deepEqual(named.loads, ['mt64']);
+  });
+
+  test('every threaded variant gets its heap grown ahead of the first job, not only mt (the V8 shared-memory race is not pointer-width specific)', async () => {
+    for (const variant of ['mt', 'mt64'] as const) {
+      const memory = new WebAssembly.Memory({ initial: 1, maximum: 40000, shared: true });
+      const r = host({ threads: true, memory64: true }, ['st', 'mt', 'mt64'], () => memory);
+      assert.equal(((await r.request('load', { variant })) as { result: { variant: string } }).result.variant, variant);
+      assert.ok(memory.buffer.byteLength > 64 * 1024, `${variant}: the heap was grown ahead of a job (${memory.buffer.byteLength} bytes)`);
+    }
+    const single = new WebAssembly.Memory({ initial: 1, maximum: 40000 });
+    const st = host({ threads: true, memory64: true }, ['st', 'mt', 'mt64'], () => single);
+    await st.request('load', { variant: 'st' });
+    assert.equal(single.buffer.byteLength, 64 * 1024, 'a non-shared memory is left alone');
   });
 
   test("'mt64' where it cannot run, or is not built, is a BadRequest that loads nothing", async () => {
