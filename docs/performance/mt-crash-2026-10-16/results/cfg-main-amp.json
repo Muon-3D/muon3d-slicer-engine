@@ -1,0 +1,2 @@
+[{"name":"main-control","root":"../claude-engine-mtfix-main","engine":"dist-amp"},
+ {"name":"main-latest","root":"../claude-engine-mtfix-mainlatest","engine":"dist-amp-main"}]
