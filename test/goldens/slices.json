@@ -173,15 +173,15 @@
   "plates": {
    "m1-t-far-block-tree": {
     "st": {
-     "sha256": "6adcd182d7902b365fe7ecd569d47ae81e3aae6bc5e0f7a5f0af9a4c7c319f71",
-     "bytes": 3963060,
+     "sha256": "9d31c0c9cc68cbc4fb57bfc3aaff590754f0da8c487420de4826746fefc01ec4",
+     "bytes": 3963081,
      "layers": 220,
      "printTimeText": "30m 42s",
      "filamentMm": 3622.78
     },
     "mt": {
-     "sha256": "6adcd182d7902b365fe7ecd569d47ae81e3aae6bc5e0f7a5f0af9a4c7c319f71",
-     "bytes": 3963060,
+     "sha256": "9d31c0c9cc68cbc4fb57bfc3aaff590754f0da8c487420de4826746fefc01ec4",
+     "bytes": 3963081,
      "layers": 220,
      "printTimeText": "30m 42s",
      "filamentMm": 3622.78
@@ -189,15 +189,15 @@
    },
    "m1-two-t-normal": {
     "st": {
-     "sha256": "b5999d5b15ff50288e8ac24931972d405d367a68c416eb93e4ce6ae93f163be8",
-     "bytes": 1257382,
+     "sha256": "61ff909802f0fea186d447b79f860ae658c905bd3c4ba33a38d068747e6cd928",
+     "bytes": 1257403,
      "layers": 342,
      "printTimeText": "40m 9s",
      "filamentMm": 8087.66
     },
     "mt": {
-     "sha256": "b5999d5b15ff50288e8ac24931972d405d367a68c416eb93e4ce6ae93f163be8",
-     "bytes": 1257382,
+     "sha256": "61ff909802f0fea186d447b79f860ae658c905bd3c4ba33a38d068747e6cd928",
+     "bytes": 1257403,
      "layers": 342,
      "printTimeText": "40m 9s",
      "filamentMm": 8087.66
@@ -205,15 +205,15 @@
    },
    "m1-t-block-tree-hybrid": {
     "st": {
-     "sha256": "125ed7530ee53eddd0d7eab21334b2e1c2062caf810caa059b3e248c3225441e",
-     "bytes": 735363,
+     "sha256": "e9dc494b525c598c344a268303a6235e88ec0a826a8b6addced58cfe55214fbe",
+     "bytes": 735384,
      "layers": 342,
      "printTimeText": "25m 13s",
      "filamentMm": 3848.2
     },
     "mt": {
-     "sha256": "125ed7530ee53eddd0d7eab21334b2e1c2062caf810caa059b3e248c3225441e",
-     "bytes": 735363,
+     "sha256": "e9dc494b525c598c344a268303a6235e88ec0a826a8b6addced58cfe55214fbe",
+     "bytes": 735384,
      "layers": 342,
      "printTimeText": "25m 13s",
      "filamentMm": 3848.2
