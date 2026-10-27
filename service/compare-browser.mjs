@@ -98,6 +98,15 @@ function movesPerLayer(text) {
   return out;
 }
 
+/** The first lines that differ byte for byte, so a report shows what the normalisation dropped. */
+function rawDifferences(a, b, limit = 5) {
+  const la = a.split('\n'), lb = b.split('\n'), out = [];
+  for (let i = 0; i < Math.max(la.length, lb.length) && out.length < limit; i++) {
+    if (la[i] !== lb[i]) out.push({ line: i + 1, server: la[i]?.slice(0, 120), browser: lb[i]?.slice(0, 120) });
+  }
+  return out;
+}
+
 function compare(server, browser) {
   const s = server.stats, b = browser.stats;
   const rel = (x, y) => (x === y ? 0 : Math.abs(x - y) / Math.max(Math.abs(x), Math.abs(y)));
@@ -112,6 +121,7 @@ function compare(server, browser) {
     gcode: {
       server: crypto.createHash('sha256').update(ns).digest('hex'), browser: crypto.createHash('sha256').update(nb).digest('hex'),
       identical: ns === nb, rawIdentical: server.gcode === browser.gcode,
+      rawDifferences: rawDifferences(server.gcode, browser.gcode),
     },
   };
   return { checks, pass: checks.layers.pass && checks.printTime.pass && checks.filament.pass && checks.movesPerLayer.pass };

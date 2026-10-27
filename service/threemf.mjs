@@ -1,6 +1,7 @@
-// A minimal 3MF reader for the slice job service: the meshes of every build item, transforms applied, as a triangle
-// soup (9 floats per triangle). Enough for single-material parts from CAD exporters; components, colours and
-// slicer settings in the archive are ignored. Node's zlib only, no dependencies.
+// A minimal 3MF reader for the slice job service: the meshes of every build item, through their components, with all
+// transforms applied, as a triangle soup (9 floats per triangle). Enough for single-material parts from CAD exporters
+// (CadQuery writes a component object around its mesh); colours, materials and slicer settings in the archive are
+// ignored. Node's zlib only, no dependencies.
 import zlib from 'node:zlib';
 
 const MAX_ENTRY_BYTES = 512 * 1024 * 1024;
@@ -51,31 +52,47 @@ function apply(m, x, y, z) {
   return [x * m[0] + y * m[3] + z * m[6] + m[9], x * m[1] + y * m[4] + z * m[7] + m[10], x * m[2] + y * m[5] + z * m[8] + m[11]];
 }
 
+/** a then b, for row vectors (p' = p a b). */
+function compose(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const out = [];
+  for (let r = 0; r < 4; r++) {
+    const row = r < 3 ? [a[3 * r], a[3 * r + 1], a[3 * r + 2], 0] : [a[9], a[10], a[11], 1];
+    for (let c = 0; c < 3; c++) out.push(row[0] * b[c] + row[1] * b[3 + c] + row[2] * b[6 + c] + row[3] * b[9 + c]);
+  }
+  return out;
+}
+
 export function read3mf(bytes) {
   const entries = unzip(bytes);
   const modelName = [...entries.keys()].find((n) => /^\/?3D\/[^/]+\.model$/i.test(n));
   if (!modelName) throw new Error('3MF has no 3D/*.model part');
   const xml = entries.get(modelName)().toString('utf8');
-  const meshes = new Map();
+  const objects = new Map();
   for (const obj of xml.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)) {
     const id = attrs(obj[1]).id;
     const body = obj[2];
     const vertices = [...body.matchAll(/<vertex\b([^>]*?)\/?>/g)].map((m) => { const a = attrs(m[1]); return [Number(a.x), Number(a.y), Number(a.z)]; });
     const triangles = [...body.matchAll(/<triangle\b([^>]*?)\/?>/g)].map((m) => { const a = attrs(m[1]); return [Number(a.v1), Number(a.v2), Number(a.v3)]; });
-    if (triangles.length) meshes.set(id, { vertices, triangles });
+    const components = [...body.matchAll(/<component\b([^>]*?)\/?>/g)].map((m) => { const a = attrs(m[1]); return { id: a.objectid, m: matrix(a.transform) }; });
+    objects.set(id, { vertices, triangles, components });
   }
-  const items = [...xml.matchAll(/<item\b([^>]*?)\/?>/g)].map((m) => attrs(m[1]));
-  const placed = items.length ? items.map((a) => [meshes.get(a.objectid), matrix(a.transform)]) : [...meshes.values()].map((m) => [m, null]);
   const out = [];
-  for (const [mesh, m] of placed) {
-    if (!mesh) continue;
-    for (const [a, b, c] of mesh.triangles) {
+  const emit = (id, m, depth) => {
+    const o = objects.get(id);
+    if (!o) throw new Error(`3MF refers to object ${id}, which does not exist`);
+    if (depth > 16) throw new Error('3MF components nest too deeply');
+    for (const [a, b, c] of o.triangles) {
       for (const i of [a, b, c]) {
-        const v = mesh.vertices[i];
+        const v = o.vertices[i];
         if (!v) throw new Error(`3MF triangle refers to vertex ${i}, which does not exist`);
         out.push(...apply(m, v[0], v[1], v[2]));
       }
     }
-  }
+    for (const c of o.components) emit(c.id, compose(c.m, m), depth + 1);
+  };
+  const items = [...xml.matchAll(/<item\b([^>]*?)\/?>/g)].map((m) => attrs(m[1]));
+  for (const a of items) emit(a.objectid, matrix(a.transform), 0);
   return new Float32Array(out);
 }

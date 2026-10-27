@@ -22,14 +22,16 @@ function stl(positions) {
   return b;
 }
 
-/** A one-object 3MF holding the soup as an indexed mesh, with a build transform that moves it 50 mm in X. */
-function threemf(positions) {
+/** A 3MF holding the soup as an indexed mesh, with a build transform that moves it 50 mm in X. component: wrap the
+ * mesh in a component object, as CadQuery's exporter does, with a rotation of 90 degrees about Z on the component. */
+function threemf(positions, component = false) {
   const verts = [], tris = [];
   for (let i = 0; i < positions.length; i += 3) verts.push(`<vertex x="${positions[i]}" y="${positions[i + 1]}" z="${positions[i + 2]}"/>`);
   for (let t = 0; t < positions.length / 9; t++) tris.push(`<triangle v1="${3 * t}" v2="${3 * t + 1}" v3="${3 * t + 2}"/>`);
   const model = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">`
-    + `<resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${tris.join('')}</triangles></mesh></object></resources>`
-    + `<build><item objectid="1" transform="1 0 0 0 1 0 0 0 1 50 0 0"/></build></model>`;
+    + `<resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${tris.join('')}</triangles></mesh></object>`
+    + (component ? '<object id="2" type="model"><components><component objectid="1" transform="0 1 0 -1 0 0 0 0 1 0 0 0"/></components></object>' : '')
+    + `</resources><build><item objectid="${component ? 2 : 1}" transform="1 0 0 0 1 0 0 0 1 50 0 0"/></build></model>`;
   return zip({ '[Content_Types].xml': '<Types/>', '3D/3dmodel.model': model });
 }
 
@@ -82,6 +84,14 @@ test('the same cube as a 3MF slices to the same print (placement is the bed cent
   const s = run({ model: { format: 'stl', data: stl(cube).toString('base64') }, preset: 'muon3d-m1-0.4', name: 'cube' });
   const m = run({ model: { format: '3mf', data: threemf(cube).toString('base64') }, preset: 'muon3d-m1-0.4', name: 'cube' });
   assert.equal(m.ok, true, JSON.stringify(m.error));
+  for (const k of ['layers', 'printTimeSeconds', 'filamentMm', 'maxZ']) assert.equal(m.stats[k], s.stats[k], k);
+});
+
+test('a 3MF with a component around its mesh (as CadQuery writes it) slices to the same print', { skip }, () => {
+  const s = run({ model: { format: 'stl', data: stl(box([30, 10, 6])).toString('base64') }, preset: 'muon3d-m1-0.4', name: 'bar' });
+  const m = run({ model: { format: '3mf', data: threemf(box([10, 30, 6]), true).toString('base64') }, preset: 'muon3d-m1-0.4', name: 'bar' });
+  assert.equal(m.ok, true, JSON.stringify(m.error));
+  // The component's quarter turn makes the 10 x 30 bar a 30 x 10 one: the same print as the STL.
   for (const k of ['layers', 'printTimeSeconds', 'filamentMm', 'maxZ']) assert.equal(m.stats[k], s.stats[k], k);
 });
 
