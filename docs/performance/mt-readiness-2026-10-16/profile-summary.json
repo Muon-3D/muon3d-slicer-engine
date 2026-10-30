@@ -1,0 +1,354 @@
+[
+  {
+    "name": "profile-main-idle",
+    "boundary": {
+      "root": "C:\\Users\\jack\\codex48-engine-main",
+      "loadFirst": false,
+      "before": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "after": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "settingsDelta": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "state": {
+        "state": "idle"
+      },
+      "views": 1041,
+      "edits": 1000
+    },
+    "cpu_samples": 9401,
+    "sampled_allocation_bytes": 1945871984,
+    "settings_top": [
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 226
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 189
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 160
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 156
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 141
+      },
+      {
+        "name": "pageGroups",
+        "file": "layout.ts",
+        "samples": 126
+      },
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 113
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 107
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 93
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 80
+      }
+    ]
+  },
+  {
+    "name": "profile-main-loaded",
+    "boundary": {
+      "root": "C:\\Users\\jack\\codex48-engine-main",
+      "loadFirst": true,
+      "before": {
+        "engineImports": 1,
+        "workers": 6,
+        "workerMessages": 6,
+        "sharedBuffers": 0,
+        "wasmMemories": 1
+      },
+      "after": {
+        "engineImports": 1,
+        "workers": 6,
+        "workerMessages": 6,
+        "sharedBuffers": 0,
+        "wasmMemories": 1
+      },
+      "settingsDelta": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "state": {
+        "state": "ready",
+        "variant": "mt",
+        "initMs": 974.3207
+      },
+      "views": 1041,
+      "edits": 1000
+    },
+    "cpu_samples": 9991,
+    "sampled_allocation_bytes": 1946492016,
+    "settings_top": [
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 230
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 174
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 172
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 171
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 146
+      },
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 122
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 121
+      },
+      {
+        "name": "pageGroups",
+        "file": "layout.ts",
+        "samples": 118
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 101
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 98
+      }
+    ]
+  },
+  {
+    "name": "profile-checks-idle",
+    "boundary": {
+      "root": "C:\\Users\\jack\\codex48-engine-checks",
+      "loadFirst": false,
+      "before": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "after": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "settingsDelta": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "state": {
+        "state": "idle"
+      },
+      "views": 1041,
+      "edits": 1000
+    },
+    "cpu_samples": 8721,
+    "sampled_allocation_bytes": 1842066768,
+    "settings_top": [
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 172
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 153
+      },
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 150
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 140
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 124
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 111
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 98
+      },
+      {
+        "name": "pageGroups",
+        "file": "layout.ts",
+        "samples": 89
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 80
+      },
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 79
+      }
+    ]
+  },
+  {
+    "name": "profile-checks-loaded",
+    "boundary": {
+      "root": "C:\\Users\\jack\\codex48-engine-checks",
+      "loadFirst": true,
+      "before": {
+        "engineImports": 1,
+        "workers": 6,
+        "workerMessages": 6,
+        "sharedBuffers": 0,
+        "wasmMemories": 1
+      },
+      "after": {
+        "engineImports": 1,
+        "workers": 6,
+        "workerMessages": 6,
+        "sharedBuffers": 0,
+        "wasmMemories": 1
+      },
+      "settingsDelta": {
+        "engineImports": 0,
+        "workers": 0,
+        "workerMessages": 0,
+        "sharedBuffers": 0,
+        "wasmMemories": 0
+      },
+      "state": {
+        "state": "ready",
+        "variant": "mt",
+        "initMs": 1191.8643
+      },
+      "views": 1041,
+      "edits": 1000
+    },
+    "cpu_samples": 9622,
+    "sampled_allocation_bytes": 1844347192,
+    "settings_top": [
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 209
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 181
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 175
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 151
+      },
+      {
+        "name": "tabView",
+        "file": "view.ts",
+        "samples": 147
+      },
+      {
+        "name": "pageGroups",
+        "file": "layout.ts",
+        "samples": 138
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 131
+      },
+      {
+        "name": "lineOptions",
+        "file": "layout.ts",
+        "samples": 99
+      },
+      {
+        "name": "lineRef",
+        "file": "layout.ts",
+        "samples": 93
+      },
+      {
+        "name": "off",
+        "file": "rules.ts",
+        "samples": 77
+      }
+    ]
+  }
+]

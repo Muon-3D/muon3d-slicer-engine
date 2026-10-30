@@ -1,5 +1,5 @@
-// `npm run test:engine`: the engine tests (test/engine.test.ts, test/paint.test.ts, test/neighbours.test.ts, test/settingsOverrides.e2e.test.ts and the
-// protocol conformance suite, test/conformance/conformance.test.ts, whose engine part needs the build)
+// `npm run test:engine`: the engine tests (test/engine.test.ts, test/paint.test.ts, test/neighbours.test.ts, test/settingsOverrides.e2e.test.ts,
+// test/sliceField.e2e.test.ts, test/sharedHeap.e2e.test.ts and the protocol conformance suite, test/conformance/conformance.test.ts, whose engine part needs the build)
 // against the built engine, once per variant. Unlike a bare `node --test test/engine.test.ts`, a variant
 // that is not built fails instead of skipping its suite.
 //
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const engineDir = path.resolve(process.env.ENGINE_DIR ?? path.join(repo, 'dist'));
-const TESTS = ['test/engine.test.ts', 'test/paint.test.ts', 'test/neighbours.test.ts', 'test/settingsOverrides.e2e.test.ts', 'test/conformance/conformance.test.ts'];
+const TESTS = ['test/engine.test.ts', 'test/paint.test.ts', 'test/neighbours.test.ts', 'test/settingsOverrides.e2e.test.ts', 'test/sliceField.e2e.test.ts', 'test/sharedHeap.e2e.test.ts', 'test/conformance/conformance.test.ts'];
 const args = process.argv.slice(2);
 // Options (e.g. --test-name-pattern=Benchy) go to node --test; the rest name variants.
 const testOptions = args.filter((arg) => arg.startsWith('--'));
