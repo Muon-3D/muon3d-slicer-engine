@@ -118,7 +118,6 @@ export function tabView(state: SettingsState, scope: SettingScope, env: Settings
   for (const ref of tabPages(catalogue, tab, penv)) {
     const hidden: LineRef[] = [];
     const groups = pageGroups(catalogue, ref, mode, rules, slots, extruder, hidden);
-    const keys = new Set(groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((o) => o.key))));
     const page: ViewPage = {
       id: ref.id,
       page: ref.page.id,
@@ -127,7 +126,12 @@ export function tabView(state: SettingsState, scope: SettingScope, env: Settings
     };
     if (ref.extruder !== undefined) page.extruder = ref.extruder;
     if (nozzles > 1 && pageHasVariantRows(catalogue, ref.page)) page.nozzlePicker = true;
-    const count = issues.filter((i) => keys.has(i.key) && i.severity !== 'info').length;
+    // Most views have no issues. Do not flatten every page into arrays and a Set on
+    // every settings change just to count zero; scan visible rows only for actual issues.
+    let count = 0;
+    for (const issue of issues) {
+      if (issue.severity !== 'info' && groups.some((g) => g.lines.some((l) => l.options.some((o) => o.key === issue.key)))) count++;
+    }
     if (count > 0) page.issues = count;
     if (hidden.length > 0) page.hiddenLines = hidden.map((l) => `${ref.page.id}/${l.id}`);
     pages.push(page);

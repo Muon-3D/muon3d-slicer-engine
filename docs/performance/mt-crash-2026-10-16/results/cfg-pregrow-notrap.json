@@ -1,0 +1,2 @@
+[{"name":"grow","root":"../claude-engine-mtfix-field","engine":"dist-diag","node":["--disable-wasm-trap-handler"],"harness":[]},
+ {"name":"pregrow","root":"../claude-engine-mtfix-field","engine":"dist-diag","node":["--disable-wasm-trap-handler"],"harness":["--pregrow=1280"]}]
