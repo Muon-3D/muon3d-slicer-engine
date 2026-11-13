@@ -50,7 +50,7 @@ runs:
         echo "- toolchain $VARIANT built (cache miss): toolchain install $((tools_done - start)) s, dependencies $((SECONDS - tools_done)) s" >> "$GITHUB_STEP_SUMMARY"
 
     - name: Save the toolchain (${{ inputs.variant }})
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: steps.restore.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
       uses: actions/cache/save@v6
       with:
         path: |
