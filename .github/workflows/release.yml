@@ -68,7 +68,7 @@ jobs:
             dist/engine-${{ matrix.variant }}.*
             dist/manifest.json
           if-no-files-found: error
-          retention-days: 5
+          retention-days: 3
 
   sources:
     runs-on: ubuntu-24.04
@@ -103,7 +103,7 @@ jobs:
           path: sources
           compression-level: 0
           if-no-files-found: error
-          retention-days: 5
+          retention-days: 3
 
   draft:
     needs: [engine, sources]
@@ -276,7 +276,7 @@ jobs:
         with:
           name: verify-${{ matrix.variant }}
           path: result
-          retention-days: 5
+          retention-days: 3
 
   publish:
     needs: verify
