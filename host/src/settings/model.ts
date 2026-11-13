@@ -143,14 +143,22 @@ export function variantSlot(s: SettingsState, scope: SettingScope, key: string, 
  * page), as Orca toggles them.
  */
 export function slotResolver(s: SettingsState, scope: SettingScope): SlotResolver {
+  // The variant belongs to the nozzle and preset, not to each option. Resolve it once for
+  // this view instead of reparsing the same vectors for every row. A new view gets a new
+  // resolver, so edits to the printer, overrides or variant table cannot leave stale slots.
+  let nozzle = -1;
+  let variant: number | undefined;
   return (key, def, layoutIndex, extruder, line) => {
     const ruleIndex = layoutIndex === 'extruder' ? extruder : layoutIndex;
     if (def.slots !== 'variant') return { index: ruleIndex, ruleIndex };
     // Tab::update_extruder_variants: every slot the layout names (Tab.cpp builds the Speed page with
     // "outer_wall_speed#0") becomes the slot of the nozzle shown.
-    const variant = variantSlot(s, scope, key, extruder, line.modeColumns ? 2 : 1);
+    if (nozzle !== extruder) {
+      variant = variantSlot(s, scope, key, extruder);
+      nozzle = extruder;
+    }
     // A preset without a slot for the nozzle: the layout's slot, as before the nozzle was known.
-    return { index: variant ?? ruleIndex, ruleIndex };
+    return { index: variant === undefined ? ruleIndex : variant * (line.modeColumns ? 2 : 1), ruleIndex };
   };
 }
 

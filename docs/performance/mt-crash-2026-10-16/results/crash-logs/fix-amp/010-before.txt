@@ -1,0 +1,24 @@
+MT_TRAP first-slice unwind
+MT_WORKER_STACK RuntimeError: memory access out of bounds
+    at wasm://wasm/02ca85a2:wasm-function[2400]:0x16382c
+    at wasm://wasm/02ca85a2:wasm-function[4836]:0x3eefb8
+    at wasm://wasm/02ca85a2:wasm-function[107]:0xb430
+    at wasm://wasm/02ca85a2:wasm-function[536]:0x329d3
+    at wasm://wasm/02ca85a2:wasm-function[6102]:0x5c84d8
+    at wasm://wasm/02ca85a2:wasm-function[10152]:0x9d6325
+    at wasm://wasm/02ca85a2:wasm-function[348]:0x1e847
+    at wasm://wasm/02ca85a2:wasm-function[10143]:0x9d3efb
+    at wasm://wasm/02ca85a2:wasm-function[328]:0x1c588
+    at wasm://wasm/02ca85a2:wasm-function[4272]:0x38f31b
+worker sent an error! undefined:undefined: memory access out of bounds
+MT_UNCAUGHT RuntimeError: memory access out of bounds
+    at wasm://wasm/02ca85a2:wasm-function[2400]:0x16382c
+    at wasm://wasm/02ca85a2:wasm-function[4836]:0x3eefb8
+    at wasm://wasm/02ca85a2:wasm-function[107]:0xb430
+    at wasm://wasm/02ca85a2:wasm-function[536]:0x329d3
+    at wasm://wasm/02ca85a2:wasm-function[6102]:0x5c84d8
+    at wasm://wasm/02ca85a2:wasm-function[10152]:0x9d6325
+    at wasm://wasm/02ca85a2:wasm-function[348]:0x1e847
+    at wasm://wasm/02ca85a2:wasm-function[10143]:0x9d3efb
+    at wasm://wasm/02ca85a2:wasm-function[328]:0x1c588
+    at wasm://wasm/02ca85a2:wasm-function[4272]:0x38f31b

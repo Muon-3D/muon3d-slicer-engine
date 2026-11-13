@@ -1,0 +1,39 @@
+== ci-pr4-mt-38890015909.log
+2026-10-16T10:54:33.1764494Z # engine tests: mt (/home/runner/work/muon3d-slicer-engine/muon3d-slicer-engine/dist)
+2026-10-16T10:54:33.6660499Z ▶ conformance: in-process
+2026-10-16T10:54:34.5975987Z # in-process: settings.view p50 1.35 ms, p95 7.12 ms (200 requests)
+2026-10-16T10:54:55.2713779Z # byte-stream: settings.view p50 3.99 ms, p95 10.45 ms (200 requests)
+2026-10-16T10:54:55.3224564Z ▶ conformance: byte-stream
+2026-10-16T10:55:03.9743307Z ▶ conformance: node-worker
+2026-10-16T10:55:04.2227485Z # node-worker: settings.view p50 0.61 ms, p95 1.20 ms (200 requests)
+2026-10-16T10:55:08.6366750Z # engine-mt ready in 514 ms: OrcaSlicer 2.5.0-dev (2d1163eb6f5228de605150e3b4800081947070eb)
+2026-10-16T10:55:08.6425190Z ℹ tests 131
+2026-10-16T10:55:08.6425547Z ℹ pass 126
+2026-10-16T10:55:08.6425720Z ℹ fail 0
+== ci-pr5-mt-38890028195.log
+2026-10-16T10:55:12.3880055Z # engine tests: mt (/home/runner/work/muon3d-slicer-engine/muon3d-slicer-engine/dist)
+2026-10-16T10:55:12.8422164Z ▶ conformance: in-process
+2026-10-16T10:55:13.8691794Z # in-process: settings.view p50 1.45 ms, p95 7.62 ms (200 requests)
+2026-10-16T10:55:36.0580735Z # byte-stream: settings.view p50 1.46 ms, p95 6.99 ms (200 requests)
+2026-10-16T10:55:36.0908225Z ▶ conformance: byte-stream
+2026-10-16T10:55:48.5776715Z ▶ conformance: node-worker
+2026-10-16T10:55:49.2431056Z # node-worker: settings.view p50 1.28 ms, p95 7.19 ms (200 requests)
+2026-10-16T10:55:49.2543343Z   ✖ settings.view: the dynamic state within 5 ms at p95, messaging included (536.273639ms)
+2026-10-16T10:56:00.8918013Z ✖ conformance: node-worker (12449.590828ms)
+2026-10-16T10:56:01.0904935Z # engine-mt ready in 567 ms: OrcaSlicer 2.5.0-dev (2d1163eb6f5228de605150e3b4800081947070eb)
+2026-10-16T10:56:01.3750809Z ℹ tests 144
+2026-10-16T10:56:01.3751227Z ℹ pass 138
+2026-10-16T10:56:01.3751404Z ℹ fail 1
+2026-10-16T10:56:01.3752421Z ✖ failing tests:
+2026-10-16T10:56:01.3753216Z ✖ settings.view: the dynamic state within 5 ms at p95, messaging included (536.273639ms)
+== ci-pr5-st-38890028195.log
+2026-10-16T10:56:09.4579093Z # engine tests: st (/home/runner/work/muon3d-slicer-engine/muon3d-slicer-engine/dist)
+2026-10-16T10:56:10.3782230Z ▶ conformance: in-process
+2026-10-16T10:56:11.4842521Z # in-process: settings.view p50 1.94 ms, p95 10.38 ms (200 requests)
+2026-10-16T10:56:35.7995275Z # byte-stream: settings.view p50 2.01 ms, p95 3.74 ms (200 requests)
+2026-10-16T10:56:35.8082080Z ▶ conformance: byte-stream
+2026-10-16T10:56:47.3255212Z ▶ conformance: node-worker
+2026-10-16T10:56:47.7544358Z # node-worker: settings.view p50 1.07 ms, p95 2.88 ms (200 requests)
+2026-10-16T10:57:10.2266961Z ℹ tests 144
+2026-10-16T10:57:10.2267855Z ℹ pass 139
+2026-10-16T10:57:10.2268303Z ℹ fail 0

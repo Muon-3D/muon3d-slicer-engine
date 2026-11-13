@@ -1,0 +1,30 @@
+﻿0af6a8440879967dd2af11c30a3bdc79ed2616e0
+100644 7678ff4b0a269ae0fa17e788e623d353aafb0369 1	engine/scripts/test-engine.mjs
+100644 68a0dc6846f2abec846b90a892b9c6d6e0db9355 2	engine/scripts/test-engine.mjs
+100644 955cd4c1b37b7230e1ffed8f94f29be60bc9529f 3	engine/scripts/test-engine.mjs
+100644 eff60bf3d806ae805f96d192a0fb84cba1469f30 1	host/src/bridge.ts
+100644 293c84538ba787d8994268feec4e9a636774bbf9 2	host/src/bridge.ts
+100644 857211323d08e553fa1b61ffb3f168ea6f4814c7 3	host/src/bridge.ts
+100644 4e01e029e34b151fe0c0d3b97bae4eb5b99fc0d8 1	host/src/core.ts
+100644 e4ebf82c273694fb7be682c2ab9fe82756ad3cf0 2	host/src/core.ts
+100644 e161f649def11d7b1deb338b2146d8ff2954549b 3	host/src/core.ts
+100644 db7e4b5dfd9b44e6b388c9880605bf585a9c5517 1	host/src/ops.ts
+100644 e30e7cd9f5569fe9cd8851bd63faa20d93cdc690 2	host/src/ops.ts
+100644 cc7635d45aa83092d0ace0ebb6469a8b58267053 3	host/src/ops.ts
+100644 007e6a1fc98d1452672affbb582a53caae7bf924 1	packages/protocol/src/ops.ts
+100644 80ce94f6573fc37f370f7237c9e972e2661004b7 2	packages/protocol/src/ops.ts
+100644 c6c5f7f0f45405d9b56ef375709837c89bf069b6 3	packages/protocol/src/ops.ts
+
+Auto-merging README.md
+Auto-merging docs/PROTOCOL.md
+Auto-merging engine/scripts/test-engine.mjs
+CONFLICT (content): Merge conflict in engine/scripts/test-engine.mjs
+Auto-merging host/src/bridge.ts
+CONFLICT (content): Merge conflict in host/src/bridge.ts
+Auto-merging host/src/core.ts
+CONFLICT (content): Merge conflict in host/src/core.ts
+Auto-merging host/src/ops.ts
+CONFLICT (content): Merge conflict in host/src/ops.ts
+Auto-merging packages/protocol/src/ops.ts
+CONFLICT (content): Merge conflict in packages/protocol/src/ops.ts
+Auto-merging test/goldens/slices.json

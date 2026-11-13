@@ -85,7 +85,10 @@ const dir = path.join(set, 'profiles', version);
 const index = JSON.parse(fs.readFileSync(path.join(dir, fs.readdirSync(dir).find((f) => /^index\.[0-9a-f]{16}\.json$/.test(f))), 'utf8'));
 const m = JSON.parse(fs.readFileSync(path.join(runtime, 'manifest.json'), 'utf8'));
 const problems = [];
-if (index.set !== version || index.engine.version !== version) problems.push(`set ${index.set}, engine ${index.engine.version}, release ${version}`);
+// A release candidate (v0.6.1-rc.2) is named for the release it tries, but built from package.json's 0.6.1 (the assemble step
+// takes the same pair), so the engine inside it reports 0.6.1 while the set and the tarballs carry the -rc.N name.
+const engineVersion = version.replace(/-rc\.\d+$/, '');
+if (index.set !== version || index.engine.version !== engineVersion) problems.push(`set ${index.set}, engine ${index.engine.version}, release ${version}`);
 if (index.engine.orca.commit !== m.orca.commit) problems.push(`profiles from Orca ${index.engine.orca.commit}, engine from ${m.orca.commit}`);
 if (index.source.commit !== m.build.engineCommit) problems.push(`profiles from ${index.source.commit}, engine from ${m.build.engineCommit}`);
 for (const f of ['LICENSE', 'README.md', 'goldens.json.gz']) if (!fs.existsSync(path.join(set, f))) problems.push(`${f} missing`);

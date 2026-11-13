@@ -205,6 +205,21 @@ in the shape OrcaSlicer's `scripts/orca_profile_tool.py` writes (`normalize`, `u
 and check a set, and update `test/profiles/muon3d.json` with `--write-expect` when the M1's settings are meant to
 change. [`profiles/muon3d/README.md`](../profiles/muon3d/README.md) says where the files came from.
 
+### 9.1 Gravity
+
+Which way gravity points during a print, relative to the build direction, is a per-printer parameter. OrcaSlicer
+has no option for it, so it is a line of the machine preset's `printer_notes` (an Orca option, kept as it is):
+
+```
+gravity = along_build      the Muon3D M1: it prints upside down, the part hanging from the plate (gravity along +Z)
+gravity = against_build    a normal printer: the part stands on the plate (gravity along -Z)
+```
+
+`printerGravity(printer_notes)` (`@muon3d/slicer-engine-protocol`) reads it; it gives null when the line is missing,
+malformed or contradicted, and nothing assumes a value then. The Muon3D overlay sets `along_build` in
+`fdm_common_muon_m1.json` (every M1 nozzle inherits it); another vendor's printer says `against_build` the same way.
+The slice field records it (SLICE_FIELD.md, `gravity`); gravity-dependent checks read it from the same place.
+
 ## 10. Sizes
 
 Measured on the set of the pinned OrcaSlicer tree (66 vendors, 10,776 selectable presets):

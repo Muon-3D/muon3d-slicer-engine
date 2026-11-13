@@ -1,21 +1,13 @@
 // The engine ops' params and results: protocol v2's shapes checked and converted to the bridge's and back
 // (bridge.ts). A request the host cannot use fails with BadRequest, naming what is wrong.
 import type { Config, ConfigSet, Mesh } from '../../packages/protocol/src/data.ts';
-import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
+import type { CheckParams, CheckResult, LogLevel, PlateObject, SliceFieldRequest, SliceParams, SliceResult } from '../../packages/protocol/src/ops.ts';
 import { PAINT_KINDS, checkObjectPaint, hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 import { protocolToolpaths, type CheckJob, type CheckOutput, type EngineObject, type SliceJob, type SliceOutput } from './bridge.ts';
+import { SLICE_FIELD_VOXEL_SIZES } from './sliceField.ts';
+import { BadRequest } from './badRequest.ts';
 
-/** A request the host refuses (BadRequest). */
-export class BadRequest extends Error {
-  readonly detail?: string;
-  /** The objects the request is wrong about, by name. */
-  readonly objects?: string[];
-  constructor(message: string, detail?: string, objects?: string[]) {
-    super(message);
-    if (detail !== undefined) this.detail = detail;
-    if (objects !== undefined) this.objects = objects;
-  }
-}
+export { BadRequest };
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -104,7 +96,19 @@ export function sliceJob(params: SliceParams): SliceJob {
     toolpaths: output.toolpaths !== false,
     toolpathExtras: output.toolpathExtras !== false,
     ...(log > 0 ? { log } : {}),
+    ...(output.sliceField !== undefined ? { sliceField: sliceFieldRequest(output.sliceField) } : {}),
   };
+}
+
+function sliceFieldRequest(value: unknown): SliceFieldRequest {
+  if (value === true) return {};
+  if (!isObject(value)) throw new BadRequest('"output.sliceField" must be { voxelSize?, depositionTime? }.');
+  const { voxelSize, depositionTime } = value;
+  if (voxelSize !== undefined && !SLICE_FIELD_VOXEL_SIZES.includes(voxelSize as number)) {
+    throw new BadRequest(`"output.sliceField.voxelSize" must be one of ${SLICE_FIELD_VOXEL_SIZES.join(', ')} (mm).`);
+  }
+  if (depositionTime !== undefined && typeof depositionTime !== 'boolean') throw new BadRequest('"output.sliceField.depositionTime" must be a boolean.');
+  return { ...(voxelSize !== undefined ? { voxelSize: voxelSize as number } : {}), ...(depositionTime === true ? { depositionTime } : {}) };
 }
 
 /** Orca's levels, on the engine's scale: index + 1 (1 errors … 5 trace). */
@@ -127,6 +131,7 @@ export function sliceResult(output: SliceOutput, heapBytes: number | undefined):
     timings: output.timings,
   };
   if (output.log !== undefined) result.log = output.log;
+  if (output.sliceField !== undefined) result.sliceField = output.sliceField;
   if (heapBytes !== undefined) result.heapBytes = heapBytes;
   return result;
 }

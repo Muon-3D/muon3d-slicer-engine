@@ -1,0 +1,11 @@
+▶ the shared heap of the mt engine
+  ✔ does not grow while a slice runs: the host grows it between jobs (6359.6162ms)
+✔ the shared heap of the mt engine (6365.9096ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8972.0061

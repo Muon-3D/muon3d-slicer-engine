@@ -1,0 +1,48 @@
+﻿6f60f199e215774abc623db304135c9921ce0802
+100644 7c38a4b712cdc3f38f9db8f1d1622ddea3eb03bd 1	docs/PROTOCOL.md
+100644 c63786b2cd3018db7e2da0a39c04b02662a3265e 2	docs/PROTOCOL.md
+100644 7b91312590da00eb6e5c322555e85407c96d65ef 3	docs/PROTOCOL.md
+100644 fc1b7612ea674819324431a73fd923b5135810da 1	engine/bridge/slice_job.cpp
+100644 4457e3f63e7c9ab422d3ab41371045bbab6f6e78 2	engine/bridge/slice_job.cpp
+100644 2b20867c0ab87861f66b7ab8d47bd1bfef6c830e 3	engine/bridge/slice_job.cpp
+100644 7678ff4b0a269ae0fa17e788e623d353aafb0369 1	engine/scripts/test-engine.mjs
+100644 68a0dc6846f2abec846b90a892b9c6d6e0db9355 2	engine/scripts/test-engine.mjs
+100644 b8eb37904f53fa36d4baa79145fc056685257ef5 3	engine/scripts/test-engine.mjs
+100644 eff60bf3d806ae805f96d192a0fb84cba1469f30 1	host/src/bridge.ts
+100644 293c84538ba787d8994268feec4e9a636774bbf9 2	host/src/bridge.ts
+100644 d606d007337568f12430d12c75614cd1056a2124 3	host/src/bridge.ts
+100644 4e01e029e34b151fe0c0d3b97bae4eb5b99fc0d8 1	host/src/core.ts
+100644 e4ebf82c273694fb7be682c2ab9fe82756ad3cf0 2	host/src/core.ts
+100644 ac29c3c0fb8d3e979a87ed1e6bab08635955917e 3	host/src/core.ts
+100644 db7e4b5dfd9b44e6b388c9880605bf585a9c5517 1	host/src/ops.ts
+100644 e30e7cd9f5569fe9cd8851bd63faa20d93cdc690 2	host/src/ops.ts
+100644 3f889d00c5106361ed5f5e006b93c343b6e51127 3	host/src/ops.ts
+100644 007e6a1fc98d1452672affbb582a53caae7bf924 1	packages/protocol/src/ops.ts
+100644 80ce94f6573fc37f370f7237c9e972e2661004b7 2	packages/protocol/src/ops.ts
+100644 74aa88fbe5635ac843fcdb028dcd6f56b7429894 3	packages/protocol/src/ops.ts
+100644 be16d557146497163cc539e0aac9e6e1066f0cc1 1	test/conformance/conformance.test.ts
+100644 4fa4a2ac42633d85d12d5acbddfff21203f207c1 2	test/conformance/conformance.test.ts
+100644 42437e6d30301b92390b85d614c93cbf48137959 3	test/conformance/conformance.test.ts
+
+Auto-merging README.md
+Auto-merging docs/PROTOCOL.md
+CONFLICT (content): Merge conflict in docs/PROTOCOL.md
+Auto-merging engine/bridge/engine.cpp
+Auto-merging engine/bridge/job.hpp
+Auto-merging engine/bridge/slice_job.cpp
+CONFLICT (content): Merge conflict in engine/bridge/slice_job.cpp
+Auto-merging engine/scripts/test-engine.mjs
+CONFLICT (content): Merge conflict in engine/scripts/test-engine.mjs
+Auto-merging host/src/bridge.ts
+CONFLICT (content): Merge conflict in host/src/bridge.ts
+Auto-merging host/src/core.ts
+CONFLICT (content): Merge conflict in host/src/core.ts
+Auto-merging host/src/ops.ts
+CONFLICT (content): Merge conflict in host/src/ops.ts
+Auto-merging packages/protocol/package.json
+Auto-merging packages/protocol/src/envelope.ts
+Auto-merging packages/protocol/src/ops.ts
+CONFLICT (content): Merge conflict in packages/protocol/src/ops.ts
+Auto-merging test/conformance/conformance.test.ts
+CONFLICT (content): Merge conflict in test/conformance/conformance.test.ts
+Auto-merging test/goldens/slices.json

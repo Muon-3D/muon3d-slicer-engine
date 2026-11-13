@@ -1,0 +1,13 @@
+{"ok":false,"root":"C:\\Users\\jack\\claude-engine-mtfix-field","engineDir":"C:\\Users\\jack\\claude-engine-mtfix-evidence\\dist-diag","initMs":1455,"results":[],"total":2681}
+MT_TRAP first-slice RuntimeError: memory access out of bounds
+    at wasm://wasm/02ca85a2:wasm-function[2400]:0x16382c
+    at wasm://wasm/02ca85a2:wasm-function[4836]:0x3eefb8
+    at wasm://wasm/02ca85a2:wasm-function[107]:0xb430
+    at wasm://wasm/02ca85a2:wasm-function[106]:0xa2e1
+    at wasm://wasm/02ca85a2:wasm-function[840]:0x5959a
+    at wasm://wasm/02ca85a2:wasm-function[2243]:0x156527
+    at wasm://wasm/02ca85a2:wasm-function[6095]:0x5c72fa
+    at wasm://wasm/02ca85a2:wasm-function[6096]:0x5c750d
+    at wasm://wasm/02ca85a2:wasm-function[313]:0x1aebd
+    at wasm://wasm/02ca85a2:wasm-function[4272]:0x38f345
+MT_FAILED first-slice The slicing engine crashed: memory access out of bounds {"freeMemory":1388597248}

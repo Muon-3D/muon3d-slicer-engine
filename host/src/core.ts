@@ -13,23 +13,11 @@ import { transferablesOf } from '../../packages/protocol/src/helpers.ts';
 import type { EngineManifest } from '../../packages/protocol/src/manifest.ts';
 import { Capability, OPS, type HelloResult, type LoadParams, type LoadResult, type OpName } from '../../packages/protocol/src/ops.ts';
 import type { Transport } from '../../packages/protocol/src/transport.ts';
-import {
-  EngineJobError,
-  engineFailure,
-  engineHeap,
-  loadEngine as defaultLoadEngine,
-  memory64Supported,
-  runCheck,
-  runSlice,
-  startFailure,
-  type LoadEngineOptions,
-  type LoadedEngine,
-  type OrcaEngineModule,
-} from './bridge.ts';
-import { readConfigDefinitions } from './configDefinitions.ts';
+import type { LoadEngineOptions, LoadedEngine, OrcaEngineModule, SharedHeapReserve } from './bridge.ts';
+import { BadRequest } from './badRequest.ts';
+import { memory64Supported } from './memory64.ts';
 import { BUILD, engineInfo, type BuildInfo } from './info.ts';
-import { BadRequest, checkJob, checkResult, sliceJob, sliceResult } from './ops.ts';
-import { profilesRequest, runProfiles, type ProfileOp } from './profiles.ts';
+import type { ProfileOp } from './profiles.ts';
 
 export interface HostEnvironment {
   kind: 'browser' | 'node' | 'other';
@@ -118,6 +106,7 @@ const CAPABILITIES = [
   Capability.settingsViewV1,
   Capability.sliceLog,
   Capability.paintV1,
+  Capability.sliceField,
   Capability.sliceConflict,
   Capability.supportAvoidObjects,
 ];
@@ -155,12 +144,16 @@ export function createHost(options: HostOptions): Host {
     hardwareConcurrency: options.environment?.hardwareConcurrency ?? (globalThis.navigator?.hardwareConcurrency || 1),
   };
   const build = options.build ?? BUILD;
-  const load = options.loadEngine ?? defaultLoadEngine;
+  let runtime: typeof import('./engineRuntime.ts') | undefined;
+  let runtimeLoading: Promise<typeof import('./engineRuntime.ts')> | undefined;
+  const engineRuntime = () => runtimeLoading ??= import('./engineRuntime.ts').then((module) => (runtime = module));
   const lanes = { engine: new Lane(), settings: new Lane() };
 
   let state: HostState = { state: 'idle' };
   let engine: OrcaEngineModule | null = null;
   let memory: WebAssembly.Memory | null = null;
+  /** 'mt': grows the shared heap between jobs, never during one (bridge.ts SharedHeapReserve). */
+  let heapReserve: SharedHeapReserve | null = null;
   let loaded: LoadResult | null = null;
   let loading: Promise<LoadResult> | null = null;
   /** Set once the engine could not load or crashed: every later engine op fails with it. */
@@ -181,7 +174,7 @@ export function createHost(options: HostOptions): Host {
     state = next;
     send({ v: 2, id: 0, kind: 'state', state: next });
   };
-  const heap = () => engineHeap(engine, memory);
+  const heap = () => runtime?.engineHeap(engine, memory);
   const readManifest = () => (manifest ??= (options.readManifest ?? defaultReadManifest)(options.base));
 
   async function builtVariants(): Promise<Variant[]> {
@@ -245,18 +238,22 @@ export function createHost(options: HostOptions): Host {
       setState({ state: 'loading', variant, loadedBytes: 0, totalBytes: wasmBytes ?? 0 });
       if (variant !== 'st' && params.threads) limitThreads(params.threads);
       try {
-        const l = await load(base, variant, {
+        const l = await (options.loadEngine ?? runtime!.loadEngine)(base, variant, {
           ...(wasmBytes ? { wasmBytes } : {}),
           onDownload: (loadedBytes, totalBytes, done) => setState({ state: 'loading', variant, loadedBytes, totalBytes, ...(done ? { done } : {}) }),
         });
         engine = l.engine;
         memory = l.memory;
+        // Every threaded variant has a shared memory ('mt' and 'mt64'); for() returns null for 'st'. The V8 Atomics race on
+        // freshly grown shared memory is the same for both pointer widths, so each gets its own variant's maximum.
+        heapReserve = runtime!.SharedHeapReserve.for(memory, maxHeapBytesOf(variant));
+        heapReserve?.prepare();
         loaded = { variant, initMs: l.initMs };
         const h = heap();
         setState({ state: 'ready', variant, initMs: l.initMs, ...(h ? { heapBytes: h.bytes, ...(h.maxBytes ? { maxHeapBytes: h.maxBytes } : {}) } : {}) });
         return loaded;
       } catch (err) {
-        const failure = startFailure(err);
+        const failure = runtime!.startFailure(err);
         dead = { code: ErrorCode.NotLoaded, message: `The slicing engine could not start: ${failure.message}`, ...(failure.detail ? { detail: failure.detail } : {}) };
         setState({ state: 'fatal', ...failure });
         throw dead;
@@ -272,16 +269,21 @@ export function createHost(options: HostOptions): Host {
   /** Runs one engine job; a crash (not Orca refusing the job) kills the engine for good. */
   function engineJob<T>(run: (engine: OrcaEngineModule) => T): T {
     try {
-      return run(engine!);
+      if (!heapReserve) return run(engine!);
+      const { value, grew } = heapReserve.job(() => run(engine!));
+      // The job took the risk the reserve is there to avoid; say so, so that it is seen.
+      if (grew) console.warn(`Engine host: ${runtime!.heapGrowthDetail(grew)}.`);
+      return value;
     } catch (err) {
-      if (err instanceof EngineJobError || err instanceof BadRequest) throw err;
-      dead = engineFailure(err, heap());
+      if (err instanceof runtime!.EngineJobError || err instanceof BadRequest) throw err;
+      dead = runtime!.engineFailure(err, heap());
       setState({ state: 'fatal', code: dead.code, message: dead.message, ...(dead.detail ? { detail: dead.detail } : {}) });
       throw dead;
     }
   }
 
   async function engineOp(id: number, op: OpName, params: unknown): Promise<void> {
+    const { profilesRequest, runProfiles, checkJob, checkResult, sliceJob, sliceResult, runSlice, runCheck, readConfigDefinitions } = await engineRuntime();
     if (op === 'load') {
       result(id, await ensureEngine((params ?? {}) as LoadParams));
       return;
@@ -344,7 +346,7 @@ export function createHost(options: HostOptions): Host {
 
   /** The error response for an exception an op threw. */
   function failed(id: number, err: unknown): void {
-    if (err instanceof EngineJobError) error(id, err.error);
+    if (runtime && err instanceof runtime.EngineJobError) error(id, err.error);
     else if (err instanceof BadRequest) {
       error(id, { code: ErrorCode.BadRequest, message: err.message, ...(err.detail ? { detail: err.detail } : {}), ...(err.objects ? { objects: err.objects } : {}) });
     } else if (err && typeof err === 'object' && 'code' in err && typeof (err as EngineError).code === 'number' && 'message' in err) {

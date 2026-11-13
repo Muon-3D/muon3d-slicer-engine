@@ -9,7 +9,9 @@
 //
 // Exported for the Node tests (test/, host/test/), which run the exact code a browser runs.
 import type { EngineError, EngineWarning, Variant } from '../../packages/protocol/src/envelope.ts';
-import type { GcodeStats, ObjectPaint, ToolpathExtras, Toolpaths, Vec3 } from '../../packages/protocol/src/index.ts';
+import type { GcodeStats, ObjectPaint, SliceFieldRequest, ToolpathExtras, Toolpaths, Vec3 } from '../../packages/protocol/src/index.ts';
+import { encodeSliceField } from '../../packages/protocol/src/sliceField.ts';
+import { buildSliceField, SliceFieldUnavailable } from './sliceField.ts';
 import { hasPaintKinds } from '../../packages/protocol/src/paint.ts';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +71,8 @@ export interface SliceJob {
   toolpathExtras?: boolean;
   /** Orca's log to return, down to this level: 0 none (default), 1 errors … 5 trace. */
   log?: number;
+  /** Also build the slice field (sliceField.ts). */
+  sliceField?: SliceFieldRequest;
 }
 
 export interface CheckJob {
@@ -84,6 +88,8 @@ export interface SliceOutput {
   toolpaths: BridgeToolpaths | null;
   toolpathExtras: ToolpathExtras | null;
   warnings: EngineWarning[];
+  /** With job.sliceField: the slice field file. */
+  sliceField?: Uint8Array;
   timings: { load: number; slice: number; export: number; total: number };
   /** With SliceJob.log: Orca's log, a line each ("<level>: <message>"). */
   log?: string;
@@ -136,6 +142,8 @@ export interface OrcaEngineModule {
   setLogLevel(level: number): void;
   /** The wasm heap now and at most (it never shrinks); answers even after a trap. Missing in older builds. */
   heapSize?(): { bytes: number; maxBytes: number };
+  /** The heap's WebAssembly.Memory (-sEXPORTED_RUNTIME_METHODS=wasmMemory): shared with the pthreads in 'mt'. */
+  wasmMemory?: WebAssembly.Memory;
   /**
    * Orca's option definitions and key sets as JSON text (ConfigDefinitions in
    * ./configDefinitions.ts, which also reads it). Missing in builds before 2026-09-25.
@@ -201,7 +209,7 @@ export interface LoadEngineOptions {
 export interface LoadedEngine {
   engine: OrcaEngineModule;
   initMs: number;
-  /** The engine's wasm memory (it only ever grows), when this code instantiated the module; null under Node. */
+  /** The engine's wasm memory (it only ever grows): found while instantiating, or the module's wasmMemory. */
   memory: WebAssembly.Memory | null;
 }
 
@@ -230,7 +238,7 @@ export async function loadEngine(baseUrl: string, variant: Variant, options: Loa
   // Under Node (the engine tests load file: URLs) Emscripten reads the .wasm from disk itself.
   if (new URL(baseUrl).protocol === 'file:' || typeof fetch !== 'function') {
     const engine = await factory({ locateFile });
-    return { engine, initMs: now() - started, memory: null };
+    return { engine, initMs: now() - started, memory: engine.wasmMemory instanceof WebAssembly.Memory ? engine.wasmMemory : null };
   }
 
   let memory: WebAssembly.Memory | null = null;
@@ -415,11 +423,14 @@ export function protocolToolpaths(paths: BridgeToolpaths): Toolpaths {
   };
 }
 
-/** The engine's error as the protocol's: toolpaths converted, and toolpathExtras dropped unless `extras`. */
-export function protocolError(error: BridgeEngineError, extras = true): EngineError {
+/**
+ * The engine's error as the protocol's: toolpaths converted, dropped unless `withToolpaths` (the slice asked for them; a
+ * slice-field request builds them internally and must not leak them), and toolpathExtras dropped unless `extras`.
+ */
+export function protocolError(error: BridgeEngineError, extras = true, withToolpaths = true): EngineError {
   const { toolpaths, toolpathExtras, ...rest } = error;
   const out: EngineError = rest;
-  if (toolpaths) {
+  if (toolpaths && withToolpaths) {
     out.toolpaths = protocolToolpaths(toolpaths);
     if (extras && toolpathExtras) out.toolpathExtras = toolpathExtras;
   }
@@ -442,23 +453,51 @@ export function runSlice(
     presetJson(job.process),
     job.filaments.map(presetJson),
     meshInputs(job.objects),
-    job.toolpaths ?? true,
+    (job.toolpaths ?? true) || job.sliceField !== undefined,
     guarded(onProgress),
     guarded(onWarning),
     job.log ?? 0,
   );
   if ('error' in result) {
-    const error = protocolError(result.error, job.toolpathExtras !== false);
+    const error = protocolError(result.error, job.toolpathExtras !== false, job.toolpaths !== false);
     throw new EngineJobError(result.log !== undefined ? { ...error, log: result.log } : error);
+  }
+  let field: Uint8Array | undefined;
+  if (job.sliceField !== undefined && result.toolpaths) {
+    try {
+      field = sliceFieldOf(job, result.toolpaths, result.toolpathExtras);
+    } catch (err) {
+      if (!(err instanceof SliceFieldUnavailable)) throw err;
+      const warning = { kind: 'slice_field', message: err.message };
+      result.warnings.push(warning);
+      guarded(onWarning)(warning);
+    }
   }
   return {
     ...result,
+    ...(field !== undefined ? { sliceField: field } : {}),
+    // Built for the slice field alone when the client did not ask for them.
+    toolpaths: job.toolpaths === false ? null : result.toolpaths,
     // The engine builds them with the toolpaths whether asked or not; they are dropped here so
     // they are not posted to the page.
     toolpathExtras: job.toolpathExtras === false ? null : result.toolpathExtras,
     // The engine times its own stages; the total also covers the conversions on this side.
     timings: { ...result.timings, total: now() - started },
   };
+}
+
+function sliceFieldOf(job: SliceJob, toolpaths: BridgeToolpaths, extras: ToolpathExtras | null): Uint8Array {
+  const { description, arrays } = buildSliceField({
+    machine: job.machine,
+    process: job.process,
+    filaments: job.filaments,
+    objects: job.objects,
+    toolpaths,
+    extras,
+    request: job.sliceField ?? {},
+    generator: 'Muon3D Slicer Engine',
+  });
+  return encodeSliceField(description, arrays);
 }
 
 /** Runs Orca's placement checks for a plate. Throws like runSlice. */
@@ -482,6 +521,109 @@ export function engineHeap(engine: OrcaEngineModule | null, memory: WebAssembly.
   return memory ? { bytes: memory.buffer.byteLength } : null;
 }
 
+// ---------------------------------------------------------------------------
+// The shared heap of 'mt'
+// ---------------------------------------------------------------------------
+
+/** The heap the host gives an 'mt' engine before its first job: what a first slice reaches on 2 to 24 threads, and some. */
+export const MT_HEAP_RESERVE_BYTES = 1280 * 1024 ** 2;
+
+const WASM_PAGE = 65536;
+
+/**
+ * Grows the 'mt' engine's shared heap between jobs, so that a job does not grow it while its threads run.
+ *
+ * V8 (Chrome, Node) bounds-checks a wasm atomic access against the memory size the accessing thread last
+ * saw, and a thread sees another thread's memory.grow only when it handles the interrupt V8 sends it: tens
+ * of microseconds later while it runs, at once when it wakes from a wait. An atomic access to the new pages
+ * in between traps ("memory access out of bounds"; in tbbmalloc's free lists, which libslic3r's Points
+ * allocate from) and kills the engine. Measured 16 October 2026: docs/performance/mt-crash-2026-10-16.
+ * Grown here, between jobs, the engine's threads are parked or winding down and have seen the new size long
+ * before a job hands them memory in it.
+ *
+ * The heap is grown to `reserve` before the first job. A job that still grows it (a plate larger than the
+ * reserve) ran the risk; the reserve then keeps that job's growth free above the size it reached, for the
+ * next job. `job()` reports the growth, so the host can say so (engineFailure).
+ */
+export class SharedHeapReserve {
+  readonly #memory: WebAssembly.Memory;
+  readonly #maxBytes: number;
+  readonly #reserve: number;
+  /** The heap size the last job that grew the heap left, and the most a job has grown it. */
+  #grownTo = 0;
+  #headroom = 0;
+
+  constructor(memory: WebAssembly.Memory, maxBytes: number, reserve = MT_HEAP_RESERVE_BYTES) {
+    this.#memory = memory;
+    this.#maxBytes = maxBytes;
+    this.#reserve = reserve;
+  }
+
+  /** Only a shared memory (the 'mt' engine's) needs one. */
+  static for(memory: WebAssembly.Memory | null, maxBytes: number): SharedHeapReserve | null {
+    return memory && memory.buffer instanceof SharedArrayBuffer ? new SharedHeapReserve(memory, maxBytes) : null;
+  }
+
+  get bytes(): number {
+    return this.#memory.buffer.byteLength;
+  }
+
+  /** Grows the heap ahead of a job, while no job runs. A browser that refuses leaves it to the job. */
+  prepare(): void {
+    const target = Math.min(this.#maxBytes, Math.max(this.#reserve, this.#grownTo + this.#headroom));
+    const pages = Math.ceil((target - this.bytes) / WASM_PAGE);
+    if (pages <= 0) return;
+    try {
+      this.#memory.grow(pages);
+    } catch (err) {
+      console.warn(`Engine host: the engine's heap could not be grown to ${Math.round(target / 1024 ** 2)} MB ahead of a job:`, err);
+    }
+  }
+
+  /** Runs a job after prepare(); `grew` says how much the job itself grew the heap (0: it did not). */
+  job<T>(run: () => T): { value: T; grew: HeapGrowth | null } {
+    this.prepare();
+    const before = this.bytes;
+    const settle = (): HeapGrowth | null => {
+      const after = this.bytes;
+      if (after <= before) return null;
+      this.#grownTo = after;
+      this.#headroom = Math.max(this.#headroom, after - before);
+      return { from: before, to: after };
+    };
+    let value: T;
+    try {
+      value = run();
+    } catch (err) {
+      const grew = settle();
+      if (!grew) throw err;
+      throw Object.assign(err instanceof Error ? err : new Error(String(err)), { [HEAP_GROWTH]: grew });
+    }
+    return { value, grew: settle() };
+  }
+}
+
+/** A job grew the shared heap from `from` to `to` bytes while its threads ran. */
+export interface HeapGrowth {
+  from: number;
+  to: number;
+}
+
+const HEAP_GROWTH = Symbol('heap growth during the job');
+
+/** The heap growth SharedHeapReserve.job() attached to the exception a job threw, if any. */
+export function heapGrowthOf(err: unknown): HeapGrowth | null {
+  if (!err || typeof err !== 'object') return null;
+  return (err as { [HEAP_GROWTH]?: HeapGrowth })[HEAP_GROWTH] ?? null;
+}
+
+const mb = (bytes: number) => `${Math.round(bytes / 1024 ** 2)} MB`;
+
+/** Words for a job that grew the shared heap while its threads ran: the hazard SharedHeapReserve avoids. */
+export function heapGrowthDetail(growth: HeapGrowth): string {
+  return `the engine's shared heap grew from ${mb(growth.from)} to ${mb(growth.to)} while its threads ran (a V8 hazard: host/src/bridge.ts SharedHeapReserve)`;
+}
+
 /**
  * Turns an exception thrown by the engine itself (a wasm trap, abort(), a failed allocation) into
  * the protocol's code 2 (out of memory) or 1 (crash). After either, the module is unusable.
@@ -491,8 +633,11 @@ export function engineHeap(engine: OrcaEngineModule | null, memory: WebAssembly.
 export function engineFailure(err: unknown, heap?: { bytes: number; maxBytes?: number } | null): EngineError {
   const detail = withoutAssertionsHint(messageOf(err));
   const heapFull = !!heap?.maxBytes && heap.bytes >= 0.9 * heap.maxBytes;
-  if (OUT_OF_MEMORY.test(detail) || heapFull) return { code: 2, message: `The slicing engine ran out of memory (${detail}).` };
-  return { code: 1, message: `The slicing engine crashed: ${detail}` };
+  // Said with the error, so that a crash the reserve did not prevent is recognised (SharedHeapReserve).
+  const growth = heapGrowthOf(err);
+  const why = growth ? { detail: heapGrowthDetail(growth) } : {};
+  if (OUT_OF_MEMORY.test(detail) || heapFull) return { code: 2, message: `The slicing engine ran out of memory (${detail}).`, ...why };
+  return { code: 1, message: `The slicing engine crashed: ${detail}`, ...why };
 }
 
 /**
@@ -512,15 +657,4 @@ export function startFailure(err: unknown): { code: number; message: string; det
   return { code: 1, message: detail || 'The engine stopped while starting.' };
 }
 
-/**
- * Whether this engine can run 'mt64': a module with a shared 64-bit memory validates (WebAssembly Memory64 with
- * threads: Chrome 133, Firefox 134, Node 24; not Safari). The module is the header, then a memory section with one
- * memory whose limits flags are 0x07 (has a maximum, shared, 64-bit), initial 1 page, maximum 1 page.
- */
-export function memory64Supported(): boolean {
-  try {
-    return WebAssembly.validate(new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x04, 0x01, 0x07, 0x01, 0x01]));
-  } catch {
-    return false;
-  }
-}
+export { memory64Supported } from './memory64.ts';

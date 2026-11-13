@@ -24,7 +24,7 @@ on:
 
 concurrency:
   group: build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -86,22 +86,9 @@ jobs:
       - name: The protocol package packs
         run: mkdir -p out && npm run pack:protocol -- out && tar -tzf out/muon3d-slicer-engine-protocol-*.tgz | grep -q package/dist/index.d.ts
 
-  transfer:
-    needs: changes
-    if: needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Create a private draft for inter-job files
-        run: gh release create "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "CI transfer $GITHUB_RUN_ID" --notes "Temporary files for this workflow run."
-
   engine:
-    needs: [changes, transfer]
-    # The three-variant matrix is intentionally not automatic on pull requests (public-repo CI policy).
-    if: needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.wasm == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     strategy:
@@ -110,7 +97,6 @@ jobs:
         variant: [st, mt, mt64]
     env:
       VARIANT: ${{ matrix.variant }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - name: OrcaSlicer at the pin
@@ -166,23 +152,21 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libarchive-tools
           bash engine/deps/fetch-deps.sh > /dev/null
           node tools/release/third-party-notices.mjs --check
-      - name: Transfer the engine through the private draft
-        run: |
-          tar -czf "engine-${VARIANT}.tgz" -C dist "engine-${VARIANT}.mjs" "engine-${VARIANT}.wasm" manifest.json
-          gh release upload "ci-$GITHUB_RUN_ID" "engine-${VARIANT}.tgz" --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: engine-${{ matrix.variant }}
+          path: |
+            dist/engine-${{ matrix.variant }}.*
+            dist/manifest.json
+          retention-days: 2
+          if-no-files-found: error
 
   runtime:
-    needs: [changes, transfer, engine]
-    if: always() && needs.changes.result == 'success' && (needs.transfer.result == 'success' || needs.transfer.result == 'skipped') && (needs.engine.result == 'success' || needs.engine.result == 'skipped')
+    needs: [changes, engine]
+    if: always() && needs.changes.result == 'success' && (needs.engine.result == 'success' || needs.engine.result == 'skipped')
     runs-on: ubuntu-24.04
-    permissions:
-      # GitHub downgrades this token to read-only for pull requests from forks. Write access is used only by
-      # the main-push transfer step below; no write-token step runs pull-request code.
-      contents: write
     env:
-      # Pull requests deliberately exercise the already-published edge engine, even when their changes would
-      # cause main to rebuild it. This avoids giving fork code a release hand-off and is the accepted PR coverage gap.
-      WASM_BUILT: ${{ needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request' }}
+      WASM_BUILT: ${{ needs.changes.outputs.wasm }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -193,14 +177,10 @@ jobs:
       - run: npm ci
       - name: The engine built above
         if: env.WASM_BUILT == 'true'
-        run: |
-          mkdir -p artifacts
-          gh release download "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --pattern 'engine-*.tgz' --dir artifacts
-          for archive in artifacts/*.tgz; do
-            variant=${archive##*/engine-}; variant=${variant%.tgz}
-            mkdir -p "artifacts/engine-$variant"
-            tar -xzf "$archive" -C "artifacts/engine-$variant"
-          done
+        uses: actions/download-artifact@v8
+        with:
+          pattern: engine-*
+          path: artifacts
       - name: Put the engine into dist/
         run: |
           if [[ $WASM_BUILT == true ]]; then
@@ -268,9 +248,15 @@ jobs:
               -cf - "muon3d-slicer-$name-$version" | gzip -n -9 > "muon3d-slicer-$name-$suffix.tgz"
           done
           sha256sum muon3d-slicer-engine-$suffix.tgz muon3d-slicer-profiles-$suffix.tgz | tee SHA256SUMS
-      - name: Transfer the edge files through the private draft
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: gh release upload "ci-$GITHUB_RUN_ID" muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runtime
+          path: |
+            muon3d-slicer-engine-*.tgz
+            muon3d-slicer-profiles-*.tgz
+            SHA256SUMS
+          retention-days: 2
+          if-no-files-found: error
 
   edge:
     needs: runtime
@@ -288,8 +274,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Download the runtime from the private draft
-        run: gh release download "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"
+      - uses: actions/download-artifact@v8
+        with:
+          name: runtime
       - uses: actions/attest@v4
         with:
           subject-checksums: SHA256SUMS
@@ -317,15 +304,3 @@ jobs:
             gh release create edge muon3d-slicer-engine-edge.tgz muon3d-slicer-profiles-edge.tgz SHA256SUMS --repo "$repo" --prerelease --latest=false \
               --title "edge (main at ${GITHUB_SHA:0:10})" --notes-file notes.md
           fi
-
-  cleanup:
-    needs: [transfer, engine, runtime, edge]
-    if: always() && needs.transfer.result == 'success'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Remove the private transfer draft
-        run: gh release delete "ci-$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
