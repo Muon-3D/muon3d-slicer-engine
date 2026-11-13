@@ -222,6 +222,8 @@ jobs:
           done
       - name: OrcaSlicer at the pin (the profile tree)
         run: bash engine/scripts/get-orca.sh
+      - name: The settings catalogue is up to date
+        run: npm run gen:settings -- --check
       - name: Profile set, and the public profile checks (docs/PROFILES.md)
         run: |
           version=${{ steps.assemble.outputs.version }}
