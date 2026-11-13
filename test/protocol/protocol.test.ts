@@ -158,6 +158,25 @@ describe('EngineConnection', () => {
     await assert.rejects(open, /the worker exited/);
     await assert.rejects(connection.request('status', {}), /the worker exited/);
   });
+
+  test('a synchronous transport send failure rejects only that call and removes it from the pending requests', async () => {
+    const end = manual();
+    const connection = new EngineConnection(end.transport);
+    const originalSend = end.transport.send;
+    end.transport.send = () => {
+      throw new Error('structured clone refused the request');
+    };
+    let lateProgress = 0;
+    const failed = connection.call('status', {}, { onProgress: () => lateProgress++ });
+    await assert.rejects(failed.result, /structured clone refused/);
+    end.deliver({ v: 2, id: failed.id, kind: 'progress', progress: { percent: 1, message: 'late' } });
+    assert.equal(lateProgress, 0);
+
+    end.transport.send = originalSend;
+    const next = connection.call('status', {});
+    end.deliver({ v: 2, id: next.id, kind: 'result', result: { state: 'idle' } });
+    assert.deepEqual(await next.result, { state: 'idle' });
+  });
 });
 
 test('a browser Worker, a MessagePort and a worker scope are PostMessageEndpoints (types only)', () => {
