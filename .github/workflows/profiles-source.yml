@@ -1,0 +1,49 @@
+# The M1 profiles have one home: Muon-3D/OrcaSlicer, branch muon3d-m1, the desktop build's resources/profiles/Muon3D.
+# profiles/muon3d here is its copy at a pinned commit (tools/profiles/sync-muon3d.ts; build.yml checks the copy on
+# every change). This job notices when muon3d-m1's profiles move on and this repository has not followed: it fails,
+# naming the commit to pin, so a change made for the desktop slicer reaches the web slicer too.
+#
+# Light: no engine build, no full OrcaSlicer checkout. Only the pinned OrcaSlicer's profile tool and filament library
+# (what shaping the copy needs), fetched sparsely.
+name: M1 profiles follow muon3d-m1
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  follow:
+    name: profiles/muon3d is muon3d-m1's Muon3D folder
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The pinned OrcaSlicer's profile tool and filament library
+        run: |
+          set -euo pipefail
+          pin=$(git ls-tree HEAD orca | awk '{print $3}')
+          mkdir orca && cd orca
+          git init -q
+          git remote add origin https://github.com/Muon-3D/OrcaSlicer.git
+          git config core.sparseCheckout true
+          printf '/scripts/orca_profile_tool.py\n/resources/profiles/OrcaFilamentLibrary/\n/resources/profiles/OrcaFilamentLibrary.json\n' > .git/info/sparse-checkout
+          git fetch -q --depth 1 --filter=blob:none origin "$pin"
+          git checkout -q FETCH_HEAD
+      - name: muon3d-m1's Muon3D folder, as this repository would copy it
+        run: |
+          if node tools/profiles/sync-muon3d.ts --check --latest 2> err.txt; then
+            echo "profiles/muon3d follows muon3d-m1." >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat err.txt
+            { echo '### muon3d-m1 has M1 profile changes the web slicer does not have'; echo; echo '```'; cat err.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
