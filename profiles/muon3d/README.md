@@ -28,9 +28,12 @@ offered with each printer):
    now has its own.
 5. **Shape.** Every file is as `orca_profile_tool.py normalize` and `update-index` write it.
 
-TODO: take the M1 start G-code change of <https://github.com/Muon-3D/OrcaSlicer/pull/7> (vendor version
-`02.03.00.13`: lift to Z6 after the purge line, before the first travel) once that pull request is reviewed and
-merged, and bump `version` in `Muon3D.json` with it. Until then the version stays `02.03.00.11`.
+Contract `muon.m1-geometry` v3 (KAN-3820, vendor version `02.03.00.12`): the M1's front no-go box is now the
+rectangle x 45-128, y 0-30 (`bed_exclude_volumes` `0..5;128x0,45x0,45x30,128x30`, Harry's re-measure of 11 Nov 2026),
+and the start G-code lifts to Z6 after the purge line, before the first travel (the change of
+<https://github.com/Muon-3D/OrcaSlicer/pull/7>, with the box in its comment), so the first travel from the purge at
+(130, 1) does not run inside the box at Z0.1. The Z of the volume stays 0..5 as before (the contract gives no height
+for the box; `traverse_z` 6 is the lift of a bed-mesh probe travel in Klipper).
 
 ## Changing them
 
