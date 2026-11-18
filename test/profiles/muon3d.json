@@ -1,12 +1,12 @@
 {
   "vendor": "Muon3D",
-  "version": "02.03.00.11",
+  "version": "02.03.00.16",
   "presets": {
     "machine": {
-      "Muon3D M1 0.2 nozzle": "23b5a2b88c82142249a6cbd3912a22323ebb0fbeace9c82d76d3399c33e614b3",
-      "Muon3D M1 0.4 nozzle": "59533bdc68febc95e18a1e990f1afb2a3b007c8375fad789ea81d4ec978ee1a8",
-      "Muon3D M1 0.6 nozzle": "7ec1d4d369ceea9755db48b0a0ea623ac1a6413741a066733d7bcee1d5b416ce",
-      "Muon3D M1 0.8 nozzle": "f76a6bf4be83ae79d7c5d158dcac6906bead813c9383e64a8ca20908caf1a174"
+      "Muon3D M1 0.2 nozzle": "1bbf2cf18e15838513eaee59090e7472f1dd8b4d6acc6e479511c4e5d5cdf4fb",
+      "Muon3D M1 0.4 nozzle": "5358bf13497c9829fe6bcbe3de31ea7cd8a33ed05bff9c43528794892982976d",
+      "Muon3D M1 0.6 nozzle": "38b21e14642c7c2a87612f55508d59716c05b4a46d4a2ff887c147385a3e76e4",
+      "Muon3D M1 0.8 nozzle": "91b64dd791f46a4cd0cd0aa5addd4b7bc3e4eae5ec72b575e18e7230cf247d46"
     },
     "process": {
       "0.08mm Extra Fine @Muon3D M1": "cf3410eb5851d18e293ce6383469c08ac62a80e6830b92d402957ae28e410f94",
@@ -21,14 +21,14 @@
       "0.56mm Extra Draft @Muon3D M1": "0c6195379d09aa37758ce054e22a67c20b707dd54b953a5f3939ed492c4f41b9"
     },
     "filament": {
-      "Generic ASA @Muon3D M1": "bb2bba7dd268f12839d5062cdcaba2e58c5d7694138964fe891531407c2a3285",
-      "Generic PETG @Muon3D M1": "b1dc45c387e5a08939a062e5a3082eb01b31847046b85467d8a38182f3c200c2",
-      "Generic PLA @Muon3D M1": "8d3f870e290481ce2939c99f994d07113b04cada697e4de910c892161de6d3a9",
-      "Generic PLA High Speed @Muon3D M1": "98d57a5736583ff3d14d4d609a79d079c131529b899faa30141f6df0b08297e0",
-      "Generic PLA Matte @Muon3D M1": "26c08268512c3f6ad6619ea7527f8b854134547b8947d4519d5822aee888e41b",
-      "Generic PLA Silk @Muon3D M1": "04c511dfe965625e24f1cbca0675724542d2e63be29aee445758c26ca167bc69",
-      "Generic TPU @Muon3D M1": "7ac6346ede094e43dde91d3309ffbf66ff3326f1c40f7eca9df484941310d092",
-      "Polyflex TPU90 @Muon3D M1": "703ce0a5f8a223604863e93866631020b85834160f1409439c42c8b28eff23b5"
+      "Generic ASA @Muon3D M1": "83ecbe91b4f0b2852604c5a1f9fa70f46fd26cbf25a5fe472b0528e4d665e054",
+      "Generic PETG @Muon3D M1": "1ac83533cb5c47b32629c4f964b4d36cf919f32aa483baa1d8a6c83278d52ce6",
+      "Generic PLA @Muon3D M1": "d047f5e5f51331529c3d9fa5eb2b1c3af30c64ade824f1bc342cbdd2cf70e285",
+      "Generic PLA High Speed @Muon3D M1": "08ba7a54631a7ba0eaa0b83a83ea7bbc39282eae492f692bf6bdc87dc7c9a197",
+      "Generic PLA Matte @Muon3D M1": "4cd67fcb123b95b0bdafb42150b090d2888f1b0999811ce077bb76e8c6239df1",
+      "Generic PLA Silk @Muon3D M1": "988dc0f31204f5497e4656d7683407c9c20470100f6fa8a3f075f6249f21beec",
+      "Generic TPU @Muon3D M1": "e3779b8fd4042c49b29ace955dfb625dcf5fc060fcafd2958b46dea18eba47a6",
+      "Polyflex TPU90 @Muon3D M1": "acdb076fc0a399833d880e8bfc0aa01defb8e9d10711d7daf2cdcca3a682d141"
     }
   },
   "compatibility": {
