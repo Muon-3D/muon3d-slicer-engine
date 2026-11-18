@@ -200,10 +200,11 @@ CI builds and checks a set on every pull request and push (`build.yml`), and als
 ## 9. The Muon3D overlay
 
 [`profiles/muon3d`](../profiles/muon3d) holds the Muon3D vendor in OrcaSlicer's layout (`Muon3D.json` and
-`Muon3D/`); a set takes it instead of the Muon3D folder of the OrcaSlicer tree. To change it: edit the files, keep them
-in the shape OrcaSlicer's `scripts/orca_profile_tool.py` writes (`normalize`, `update-index`, `generate-id`), build
-and check a set, and update `test/profiles/muon3d.json` with `--write-expect` when the M1's settings are meant to
-change. [`profiles/muon3d/README.md`](../profiles/muon3d/README.md) says where the files came from.
+`Muon3D/`); a set takes it instead of the Muon3D folder of the OrcaSlicer tree. It is a copy, not a source: the M1
+profiles are maintained in Muon-3D/OrcaSlicer (`muon3d-m1`, the desktop build), and `tools/profiles/sync-muon3d.ts`
+copies them at the pinned commit (`tools/profiles/muon3d-source.json`), with only the exclusion zone moved to the
+engine's option. CI fails when the copy is not that, and daily when `muon3d-m1` has moved on.
+[`profiles/muon3d/README.md`](../profiles/muon3d/README.md) says how to change the M1 profiles.
 
 ### 9.1 Gravity
 
