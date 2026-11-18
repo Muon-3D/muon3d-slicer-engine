@@ -225,6 +225,9 @@ jobs:
       - name: Profile set, and the public profile checks (docs/PROFILES.md)
         run: |
           version=${{ steps.assemble.outputs.version }}
+          # The Muon3D overlay is the copy of the desktop build's M1 profiles (Muon-3D/OrcaSlicer muon3d-m1) at the
+          # commit tools/profiles/muon3d-source.json pins, with only the documented change (profiles/muon3d/README.md).
+          node tools/profiles/sync-muon3d.ts --check
           # The engine tests' preset fixtures are what profiles.resolve makes of the tree.
           node tools/profiles/fixtures.ts --check
           # The set (it runs OrcaSlicer's profile validator on the whole tree, and refuses an overlay key the engine does
