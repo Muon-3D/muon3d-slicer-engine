@@ -403,7 +403,7 @@ describe(`engine-${variant}`, { skip: engineSkip }, () => {
 
   test('cubes beside the notch slice, and the skirt crossing it is only a warning', (t) => {
     const sliced = slice(engine, presets, [
-      { name: 'Left.stl', positions: cube([40, 15]) },
+      { name: 'Left.stl', positions: cube([25, 15]) },
       { name: 'Right.stl', positions: cube([160, 15]) },
     ]);
     report(t, 'notch neighbours', sliced);
@@ -560,8 +560,8 @@ describe(`engine-${variant}`, { skip: engineSkip }, () => {
     assert.equal(hit.extruder, 0);
     assert.ok(hit.triangles.length > 0 && hit.triangles.length % 9 === 0, 'the intersecting surface is returned');
     const hitBox = bounds(hit.triangles);
-    // The notch volume: x 80.5-119.5, y 0-28.6, z 0-5.
-    assert.ok(hitBox.min[0] >= 80.4 && hitBox.max[0] <= 119.6 && hitBox.max[1] <= 28.7 && hitBox.max[2] <= 5.01, JSON.stringify(hitBox));
+    // The notch volume (muon.m1-geometry v3): x 45-128, y 0-30, z 0-6.
+    assert.ok(hitBox.min[0] >= 44.9 && hitBox.max[0] <= 128.1 && hitBox.max[1] <= 30.1 && hitBox.max[2] <= 6.01, JSON.stringify(hitBox));
 
     // Moving objects reuses their loaded meshes; moving the notch cube out clears its hit.
     started = performance.now();
