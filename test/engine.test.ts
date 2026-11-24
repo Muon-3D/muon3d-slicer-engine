@@ -560,8 +560,8 @@ describe(`engine-${variant}`, { skip: engineSkip }, () => {
     assert.equal(hit.extruder, 0);
     assert.ok(hit.triangles.length > 0 && hit.triangles.length % 9 === 0, 'the intersecting surface is returned');
     const hitBox = bounds(hit.triangles);
-    // The notch volume: x 80.5-119.5, y 0-28.6, z 0-5.
-    assert.ok(hitBox.min[0] >= 80.4 && hitBox.max[0] <= 119.6 && hitBox.max[1] <= 28.7 && hitBox.max[2] <= 5.01, JSON.stringify(hitBox));
+    // The no-go box: x 75-125, y 0-34, z 0-5.
+    assert.ok(hitBox.min[0] >= 74.9 && hitBox.max[0] <= 125.1 && hitBox.max[1] <= 34.1 && hitBox.max[2] <= 5.01, JSON.stringify(hitBox));
 
     // Moving objects reuses their loaded meshes; moving the notch cube out clears its hit.
     started = performance.now();
