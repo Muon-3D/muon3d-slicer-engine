@@ -12,66 +12,66 @@
  "plates": {
   "m1-cube": {
    "st": {
-    "sha256": "7f7a7a9db292ab92a136766b83a10caf18810aa81880180291c1edc3fa6b2416",
-    "bytes": 319401,
+    "sha256": "a256971ed8a0fe036b4f1db66c341fad4f6820ea2c3f00f2f18de0eff28ff151",
+    "bytes": 320408,
     "layers": 100,
-    "printTimeText": "8m 0s",
-    "filamentMm": 1365.96
+    "printTimeText": "8m 12s",
+    "filamentMm": 1396.05
    },
    "mt": {
-    "sha256": "7f7a7a9db292ab92a136766b83a10caf18810aa81880180291c1edc3fa6b2416",
-    "bytes": 319401,
+    "sha256": "a256971ed8a0fe036b4f1db66c341fad4f6820ea2c3f00f2f18de0eff28ff151",
+    "bytes": 320408,
     "layers": 100,
-    "printTimeText": "8m 0s",
-    "filamentMm": 1365.96
+    "printTimeText": "8m 12s",
+    "filamentMm": 1396.05
    }
   },
   "m1-object-settings": {
    "st": {
-    "sha256": "0435a1790c74ecfd1b9d8e3a6b1fa2d143f6d8693d21358c423ccf705a1d0a33",
-    "bytes": 892220,
+    "sha256": "0d6b1abadaef9a8289c7495019c31532a29866f5534787ab61eaca38cbe1d9f1",
+    "bytes": 893237,
     "layers": 199,
-    "printTimeText": "19m 43s",
-    "filamentMm": 3096.32
+    "printTimeText": "19m 55s",
+    "filamentMm": 3126.41
    },
    "mt": {
-    "sha256": "0435a1790c74ecfd1b9d8e3a6b1fa2d143f6d8693d21358c423ccf705a1d0a33",
-    "bytes": 892220,
+    "sha256": "0d6b1abadaef9a8289c7495019c31532a29866f5534787ab61eaca38cbe1d9f1",
+    "bytes": 893237,
     "layers": 199,
-    "printTimeText": "19m 43s",
-    "filamentMm": 3096.32
+    "printTimeText": "19m 55s",
+    "filamentMm": 3126.41
    }
   },
   "m1-two-cubes": {
    "st": {
-    "sha256": "f6f89c035b384c3916cbf94d41a9ab2f28edea03fba13526b7c5b2d36fa56239",
-    "bytes": 389405,
+    "sha256": "831afd321d56db6a254c3e6711cc3c62c89c1567e727ca08f8d2b11096b00e4b",
+    "bytes": 390422,
     "layers": 75,
-    "printTimeText": "7m 18s",
-    "filamentMm": 1370.77
+    "printTimeText": "7m 30s",
+    "filamentMm": 1400.86
    },
    "mt": {
-    "sha256": "f6f89c035b384c3916cbf94d41a9ab2f28edea03fba13526b7c5b2d36fa56239",
-    "bytes": 389405,
+    "sha256": "831afd321d56db6a254c3e6711cc3c62c89c1567e727ca08f8d2b11096b00e4b",
+    "bytes": 390422,
     "layers": 75,
-    "printTimeText": "7m 18s",
-    "filamentMm": 1370.77
+    "printTimeText": "7m 30s",
+    "filamentMm": 1400.86
    }
   },
   "m1-cylinder-arcs": {
    "st": {
-    "sha256": "07d7cb10457a229468d98d61a4f8b5dab0952a95cd0a6e5d4f4d3e0311cabce1",
-    "bytes": 609552,
+    "sha256": "2549ba27f4be499b59a916dfebee76ef592dfe62aab6c6a2762955dacac3e4e7",
+    "bytes": 610569,
     "layers": 50,
-    "printTimeText": "4m 57s",
-    "filamentMm": 1167.99
+    "printTimeText": "5m 9s",
+    "filamentMm": 1198.08
    },
    "mt": {
-    "sha256": "07d7cb10457a229468d98d61a4f8b5dab0952a95cd0a6e5d4f4d3e0311cabce1",
-    "bytes": 609552,
+    "sha256": "2549ba27f4be499b59a916dfebee76ef592dfe62aab6c6a2762955dacac3e4e7",
+    "bytes": 610569,
     "layers": 50,
-    "printTimeText": "4m 57s",
-    "filamentMm": 1167.99
+    "printTimeText": "5m 9s",
+    "filamentMm": 1198.08
    }
   },
   "x1c-box": {
@@ -100,66 +100,66 @@
   "plates": {
    "m1-t-blockers-tree": {
     "st": {
-     "sha256": "a7857e3c3640dceb879558e045dec7f8e246ec1430e22015eba193f8911a16bf",
-     "bytes": 285416,
+     "sha256": "5514c324143e4ca7412f638c967e72091b6cf479020238e0adef5281bdc141f5",
+     "bytes": 286433,
      "layers": 75,
-     "printTimeText": "9m 26s",
-     "filamentMm": 1303.16
+     "printTimeText": "9m 39s",
+     "filamentMm": 1333.25
     },
     "mt": {
-     "sha256": "a7857e3c3640dceb879558e045dec7f8e246ec1430e22015eba193f8911a16bf",
-     "bytes": 285416,
+     "sha256": "5514c324143e4ca7412f638c967e72091b6cf479020238e0adef5281bdc141f5",
+     "bytes": 286433,
      "layers": 75,
-     "printTimeText": "9m 26s",
-     "filamentMm": 1303.16
+     "printTimeText": "9m 39s",
+     "filamentMm": 1333.25
     }
    },
    "m1-t-enforcers-normal": {
     "st": {
-     "sha256": "07185e58083fcb0ed5d5b02bb416a35a03d7889d9b7c37831f08eaa5a76a561b",
-     "bytes": 343040,
+     "sha256": "f7a7b772d526669eec2be8786f2e9a2166827af32f3c66ffeca0aa383497dd31",
+     "bytes": 344058,
      "layers": 99,
-     "printTimeText": "10m 25s",
-     "filamentMm": 1669.39
+     "printTimeText": "10m 37s",
+     "filamentMm": 1699.48
     },
     "mt": {
-     "sha256": "07185e58083fcb0ed5d5b02bb416a35a03d7889d9b7c37831f08eaa5a76a561b",
-     "bytes": 343040,
+     "sha256": "f7a7b772d526669eec2be8786f2e9a2166827af32f3c66ffeca0aa383497dd31",
+     "bytes": 344058,
      "layers": 99,
-     "printTimeText": "10m 25s",
-     "filamentMm": 1669.39
+     "printTimeText": "10m 37s",
+     "filamentMm": 1699.48
     }
    },
    "m1-t-enforcers-tree": {
     "st": {
-     "sha256": "4086d07f36be8a854f9e6c1e334c3d42c023c0c12e7a19a6741c5e9d34d20316",
-     "bytes": 1075261,
+     "sha256": "32ab21c33ac6fbb059cee2866d9b52a7b3e312d28cb7191970cf612ad4fa991d",
+     "bytes": 1076290,
      "layers": 75,
-     "printTimeText": "11m 37s",
-     "filamentMm": 1579.45
+     "printTimeText": "11m 49s",
+     "filamentMm": 1609.54
     },
     "mt": {
-     "sha256": "4086d07f36be8a854f9e6c1e334c3d42c023c0c12e7a19a6741c5e9d34d20316",
-     "bytes": 1075261,
+     "sha256": "32ab21c33ac6fbb059cee2866d9b52a7b3e312d28cb7191970cf612ad4fa991d",
+     "bytes": 1076290,
      "layers": 75,
-     "printTimeText": "11m 37s",
-     "filamentMm": 1579.45
+     "printTimeText": "11m 49s",
+     "filamentMm": 1609.54
     }
    },
    "m1-cylinder-seam": {
     "st": {
-     "sha256": "55ca5f9fd736ccca89d4b272e8423b66eaca8b9cfd02d69e19ec10e6740ad808",
-     "bytes": 650687,
+     "sha256": "f37c071f9f80990ccfa003511b8fdf09490cc1296daa58b4194e059f1ef1b97b",
+     "bytes": 651704,
      "layers": 50,
-     "printTimeText": "4m 57s",
-     "filamentMm": 1168.02
+     "printTimeText": "5m 9s",
+     "filamentMm": 1198.11
     },
     "mt": {
-     "sha256": "55ca5f9fd736ccca89d4b272e8423b66eaca8b9cfd02d69e19ec10e6740ad808",
-     "bytes": 650687,
+     "sha256": "f37c071f9f80990ccfa003511b8fdf09490cc1296daa58b4194e059f1ef1b97b",
+     "bytes": 651704,
      "layers": 50,
-     "printTimeText": "4m 57s",
-     "filamentMm": 1168.02
+     "printTimeText": "5m 9s",
+     "filamentMm": 1198.11
     }
    }
   }
@@ -173,50 +173,50 @@
   "plates": {
    "m1-t-far-block-tree": {
     "st": {
-     "sha256": "ba21cc5c8098b499bd17d5b01d06d9fb9642c35807e6290b19efae425245da8f",
-     "bytes": 3962837,
+     "sha256": "a2737e9eca6701e1894e199ab671ddf30d7293c7bba5ae10f76947d05df254f4",
+     "bytes": 3963855,
      "layers": 220,
-     "printTimeText": "28m 32s",
-     "filamentMm": 3588.58
+     "printTimeText": "28m 44s",
+     "filamentMm": 3618.67
     },
     "mt": {
-     "sha256": "ba21cc5c8098b499bd17d5b01d06d9fb9642c35807e6290b19efae425245da8f",
-     "bytes": 3962837,
+     "sha256": "a2737e9eca6701e1894e199ab671ddf30d7293c7bba5ae10f76947d05df254f4",
+     "bytes": 3963855,
      "layers": 220,
-     "printTimeText": "28m 32s",
-     "filamentMm": 3588.58
+     "printTimeText": "28m 44s",
+     "filamentMm": 3618.67
     }
    },
    "m1-two-t-normal": {
     "st": {
-     "sha256": "283d6744bfaa278af373df4888f2b3acc6036774cbd4e876f424f402d04c7d1f",
-     "bytes": 1255514,
+     "sha256": "a9692cc7bd10464824636d85a03c344edc802641171731e1b7dbdc059a21fed1",
+     "bytes": 1256531,
      "layers": 342,
-     "printTimeText": "38m 48s",
-     "filamentMm": 8053.46
+     "printTimeText": "39m 0s",
+     "filamentMm": 8083.55
     },
     "mt": {
-     "sha256": "283d6744bfaa278af373df4888f2b3acc6036774cbd4e876f424f402d04c7d1f",
-     "bytes": 1255514,
+     "sha256": "a9692cc7bd10464824636d85a03c344edc802641171731e1b7dbdc059a21fed1",
+     "bytes": 1256531,
      "layers": 342,
-     "printTimeText": "38m 48s",
-     "filamentMm": 8053.46
+     "printTimeText": "39m 0s",
+     "filamentMm": 8083.55
     }
    },
    "m1-t-block-tree-hybrid": {
     "st": {
-     "sha256": "9c11810190096d26be8a074059fa523bef78dd5d9af1ad825e88ea1b6f2a05d9",
-     "bytes": 735137,
+     "sha256": "09a93a6ef6a973ca1471ec2d068e89c0feff6b1876ff8f80d4ef69cf1ad21fba",
+     "bytes": 736169,
      "layers": 342,
-     "printTimeText": "22m 0s",
-     "filamentMm": 3814
+     "printTimeText": "22m 13s",
+     "filamentMm": 3844.09
     },
     "mt": {
-     "sha256": "9c11810190096d26be8a074059fa523bef78dd5d9af1ad825e88ea1b6f2a05d9",
-     "bytes": 735137,
+     "sha256": "09a93a6ef6a973ca1471ec2d068e89c0feff6b1876ff8f80d4ef69cf1ad21fba",
+     "bytes": 736169,
      "layers": 342,
-     "printTimeText": "22m 0s",
-     "filamentMm": 3814
+     "printTimeText": "22m 13s",
+     "filamentMm": 3844.09
     }
    }
   }
