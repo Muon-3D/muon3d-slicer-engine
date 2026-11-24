@@ -186,7 +186,7 @@
     ],
     "machine_pause_gcode": "PAUSE",
     "machine_prepare_compensation_time": "260",
-    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] MATERIAL=[filament_type[initial_extruder]] MESH_MIN={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} MESH_MAX={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ALGORITHM=[bed_mesh_algo] PURGE_LANE=1\n\nG90               ; absolute XYZ mode\nM83               ; relative E mode\n\n; KAN-990: purge where the bed mesh probed. PURGE_LANE=1 has PRINT_START plan\n; a lane 6 mm in front of this print (behind it if the front has no room), off the notch,\n; and probes it with the mesh. PURGE_LINE draws the purge along it, or skips\n; it and says so when there was no room. Nothing here moves at purge height.\nSPEED_SLOW_PRE_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\nPURGE_LINE\nSPEED_NORMAL__POST_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\n; Lift clear of the front notch before the first travel. PURGE_LINE ends in its\n; lane at Z0.6, and the first travel goes straight to the first object, so at that\n; height it can cross the notch no-go box (x75-125, y0-34, Z 0..5), which needs\n; Z6 (C2 muon.m1-geometry v2, no_go.traverse_z).\nG1 Z6 F800\n\nM400                           ; wait for all moves to finish before continuing",
+    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] MATERIAL=[filament_type[initial_extruder]] MESH_MIN={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} MESH_MAX={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ALGORITHM=[bed_mesh_algo]\n\nG90               ; absolute XYZ mode\nM83               ; relative E mode\n\n; KAN-990: purge where the bed mesh probed. PURGE_LANE=1 has PRINT_START plan\n; a lane 6 mm in front of this print (behind it if the front has no room), off the notch,\n; and probes it with the mesh. PURGE_LINE draws the purge along it, or skips\n; it and says so when there was no room. Nothing here moves at purge height.\nSPEED_SLOW_PRE_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\nPURGE_LINE\nSPEED_NORMAL__POST_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\n; Lift clear of the front notch before the first travel. PURGE_LINE ends in its\n; lane at Z0.6, and the first travel goes straight to the first object, so at that\n; height it can cross the notch no-go box (x75-125, y0-34, Z 0..5), which needs\n; Z6 (C2 muon.m1-geometry v2, no_go.traverse_z).\nG1 Z6 F800\n\nM400                           ; wait for all moves to finish before continuing",
     "machine_tool_change_time": "0",
     "machine_unload_filament_time": "0",
     "manual_filament_change": "0",
@@ -318,7 +318,7 @@
     "use_3mf": "0",
     "use_firmware_retraction": "0",
     "use_relative_e_distances": "1",
-    "version": "2.3.0.18",
+    "version": "2.3.0.19",
     "wait_for_temp_on_wipe_tower": "0",
     "wipe": [
       "0"
@@ -795,7 +795,7 @@
     "tree_support_top_rate": "30%",
     "tree_support_wall_count": "0",
     "unsupported_wall_last": "0",
-    "version": "2.3.0.18",
+    "version": "2.3.0.19",
     "wall_direction": "ccw",
     "wall_distribution_count": "1",
     "wall_generator": "arachne",
@@ -1296,7 +1296,7 @@
       "textured_plate_temp_initial_layer": [
         "55"
       ],
-      "version": "2.3.0.18",
+      "version": "2.3.0.19",
       "volumetric_speed_coefficients": [
         ""
       ],
