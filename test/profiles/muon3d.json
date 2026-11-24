@@ -1,12 +1,12 @@
 {
   "vendor": "Muon3D",
-  "version": "02.03.00.21",
+  "version": "02.03.00.22",
   "presets": {
     "machine": {
-      "Muon3D M1 0.2 nozzle": "d2cc8c42b7f050d20c2380343c97fa44cc1e69f8f636bc8ad2dafd44cd4a608e",
-      "Muon3D M1 0.4 nozzle": "bb19f0019a2b6a0110d94acd613fa7f5fd81f5c18f2cadf894db79c95c88de29",
-      "Muon3D M1 0.6 nozzle": "02ca0ff12ee6f628b48b501df2692c1ffdd0eeb2c645b2a6a0baa823e33b5fb1",
-      "Muon3D M1 0.8 nozzle": "f7dd1b2de65ffc339e6852d2d8c0dbf79fc096abefaa18a8698fb1096b82a58d"
+      "Muon3D M1 0.2 nozzle": "671014e4abf4c41f625a68e1436f3c283909c7e77fab8ad19eeb896c33452a77",
+      "Muon3D M1 0.4 nozzle": "c4d1818d24dee3afd679738361bd45d2aae684c47a234081a800d10bb536db65",
+      "Muon3D M1 0.6 nozzle": "a4d72d7eed0d651e38b374fd97b7088c43d2d4189ab1b0e7f487dfe55f3d122c",
+      "Muon3D M1 0.8 nozzle": "e9a5e507cf9af5e65e8e7f1250be91c331c59049ce3fe4d7e5f36df4cc8641b6"
     },
     "process": {
       "0.08mm Extra Fine @Muon3D M1": "cf3410eb5851d18e293ce6383469c08ac62a80e6830b92d402957ae28e410f94",
