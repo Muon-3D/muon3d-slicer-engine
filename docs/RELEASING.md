@@ -45,6 +45,26 @@ If a job fails before `publish`, nothing is public but the tag and possibly a **
 `main` and release the next patch version; a draft left behind can be deleted. (Re-running the workflow for the same
 tag replaces its draft; it refuses to touch a published release.)
 
+## Profiles-only releases
+
+A change to the profiles alone (`profiles/muon3d` synced from the fork, with its expectations, fixtures and goldens)
+does not need the engine built again. Release it as **`v<engine version>.p<n>`** on top of the engine's release,
+e.g. `v0.6.0-m1.9.p1`, then `.p2`, and so on; the next engine change gets a new engine version as usual.
+
+1. Merge the profile change without touching `package.json`: it keeps the engine's version. Nothing the engine is
+   built from may change: `engine/`, `host/`, `packages/`, `data/`, `package.json`, `package-lock.json`.
+2. Tag and push: `git tag v0.6.0-m1.9.p1 && git push origin v0.6.0-m1.9.p1`.
+3. **`Profiles release`** (`.github/workflows/profiles-release.yml`, a few minutes) checks the rule above against
+   the engine's tag, downloads that release's runtime and checks it against its `SHA256SUMS`, builds the set with it
+   (`--set 0.6.0-m1.9.p1`), runs the same checks as a full release (`fixtures.ts --check`, `check.ts --expect`), checks
+   that the set pairs with the runtime, and publishes a release with the set, `SHA256SUMS` and an attestation, not
+   marked latest. `Release` ignores these tags.
+
+The set's index names the engine release it was built with (`engine.version`, the Orca commit and the options hash),
+so a client pins it beside that engine (in the web slicer: `npm run fetch:profiles -- --pin 0.6.0-m1.9.p1`, which
+records the engine in `profiles.lock.json`). Its `source.commit` is the profiles release's commit, later than the
+runtime's `build.engineCommit`.
+
 ## What a release carries
 
 | Asset | What |

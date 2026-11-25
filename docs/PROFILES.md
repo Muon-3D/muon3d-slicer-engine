@@ -165,8 +165,10 @@ engine's loader. A client uses a set only with the engine its index names: `inde
 `config.definitions` result as JSON text. The runtime and the set of a release are built from the same commit
 (`index.source.commit` is the runtime manifest's `build.engineCommit`).
 
-A fix to the Muon3D profiles alone needs no new engine build: it is a new release whose engine is rebuilt byte for
-byte, with a new set.
+A fix to the profiles alone needs no new engine: it is a **profiles-only release** `v<engine version>.p<n>`, a set
+built with that engine release's own runtime, whose index names that release (`engine.version` too). Its
+`source.commit` is later than the runtime's `build.engineCommit`; nothing the engine is built from may differ between
+the two (`docs/RELEASING.md`, "Profiles-only releases").
 
 ## 8. Building and checking a set
 
