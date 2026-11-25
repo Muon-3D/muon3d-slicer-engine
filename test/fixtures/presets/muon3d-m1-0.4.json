@@ -13,7 +13,7 @@
     "bed_custom_texture": "",
     "bed_exclude_area": [],
     "bed_exclude_volume_mode": "shared",
-    "bed_exclude_volumes": "0..6;80.5x0,80.5x4.509,80.504x9.089,80.567x10.955,80.85x13.014,81.467x15.098,82.447x17.045,83.753x18.748,85.351x20.17,87.1x21.227,89.021x21.972,90.993x22.395,92.874x22.56,94.499x22.584,105.501x22.584,107.235x22.555,109.244x22.36,111.336x21.861,113.344x20.998,115.134x19.794,116.651x18.289,118.052x16.166,118.972x13.764,119.403x11.314,119.496x9.089,119.5x3.263,119.5x0|0..0.01;0x0,0.843x0,0.603x0.58,0.341x1.412,0.152x2.264,0.038x3.128,0x4|0..0.01;200x0,200x4,199.962x3.128,199.848x2.264,199.659x1.412,199.397x0.58,199.157x0|0..0.01;200x174,190x174,190.872x173.962,191.736x173.848,192.588x173.659,193.42x173.397,194.226x173.063,195x172.66,195.736x172.192,196.428x171.66,197.071x171.071,197.66x170.428,198.192x169.736,198.66x169,199.063x168.226,199.397x167.42,199.659x166.588,199.848x165.736,199.962x164.872,200x164|0..0.01;0x174,0x164,0.038x164.872,0.152x165.736,0.341x166.588,0.603x167.42,0.937x168.226,1.34x169,1.808x169.736,2.34x170.428,2.929x171.071,3.572x171.66,4.264x172.192,5x172.66,5.774x173.063,6.58x173.397,7.412x173.659,8.264x173.848,9.128x173.962,10x174|0..0.01;0x174,200x174,200x180,0x180",
+    "bed_exclude_volumes": "0..6;80.5x0,80.5x4.509,80.504x9.089,80.567x10.955,80.85x13.014,81.467x15.098,82.447x17.045,83.753x18.748,85.351x20.17,87.1x21.227,89.021x21.972,90.993x22.395,92.874x22.56,94.499x22.584,105.501x22.584,107.235x22.555,109.244x22.36,111.336x21.861,113.344x20.998,115.134x19.794,116.651x18.289,118.052x16.166,118.972x13.764,119.403x11.314,119.496x9.089,119.5x3.263,119.5x0|0..0.01;0x0,0.843x0,0.603x0.58,0.341x1.412,0.152x2.264,0.038x3.128,0x4|0..0.01;200x0,200x4,199.962x3.128,199.848x2.264,199.659x1.412,199.397x0.58,199.157x0|0..0.01;200x174,190x174,190.872x173.962,191.736x173.848,192.588x173.659,193.42x173.397,194.226x173.063,195x172.66,195.736x172.192,196.428x171.66,197.071x171.071,197.66x170.428,198.192x169.736,198.66x169,199.063x168.226,199.397x167.42,199.659x166.588,199.848x165.736,199.962x164.872,200x164|0..0.01;0x174,0x164,0.038x164.872,0.152x165.736,0.341x166.588,0.603x167.42,0.937x168.226,1.34x169,1.808x169.736,2.34x170.428,2.929x171.071,3.572x171.66,4.264x172.192,5x172.66,5.774x173.063,6.58x173.397,7.412x173.659,8.264x173.848,9.128x173.962,10x174|0..0.01;0x174,200x174,200x180,0x180|138.505x0,138.453x0.457,138.297x0.89,137.592x2.157,136.772x3.354,135.845x4.469,134.819x5.493,133.702x6.417,132.504x7.234,131.235x7.936,129.906x8.518,128.53x8.973,127.117x9.299,125.68x9.492,123.642x9.734,121.624x10.102,119.632x10.594,117.674x11.208,115.758x11.942,113.891x12.793,113.448x12.95,112.981x13,112.515x12.939,112.076x12.771,110.239x11.887,108.344x11.135,106.401x10.516,104.419x10.036,102.409x9.695,100.38x9.496,99.415x9.36,98.483x9.077,97.605x8.653,96.804x8.099,96.097x7.427,95.503x6.655,95.035x5.801,94.704x4.884,94.518x3.928,94.509x3.814,94.505x3.7,94.505x0",
     "bed_mesh_max": "190,170",
     "bed_mesh_min": "10,7",
     "bed_mesh_probe_distance": "37.5,40",
@@ -186,7 +186,7 @@
     ],
     "machine_pause_gcode": "PAUSE",
     "machine_prepare_compensation_time": "260",
-    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] MATERIAL=[filament_type[initial_extruder]] MESH_MIN={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} MESH_MAX={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ALGORITHM=[bed_mesh_algo]\n\nG90               ; absolute XYZ mode\nM83               ; relative E mode\n\n; Front-right corner purge, as it was before KAN-990 (and before KAN-6145 moved it to X10-70):\n; X130-200 along the front edge, right of the no-go notch (x80.5-119.5, y0-22.6). It runs from Y0 up\n; (it used to start at Y -1.5): the printer's Y travel now ends at -1.\nSET_VELOCITY_LIMIT ACCEL=5000   ; gentle move to the purge: at full acceleration it skipped steps;\n                                ; the slice sets its own acceleration from the first layer on\nG0 X130.0 Y0 F8000      ; move to the start of the purge\n\nSPEED_SLOW_PRE_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\n; --- Drop to first-layer height and prime a little\nG0 Z0.15\nG1 X134 E5 F300\n\n; --- Begin modified L-shaped wipe ---\n\n; 1) Horizontal long wipe from (134, 0) to (200, 0)\nG1 X200 Y0 E20 F800\n\n; 2) Vertical move up from (200, 0) to (200, 6)\nG1 Y6 E1 F800\n\n; 3) Small back move to relieve pressure\nG1 X199.5 E-0.2\n\n; 4) Vertical move down from (199.5, 6)\nG1 Y1 E0.7 F600\n\n; 5) Horizontal return wipe from (199.5, 1) back to (130, 1)\nG1 X130 E7.5 F600\n\nSPEED_NORMAL__POST_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\nG1 Z0.1 F800\nG1 Y2.5 F1200\n\n; --- End modified L-shaped wipe ---\n\n; Lift clear of the front notch before the first travel. The purge ends at X130 Y2.5, Z0.1, and the\n; first travel goes straight to the first object, so at that height it can cross the notch\n; (x80.5-119.5, y0-22.6, Z 0..6), so it lifts to Z7 first.\nG1 Z7 F800\n\nM400                           ; wait for all moves to finish before continuing",
+    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] MATERIAL=[filament_type[initial_extruder]] MESH_MIN={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} MESH_MAX={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ALGORITHM=[bed_mesh_algo]\n\nG90               ; absolute XYZ mode\nM83               ; relative E mode\n\n; Front-right corner purge, as it was before KAN-990 (and before KAN-6145 moved it to X10-70):\n; X140-200 along the front edge, right of the no-go notch (x80.5-119.5, y0-22.6) and of the full-height zone\n; beside it (x94.5-138.5, y0-13). It runs from Y0 up\n; (it used to start at Y -1.5): the printer's Y travel now ends at -1.\nSET_VELOCITY_LIMIT ACCEL=5000   ; gentle move to the purge: at full acceleration it skipped steps;\n                                ; the slice sets its own acceleration from the first layer on\nG0 X140.0 Y0 F8000      ; move to the start of the purge\n\nSPEED_SLOW_PRE_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\n; --- Drop to first-layer height and prime a little\nG0 Z0.15\nG1 X144 E5 F300\n\n; --- Begin modified L-shaped wipe ---\n\n; 1) Horizontal long wipe from (144, 0) to (200, 0)\nG1 X200 Y0 E16.97 F800\n\n; 2) Vertical move up from (200, 0) to (200, 6)\nG1 Y6 E1 F800\n\n; 3) Small back move to relieve pressure\nG1 X199.5 E-0.2\n\n; 4) Vertical move down from (199.5, 6)\nG1 Y1 E0.7 F600\n\n; 5) Horizontal return wipe from (199.5, 1) back to (140, 1)\nG1 X140 E6.42 F600\n\nSPEED_NORMAL__POST_PURGE_FOR_TPU MATERIAL=[filament_type[initial_extruder]]\n\nG1 Z0.1 F800\nG1 Y2.5 F1200\n\n; --- End modified L-shaped wipe ---\n\n; Lift clear of the front notch before the first travel. The purge ends at X140 Y2.5, Z0.1, and the\n; first travel goes straight to the first object, so at that height it can cross the notch\n; (x80.5-119.5, y0-22.6, Z 0..6), so it lifts to Z7 first.\nG1 Z7 F800\n\nM400                           ; wait for all moves to finish before continuing",
     "machine_tool_change_time": "0",
     "machine_unload_filament_time": "0",
     "manual_filament_change": "0",
@@ -318,7 +318,7 @@
     "use_3mf": "0",
     "use_firmware_retraction": "0",
     "use_relative_e_distances": "1",
-    "version": "2.3.0.25",
+    "version": "2.3.0.27",
     "wait_for_temp_on_wipe_tower": "0",
     "wipe": [
       "0"
@@ -795,7 +795,7 @@
     "tree_support_top_rate": "30%",
     "tree_support_wall_count": "0",
     "unsupported_wall_last": "0",
-    "version": "2.3.0.25",
+    "version": "2.3.0.27",
     "wall_direction": "ccw",
     "wall_distribution_count": "1",
     "wall_generator": "arachne",
@@ -1296,7 +1296,7 @@
       "textured_plate_temp_initial_layer": [
         "55"
       ],
-      "version": "2.3.0.25",
+      "version": "2.3.0.27",
       "volumetric_speed_coefficients": [
         ""
       ],
