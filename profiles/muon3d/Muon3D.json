@@ -1,6 +1,6 @@
 {
     "name": "Muon3D",
-    "version":  "02.03.00.24",
+    "version":  "02.03.00.25",
     "force_update": "0",
     "description": "Muon3D Printer Profile",
     "machine_model_list": [
