@@ -1,0 +1,124 @@
+# A profiles-only release, on a pushed tag v<engine version>.p<n> (docs/RELEASING.md, "Profiles-only releases"):
+# a new profile set for an engine that is already released, without building the engine again.
+#
+#   - the tag's engine version is package.json's, that release v<engine version> is published, and nothing the
+#     engine is built from (engine/, host/, packages/, data/, package.json, package-lock.json) changed since its tag;
+#   - the set is built with that release's own runtime (downloaded and checked against its SHA256SUMS) from the
+#     pinned OrcaSlicer tree and profiles/muon3d, then checked: every preset against OrcaSlicer's loader, the M1
+#     preset fixtures, and the Muon3D record (test/profiles/muon3d.json);
+#   - the release carries the set and SHA256SUMS, with a build-provenance attestation. It is not marked latest.
+#
+# A client pins it beside the engine release it names: the index's `engine` is that release's (docs/PROFILES.md §7).
+name: Profiles release
+
+on:
+  push:
+    tags: ['v*.p[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  profiles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: The tag names a released engine, and the engine is unchanged since it
+        run: |
+          version=${TAG#v}
+          [[ $version =~ ^(.+)\.p[0-9]+$ ]] || { echo "::error::$TAG is not v<engine version>.p<n>"; exit 1; }
+          base=${BASH_REMATCH[1]}
+          pkg=$(node -p 'require("./package.json").version')
+          [[ $base == "$pkg" ]] || { echo "::error::$TAG is for engine $base, but package.json says $pkg"; exit 1; }
+          git rev-parse -q --verify "refs/tags/v$base" >/dev/null || { echo "::error::no tag v$base"; exit 1; }
+          git merge-base --is-ancestor "v$base" HEAD || { echo "::error::$TAG is not on top of v$base"; exit 1; }
+          changed=$(git diff --name-only "v$base" HEAD -- engine host packages data package.json package-lock.json)
+          if [[ -n $changed ]]; then
+            echo "::error::the engine changed since v$base; release a new engine version instead:"
+            echo "$changed"
+            exit 1
+          fi
+          [[ $(gh release view "v$base" --json isDraft --jq .isDraft) == false ]] || { echo "::error::v$base is not published"; exit 1; }
+          echo "BASE=$base" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "- profiles $version for engine $base ($(git rev-list --count "v$base..HEAD") commits since v$base)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: OrcaSlicer at the pin (the profile tree)
+        run: bash engine/scripts/get-orca.sh
+      - name: The engine release's runtime
+        run: |
+          mkdir -p base
+          gh release download "v$BASE" -D base -p "muon3d-slicer-engine-$BASE.tgz" -p SHA256SUMS
+          (cd base && grep " muon3d-slicer-engine-$BASE.tgz\$" SHA256SUMS | sha256sum -c -)
+          tar -xzf "base/muon3d-slicer-engine-$BASE.tgz" -C base
+          echo "ENGINE_DIR=$PWD/base/muon3d-slicer-engine-$BASE" >> "$GITHUB_ENV"
+      - name: Build and check the profile set with it
+        run: |
+          node tools/profiles/fixtures.ts --check
+          node tools/profiles/build.ts --out "out/muon3d-slicer-profiles-$VERSION" --set "$VERSION"
+          node tools/profiles/check.ts "out/muon3d-slicer-profiles-$VERSION" --expect test/profiles/muon3d.json
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const [setDir, runtime] = process.argv.slice(1);
+            const name = fs.readdirSync(setDir).find((f) => /^index\.[0-9a-f]+\.json$/.test(f));
+            const index = JSON.parse(fs.readFileSync(path.join(setDir, name), "utf8"));
+            const m = JSON.parse(fs.readFileSync(path.join(runtime, "manifest.json"), "utf8"));
+            const problems = [];
+            if (index.engine.version !== m.version) problems.push(`set for engine ${index.engine.version}, runtime ${m.version}`);
+            if (index.engine.orca.commit !== m.orca.commit) problems.push(`set for Orca ${index.engine.orca.commit}, runtime ${m.orca.commit}`);
+            if (problems.length) { console.error(problems.join("; ")); process.exit(1); }
+            console.log(`OK: set ${index.set} pairs with engine ${m.version} (Orca ${m.orca.commit.slice(0, 10)})`);
+          ' "out/muon3d-slicer-profiles-$VERSION/profiles/$VERSION" "$ENGINE_DIR"
+          jq -r '.sizes | to_entries[] | "- profiles \(.key): \(.value)"' "out/muon3d-slicer-profiles-$VERSION/report.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Package
+        run: |
+          mkdir -p assets
+          epoch=$(git log -1 --format=%ct)
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" --format=gnu -C out \
+            -cf - "muon3d-slicer-profiles-$VERSION" | gzip -n -9 > "assets/muon3d-slicer-profiles-$VERSION.tgz"
+          (cd assets && sha256sum * > ../SHA256SUMS) && mv SHA256SUMS assets/
+          cat assets/SHA256SUMS
+      - uses: actions/attest@v4
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - name: Release
+        run: |
+          {
+            echo "The profile set $VERSION for [Muon3D Slicer Engine $BASE](https://github.com/$GH_REPO/releases/tag/v$BASE),"
+            echo "built with that release's runtime: a profiles-only release (docs/RELEASING.md). Use it with engine $BASE;"
+            echo "the engine itself is unchanged and is not attached."
+            echo
+            echo "| File | sha256 |"
+            echo "|---|---|"
+            while read -r sum file; do echo "| \`$file\` | \`$sum\` |"; done < assets/SHA256SUMS
+            echo
+            echo "Changes since v$BASE:"
+            echo
+            git log --format='- %s' "v$BASE..HEAD"
+            echo
+            echo "Run: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID"
+          } > notes.md
+          gh release create "$TAG" assets/* --verify-tag --latest=false \
+            --title "Muon3D Slicer Engine $BASE: profiles $VERSION" --notes-file notes.md

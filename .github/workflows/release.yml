@@ -15,7 +15,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', '!v*.p[0-9]*']   # v<engine version>.p<n> is a profiles-only release (profiles-release.yml)
 
 permissions:
   contents: read
